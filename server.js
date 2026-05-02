@@ -13,15 +13,11 @@ const NIM_API_BASE = process.env.NIM_API_BASE || 'https://integrate.api.nvidia.c
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
 const SHOW_REASONING = true;
-const ENABLE_THINKING_MODE = true;
 
 // ============================================================
 // MODE SELECT
-// 'solo'   = just you, full 40/min
-// 'shared' = you get 20 locked, users split remaining 20
 // ============================================================
-const MODE = 'solo'; // change to 'shared' when adding users
-// ============================================================
+const MODE = 'solo';
 
 // ============================================================
 // SOLO MODE
@@ -32,11 +28,6 @@ const SOLO_KEYS = {
 
 // ============================================================
 // SHARED MODE
-// Uncomment user lines as needed. Limits auto-calculate.
-// 1 user  → gets 20/min
-// 2 users → each gets 10/min
-// 3 users → each gets 6/min
-// 4 users → each gets 5/min
 // ============================================================
 const SHARED_KEYS = {
   '+cEvv5KDLGDSbuSftoNz/w==': { name: 'me',    limit: 20   },
@@ -46,74 +37,74 @@ const SHARED_KEYS = {
   // '7ianBRihV4OaWrI8BKaJeA==': { name: 'user4', limit: null },
 };
 
-// ============================================================
-// AUTO CALCULATES user limits
-// ============================================================
 function buildKeyMap() {
   if (MODE === 'solo') return SOLO_KEYS;
-
   const keys = { ...SHARED_KEYS };
   const userKeys = Object.entries(keys).filter(([_, v]) => v.limit === null);
   const userCount = userKeys.length;
   const remaining = 40 - 20;
   const perUser = userCount > 0 ? Math.floor(remaining / userCount) : 0;
-
-  for (const [k, v] of userKeys) {
-    keys[k] = { ...v, limit: perUser };
-  }
-
+  for (const [k, v] of userKeys) keys[k] = { ...v, limit: perUser };
   return keys;
 }
 
-// ============================================================
-// RATE LIMIT TRACKER
-// ============================================================
 const usageTracker = {};
 
 function checkRateLimit(apiKey) {
   const keyMap = buildKeyMap();
   const keyInfo = keyMap[apiKey];
-
   if (!keyInfo) return { allowed: false, reason: 'Invalid API key' };
-
   const now = Date.now();
-
   if (!usageTracker[apiKey] || now > usageTracker[apiKey].resetAt) {
     usageTracker[apiKey] = { count: 0, resetAt: now + 60000 };
   }
-
   if (usageTracker[apiKey].count >= keyInfo.limit) {
     const waitSec = Math.ceil((usageTracker[apiKey].resetAt - now) / 1000);
     return { allowed: false, reason: `Rate limit hit. Try again in ${waitSec}s` };
   }
-
   usageTracker[apiKey].count++;
   return { allowed: true };
 }
 
 // ============================================================
 // MODEL MAPPING
+// each entry: { model: 'nvidia-model-name', thinking: null | 'glm' | 'deepseek' }
+// thinking: null    = no thinking params sent
+// thinking: 'glm'  = enable_thinking:true  (GLM 5.1 style)
+// thinking: 'dsv4' = thinking:true, reasoning_effort:'high' (DeepSeek V4 style)
 // ============================================================
 const MODEL_MAPPING = {
-  'gpt-3.5-turbo':  'nvidia/llama-3.1-nemotron-ultra-253b-v1',
-  'gpt-4':          'qwen/qwen3-coder-480b-a35b-instruct',
-  'gpt-4-turbo':    'moonshotai/kimi-k2-instruct-0905',
-  'gpt-4o':         'deepseek-ai/deepseek-v3.1',
-  'claude-3-opus':  'openai/gpt-oss-120b',
-  'claude-3-sonnet':'openai/gpt-oss-20b',
-  'gemini-pro':     'qwen/qwen3-next-80b-a3b-thinking',
-  'glm-5.1': 'z-ai/glm-5.1',
-  'deepseek-v4-pro':'deepseek-ai/deepseek-v4-pro',
-  'deepseek-v3.2':  'deepseek-ai/deepseek-v3.2',
+  // ---- standard (no thinking) ----
+  'gpt-3.5-turbo':   { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', thinking: null },
+  'gpt-4':           { model: 'qwen/qwen3-coder-480b-a35b-instruct',      thinking: null },
+  'gpt-4-turbo':     { model: 'moonshotai/kimi-k2-instruct-0905',         thinking: null },
+  'gpt-4o':          { model: 'deepseek-ai/deepseek-v3.1',                thinking: null },
+  'claude-3-opus':   { model: 'openai/gpt-oss-120b',                      thinking: null },
+  'claude-3-sonnet': { model: 'openai/gpt-oss-20b',                       thinking: null },
+
+  // ---- GLM 5.1 ----
+  'glm-5.1':         { model: 'z-ai/glm-5.1', thinking: null },       // no visible thinking
+  'glm-5.1-think':   { model: 'z-ai/glm-5.1', thinking: 'glm'  },    // thinking shown ✅ USE THIS
+
+  // ---- DeepSeek V3.2 ----
+  'deepseek-v3.2':       { model: 'deepseek-ai/deepseek-v3.2', thinking: null },
+  'deepseek-v3.2-think': { model: 'deepseek-ai/deepseek-v3.2', thinking: 'dsv4' },
+
+  // ---- DeepSeek V4 Pro ----
+  'deepseek-v4-pro':       { model: 'deepseek-ai/deepseek-v4-pro', thinking: null },
+  'deepseek-v4-pro-think': { model: 'deepseek-ai/deepseek-v4-pro', thinking: 'dsv4' },
 };
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
+// builds the extra_body based on model's thinking type
+function getExtraBody(thinkingType) {
+  if (thinkingType === 'glm')  return { chat_template_kwargs: { enable_thinking: true, clear_thinking: false } };
+  if (thinkingType === 'dsv4') return { chat_template_kwargs: { thinking: true, reasoning_effort: 'high' } };
+  return undefined;
+}
+
 app.get('/health', (req, res) => {
   const keyMap = buildKeyMap();
   const now = Date.now();
-
   const status = Object.entries(keyMap).map(([key, info]) => ({
     name: info.name,
     limit: info.limit,
@@ -122,26 +113,16 @@ app.get('/health', (req, res) => {
       ? Math.max(0, Math.ceil((usageTracker[key].resetAt - now) / 1000)) + 's'
       : 'n/a'
   }));
-
   res.json({ status: 'ok', mode: MODE, users: status });
 });
 
-// ============================================================
-// MODELS LIST
-// ============================================================
 app.get('/v1/models', (req, res) => {
   const models = Object.keys(MODEL_MAPPING).map(model => ({
-    id: model,
-    object: 'model',
-    created: Date.now(),
-    owned_by: 'nim-proxy'
+    id: model, object: 'model', created: Date.now(), owned_by: 'nim-proxy'
   }));
   res.json({ object: 'list', data: models });
 });
 
-// ============================================================
-// CHAT ENDPOINT
-// ============================================================
 app.post('/v1/chat/completions', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const userKey = authHeader.replace('Bearer ', '').trim();
@@ -156,8 +137,14 @@ app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, temperature, max_tokens, stream } = req.body;
 
-    let nimModel = MODEL_MAPPING[model];
-    if (!nimModel) {
+    const mapping = MODEL_MAPPING[model];
+    let nimModel, thinkingType;
+
+    if (mapping) {
+      nimModel = mapping.model;
+      thinkingType = mapping.thinking;
+    } else {
+      thinkingType = null;
       const modelLower = model.toLowerCase();
       if (modelLower.includes('gpt-4') || modelLower.includes('405b')) {
         nimModel = 'meta/llama-3.1-405b-instruct';
@@ -173,9 +160,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       messages,
       temperature: temperature || 0.6,
       max_tokens: max_tokens || 9024,
-      extra_body: ENABLE_THINKING_MODE
-      ? { chat_template_kwargs: { enable_thinking: true, clear_thinking: false } }
-      : undefined,
+      extra_body: getExtraBody(thinkingType),
       stream: stream || false
     };
 
