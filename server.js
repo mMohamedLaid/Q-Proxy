@@ -71,6 +71,8 @@ const MODEL_MAPPING = {
   'deepseek-v3.2-think':   { model: 'deepseek-ai/deepseek-v3.2',                thinking: 'dsv4' },
   'deepseek-v4-pro':       { model: 'deepseek-ai/deepseek-v4-pro',              thinking: null },
   'deepseek-v4-pro-think': { model: 'deepseek-ai/deepseek-v4-pro',              thinking: 'dsv4' },
+  'glm-4.7':               { model: 'z-ai/glm4.7',                              thinking: null },
+  'glm-4.7-think':         { model: 'z-ai/glm4.7',                              thinking: 'glm' },
 };
 
 function getExtraBody(thinkingType) {
@@ -311,7 +313,9 @@ app.post('/v1/chat/completions', async (req, res) => {
 
   } catch (error) {
     log('ERROR', `[${userName}] ${error.message} | status: ${error.response?.status}`);
-    log('ERROR', `NVIDIA error body: ${JSON.stringify(error.response?.data)}`);
+    let errorBody = 'unavailable';
+try { errorBody = JSON.stringify(error.response?.data); } catch(e) { errorBody = '[stream/timeout error]'; }
+log('ERROR', `NVIDIA error body: ${errorBody}`);
     res.status(error.response?.status || 500).json({
       error: {
         message: error.message || 'Internal server error',
