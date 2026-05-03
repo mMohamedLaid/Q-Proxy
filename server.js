@@ -12,9 +12,6 @@ app.use(express.json());
 const NIM_API_BASE = process.env.NIM_API_BASE || 'https://integrate.api.nvidia.com/v1';
 const NIM_API_KEY = process.env.NIM_API_KEY;
 
-// ============================================================
-// MODE SELECT
-// ============================================================
 const MODE = 'solo';
 
 const SOLO_KEYS = {
@@ -57,18 +54,10 @@ function checkRateLimit(apiKey) {
   return { allowed: true };
 }
 
-// ============================================================
-// LOGGING
-// ============================================================
-function log(level, msg, extra = '') {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [${level}] ${msg} ${extra}`);
+function log(level, msg) {
+  console.log(`[${new Date().toISOString()}] [${level}] ${msg}`);
 }
 
-// ============================================================
-// MODEL MAPPING
-// thinking: null = none, 'glm' = GLM style, 'dsv4' = DeepSeek V4 style
-// ============================================================
 const MODEL_MAPPING = {
   'gpt-3.5-turbo':         { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', thinking: null },
   'gpt-4':                 { model: 'qwen/qwen3-coder-480b-a35b-instruct',      thinking: null },
@@ -90,22 +79,13 @@ function getExtraBody(thinkingType) {
   return undefined;
 }
 
-// ============================================================
-// PARSE <think> TAGS FROM RAW TEXT
-// Splits raw model output into { reasoning, content }
-// ============================================================
 function parseThinkTags(rawText) {
   if (!rawText) return { reasoning: null, content: rawText };
   const match = rawText.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
-  if (match) {
-    return { reasoning: match[1].trim(), content: match[2].trim() };
-  }
+  if (match) return { reasoning: match[1].trim(), content: match[2].trim() };
   return { reasoning: null, content: rawText };
 }
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
 app.get('/health', (req, res) => {
   const keyMap = buildKeyMap();
   const now = Date.now();
@@ -127,9 +107,6 @@ app.get('/v1/models', (req, res) => {
   res.json({ object: 'list', data: models });
 });
 
-// ============================================================
-// CHAT ENDPOINT
-// ============================================================
 app.post('/v1/chat/completions', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const userKey = authHeader.replace('Bearer ', '').trim();
@@ -147,9 +124,14 @@ app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, temperature, max_tokens, stream } = req.body;
 
+    // LOG FULL INCOMING REQUEST
+    log('INFO', `[${userName}] REQUEST → model: ${model} | stream: ${stream || false}`);
+    messages.forEach((m, i) => {
+      log('DEBUG', `  [msg ${i}] ${m.role}: ${String(m.content).slice(0, 500)}`);
+    });
+
     const mapping = MODEL_MAPPING[model];
     let nimModel, thinkingType;
-
     if (mapping) {
       nimModel = mapping.model;
       thinkingType = mapping.thinking;
@@ -161,7 +143,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       else nimModel = 'meta/llama-3.1-8b-instruct';
     }
 
-    log('INFO', `[${userName}] → ${nimModel} | thinking: ${thinkingType || 'off'} | stream: ${stream || false}`);
+    log('INFO', `[${userName}] → NVIDIA model: ${nimModel} | thinking type: ${thinkingType || 'off'}`);
 
     const nimRequest = {
       model: nimModel,
@@ -171,6 +153,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       extra_body: getExtraBody(thinkingType),
       stream: stream || false
     };
+
+    log('DEBUG', `extra_body sent: ${JSON.stringify(nimRequest.extra_body)}`);
 
     const response = await axios.post(
       `${NIM_API_BASE}/chat/completions`,
@@ -190,11 +174,10 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
 
       let buffer = '';
-      // for streaming: accumulate raw text to detect <think> tags
-      let rawAccum = '';
-      let thinkSent = false;
       let thinkBuffer = '';
       let inThink = false;
+      let thinkSent = false;
+      let accumRaw = '';
 
       response.data.on('data', (chunk) => {
         buffer += chunk.toString();
@@ -210,35 +193,30 @@ app.post('/v1/chat/completions', async (req, res) => {
             const delta = data.choices?.[0]?.delta;
             if (!delta) { res.write(`data: ${JSON.stringify(data)}\n\n`); return; }
 
-            let rawContent = delta.content || '';
-            // also catch if NVIDIA already returns reasoning_content natively
-            let nativeReasoning = delta.reasoning_content || null;
+            const nativeReasoning = delta.reasoning_content || null;
+            const rawContent = delta.content || '';
 
+            // LOG EVERY CHUNK
+            log('DEBUG', `[CHUNK] native_reasoning: ${JSON.stringify(nativeReasoning?.slice(0,100))} | content: ${JSON.stringify(rawContent?.slice(0,100))}`);
+
+            // if nvidia already returns reasoning_content natively, pass through
             if (nativeReasoning) {
-              // NVIDIA returned it properly — pass it straight through
-              delta.reasoning_content = nativeReasoning;
               res.write(`data: ${JSON.stringify(data)}\n\n`);
               return;
             }
 
-            // Parse <think> tags from streaming text
-            rawAccum += rawContent;
+            accumRaw += rawContent;
 
             if (!inThink && !thinkSent) {
-              if (rawAccum.includes('<think>')) {
+              if (accumRaw.includes('<think>')) {
                 inThink = true;
-                const start = rawAccum.indexOf('<think>') + 7;
-                thinkBuffer += rawAccum.slice(start);
-                rawAccum = '';
-              } else if (!rawAccum.startsWith('<')) {
-                // no think tag coming, just send content normally
+                const start = accumRaw.indexOf('<think>') + 7;
+                thinkBuffer += accumRaw.slice(start);
+                accumRaw = '';
+                return;
+              } else if (accumRaw.length > 10 && !accumRaw.startsWith('<')) {
                 thinkSent = true;
-                delta.content = rawContent;
-                delete delta.reasoning_content;
-                res.write(`data: ${JSON.stringify(data)}\n\n`);
               }
-              // else: might still be partial <think> tag, wait
-              return;
             }
 
             if (inThink) {
@@ -250,7 +228,8 @@ app.post('/v1/chat/completions', async (req, res) => {
                 inThink = false;
                 thinkSent = true;
 
-                // send reasoning chunk
+                log('DEBUG', `[THINK PARSED] reasoning length: ${reasoningText.length}`);
+
                 const reasoningChunk = {
                   ...data,
                   choices: [{
@@ -260,22 +239,21 @@ app.post('/v1/chat/completions', async (req, res) => {
                 };
                 res.write(`data: ${JSON.stringify(reasoningChunk)}\n\n`);
 
-                // send content after </think> if any
                 if (afterThink) {
                   delta.content = afterThink;
-                  delta.reasoning_content = null;
+                  delete delta.reasoning_content;
                   res.write(`data: ${JSON.stringify(data)}\n\n`);
                 }
               }
               return;
             }
 
-            // normal content after thinking done
             delta.content = rawContent;
             delete delta.reasoning_content;
             res.write(`data: ${JSON.stringify(data)}\n\n`);
 
           } catch (e) {
+            log('ERROR', `chunk parse error: ${e.message}`);
             res.write(line + '\n');
           }
         });
@@ -291,27 +269,36 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
 
     } else {
-      // non-streaming: parse <think> tags from full response
-      const choice = response.data.choices[0];
-      const rawText = choice.message?.content || '';
+      const rawText = response.data.choices[0]?.message?.content || '';
+      const nativeReasoning = response.data.choices[0]?.message?.reasoning_content || null;
+
+      // FULL DEBUG LOG OF NVIDIA RESPONSE
+      log('DEBUG', `[${userName}] NVIDIA RAW RESPONSE:`);
+      log('DEBUG', `  native reasoning_content: ${JSON.stringify(nativeReasoning?.slice(0, 300))}`);
+      log('DEBUG', `  raw content (first 500): ${JSON.stringify(rawText.slice(0, 500))}`);
+
       const { reasoning, content } = parseThinkTags(rawText);
 
-      log('INFO', `[${userName}] ✓ reply received | has_thinking: ${!!reasoning} | chars: ${content.length}`);
+      log('DEBUG', `  parsed reasoning found: ${!!reasoning}`);
+      log('DEBUG', `  parsed reasoning (first 200): ${JSON.stringify(reasoning?.slice(0, 200))}`);
+      log('DEBUG', `  parsed content (first 200): ${JSON.stringify(content?.slice(0, 200))}`);
 
       const openaiResponse = {
         id: `chatcmpl-${Date.now()}`,
         object: 'chat.completion',
         created: Math.floor(Date.now() / 1000),
         model,
-        choices: response.data.choices.map((choice, i) => {
+        choices: response.data.choices.map((choice) => {
           const raw = choice.message?.content || '';
+          const native = choice.message?.reasoning_content || null;
           const { reasoning: r, content: c } = parseThinkTags(raw);
+          const finalReasoning = native || r;
           return {
             index: choice.index,
             message: {
               role: choice.message.role,
               content: c,
-              ...(r ? { reasoning_content: r } : {})
+              ...(finalReasoning ? { reasoning_content: finalReasoning } : {})
             },
             finish_reason: choice.finish_reason
           };
@@ -323,7 +310,8 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
   } catch (error) {
-    log('ERROR', `Proxy error: ${error.message} | status: ${error.response?.status}`);
+    log('ERROR', `[${userName}] ${error.message} | status: ${error.response?.status}`);
+    log('ERROR', `NVIDIA error body: ${JSON.stringify(error.response?.data)}`);
     res.status(error.response?.status || 500).json({
       error: {
         message: error.message || 'Internal server error',
