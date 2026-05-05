@@ -368,7 +368,6 @@ const MODEL_MAPPING = {
   'gemma-4-26b-or':  { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null }, // 50/day per key ✅
   'gemma-3-27b-lit': { model: 'gemma-3-27b-it-free',          provider: 'literouter', thinking: null }, // ∞/day ✅ (Gemma 3!)
   'gemma-lit':       { model: 'gemma-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
-
   'gemma-4':      { model: 'gemma-4-31b-it',     provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-31b-it:free',    provider: 'openrouter', thinking: null } },
   'gemma-4-fast': { model: 'gemma-4-26b-a4b-it', provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null } },
 
@@ -392,7 +391,6 @@ const MODEL_MAPPING = {
   // 'gemini-g':         { model: 'gemini-3.1-pro-preview', ... }  // LOCKED — free tier 0 RPD
   // 'gemini-stable-g':  { model: 'gemini-2.5-pro', ... }          // LOCKED — free tier 0 RPD
   'gemini-lit':          { model: 'gemini-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
-
   'gemini':       { model: 'gemini-3.1-flash-lite-preview', provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
   'gemini-flash': { model: 'gemini-3-flash',                provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
 
@@ -446,7 +444,6 @@ const MODEL_MAPPING = {
   'kimi-think-or': { model: 'moonshotai/kimi-k2-thinking:free', provider: 'openrouter', thinking: null }, // 50/day ✅ has thinking
   'kimi-lit':      { model: 'kimi-k2.5-free',                   provider: 'literouter', thinking: null }, // 30/day ✅
   // 'kimi-or':    { model: 'moonshotai/kimi-k2.5', ... }  // PAID — removed (no :free suffix)
-
   'kimi': { model: 'moonshotai/kimi-k2-thinking:free', provider: 'openrouter', thinking: null, fallback: { model: 'kimi-k2.5-free', provider: 'literouter', thinking: null } },
 
 
