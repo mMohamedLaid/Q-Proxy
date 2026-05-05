@@ -15,12 +15,10 @@ app.use(express.json());
 const NIM_API_KEY      = process.env.NIM_API_KEY;
 const ZAI_API_KEY      = process.env.ZAI_API_KEY;
 const GOOGLE_API_KEY   = process.env.GOOGLE_API_KEY;
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY; //worthless. thought it gave free tokens at first login.
 
 const LITEROUTER_KEYS = [
   process.env.LITEROUTER_KEY_1,
-  process.env.LITEROUTER_KEY_2,
-  process.env.LITEROUTER_KEY_3,
 ].filter(Boolean);
 
 const OPENROUTER_KEYS = [
@@ -155,7 +153,7 @@ function log(level, msg) {
 // OpenRouter base:   https://openrouter.ai/api/v1
 // LiteRouter base:   https://api.literouter.com/v1
 // ============================================================
-const MODEL_MAPPING = {
+/*const MODEL_MAPPING = {
 
   // ══════════════════════════════════════════════════════════
   // GLM-5.1
@@ -273,7 +271,255 @@ const MODEL_MAPPING = {
   // ══════════════════════════════════════════════════════════
   'llama-nemotron':      { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', provider: 'nvidia', thinking: null },
 };
+*/
+// ============================================================
+// MODEL MAPPING — 100% FREE ONLY (verified May 2026)
+//
+// Naming convention:
+//   model-nv   → NVIDIA NIM
+//   model-z    → Z.AI (flash = free forever; full = paid, DISABLED)
+//   model-g    → Google AI Studio
+//   model-or   → OpenRouter round-robin
+//   model-lit  → Literouter round-robin
+//   model      → smart auto-route, best available
+//
+// Thinking types:
+//   null   = no thinking params sent
+//   'glm'  = chat_template_kwargs: { enable_thinking: true }
+//   'dsv4' = chat_template_kwargs: { thinking: true, reasoning_effort: 'high' }
+//
+// Fallback: code only reads ONE level of fallback.
+//   { model, provider, fallback: { model, provider } }  ← works
+//   { ..., fallback: { ..., fallback: {} } }            ← level 2 silently ignored!
+//
+// Provider base URLs:
+//   NVIDIA NIM:   https://integrate.api.nvidia.com/v1
+//   Z.AI:         https://api.z.ai/api/paas/v4
+//   Google:       https://generativelanguage.googleapis.com/v1beta/openai
+//   OpenRouter:   https://openrouter.ai/api/v1
+//   Literouter:   https://api.literouter.com/v1
+//   DeepSeek:     DISABLED — $0 balance, no free tokens
+// ============================================================
+const MODEL_MAPPING = {
 
+  // ══════════════════════════════════════════════════════════
+  // GLM-5.1
+  //
+  // NVIDIA NIM:  z-ai/glm-5.1 ✅ free endpoint — but VERY SLOW (2-5 min)
+  // Z.AI paid:   glm-5.1 DISABLED — balance $0, would charge real money
+  // Literouter:  glm-free ✅ ∞/day (unknown GLM version, fast)
+  //
+  // Auto route:  NVIDIA first (slow, free) → Literouter fallback (fast, unknown ver)
+  // ══════════════════════════════════════════════════════════
+  'glm-5.1-nv':        { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: null  }, // free ✅ slow
+  'glm-5.1-think-nv':  { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: 'glm' }, // free ✅ slow
+  // 'glm-5.1-z':      { model: 'glm-5.1',       provider: 'zai',   thinking: null  }, // PAID — disabled ($0 balance)
+  // 'glm-5.1-think-z':{ model: 'glm-5.1',       provider: 'zai',   thinking: 'glm' }, // PAID — disabled ($0 balance)
+  'glm-5.1-lit':       { model: 'glm-free',      provider: 'literouter', thinking: null }, // ∞/day ✅
+
+  'glm-5.1':       { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: null,  fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
+  'glm-5.1-think': { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: 'glm', fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // GLM-4.7
+  //
+  // NVIDIA NIM:  z-ai/glm4.7 ✅ free endpoint — thinks by default, ~1 min
+  //              NOTE: NIM slug is glm4.7 (no dash), NOT glm-4.7
+  // Z.AI full:   glm-4.7 DISABLED — paid ($0.6/$2.2 per M tokens, balance $0)
+  // Z.AI flash:  glm-4.7-flash ✅ PERMANENTLY FREE regardless of balance
+  // Z.AI flash:  glm-4.5-flash ✅ PERMANENTLY FREE regardless of balance
+  //              NOTE: model IDs are lowercase — glm-4.7-flash NOT glm-4.7-Flash
+  // Literouter:  glm-free ✅ ∞/day (unknown GLM version)
+  //
+  // Auto route:  NVIDIA (confirmed working) → Z.AI flash fallback (free)
+  // ══════════════════════════════════════════════════════════
+  'glm-4.7-nv':      { model: 'z-ai/glm4.7',   provider: 'nvidia',     thinking: null }, // free ✅ thinks by default
+  // 'glm-4.7-z':    { model: 'glm-4.7',        provider: 'zai',        thinking: null }, // PAID — disabled ($0 balance)
+  'glm-4.7-flash-z': { model: 'glm-4.7-flash', provider: 'zai',        thinking: null }, // PERMANENTLY FREE ✅ lowercase!
+  'glm-4.5-flash-z': { model: 'glm-4.5-flash', provider: 'zai',        thinking: null }, // PERMANENTLY FREE ✅ lowercase!
+  'glm-lit':         { model: 'glm-free',       provider: 'literouter', thinking: null }, // ∞/day ✅
+
+  'glm-4.7':   { model: 'z-ai/glm4.7',   provider: 'nvidia',     thinking: null, fallback: { model: 'glm-4.7-flash', provider: 'zai',        thinking: null } },
+  'glm-flash': { model: 'glm-4.7-flash', provider: 'zai',        thinking: null, fallback: { model: 'glm-free',      provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // Gemma 4 — BEST free daily quota anywhere
+  //
+  // Google AI Studio limits (free tier):
+  //   gemma-4-31b-it:      15 RPM, unlimited TPM, 1500 RPD ✅ PRIMARY
+  //   gemma-4-26b-a4b-it:  15 RPM, unlimited TPM, 1500 RPD ✅ MoE (3.8B active → faster)
+  // OpenRouter free:
+  //   google/gemma-4-31b-it:free      50/day per key ✅
+  //   google/gemma-4-26b-a4b-it:free  50/day per key ✅
+  // Literouter:
+  //   gemma-3-27b-it-free  ∞/day ✅ (Gemma 3 not 4 — different model!)
+  //   gemma-free           ∞/day ✅ (unknown Gemma version)
+  //
+  // ⚠️  Google AI Studio model strings unverified — test gemma-4-31b-it
+  //     against the Studio UI before relying on it in prod.
+  //
+  // Auto route: Google (1500/day) → OR fallback (extra capacity)
+  // ══════════════════════════════════════════════════════════
+  'gemma-4-31b-g':   { model: 'gemma-4-31b-it',               provider: 'google',     thinking: null }, // 1500/day ✅
+  'gemma-4-26b-g':   { model: 'gemma-4-26b-a4b-it',           provider: 'google',     thinking: null }, // 1500/day ✅ faster (MoE)
+  'gemma-4-31b-or':  { model: 'google/gemma-4-31b-it:free',   provider: 'openrouter', thinking: null }, // 50/day per key ✅
+  'gemma-4-26b-or':  { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null }, // 50/day per key ✅
+  'gemma-3-27b-lit': { model: 'gemma-3-27b-it-free',          provider: 'literouter', thinking: null }, // ∞/day ✅ (Gemma 3!)
+  'gemma-lit':       { model: 'gemma-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
+
+  'gemma-4':      { model: 'gemma-4-31b-it',     provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-31b-it:free',    provider: 'openrouter', thinking: null } },
+  'gemma-4-fast': { model: 'gemma-4-26b-a4b-it', provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // Gemini — Google AI Studio
+  //
+  // Free tier limits:
+  //   gemini-3.1-flash-lite-preview:  15 RPM, 250K TPM, 500 RPD ✅ BEST for daily use
+  //   gemini-3-flash:                  5 RPM, 250K TPM,  20 RPD ⚠️ use sparingly
+  //   gemini-2.5-flash:                5 RPM, 250K TPM,  20 RPD ⚠️ use sparingly
+  //   gemini-2.5-pro / 3.1-pro:       LOCKED on free tier — 0 RPD
+  // Literouter:
+  //   gemini-free  ∞/day ✅ (unknown Gemini version, routes through Pollinations)
+  //
+  // Auto route: flash-lite (500/day) → Literouter fallback
+  // ══════════════════════════════════════════════════════════
+  'gemini-flash-lite-g': { model: 'gemini-3.1-flash-lite-preview', provider: 'google',     thinking: null }, // 500/day ✅ primary
+  'gemini-flash-g':      { model: 'gemini-3-flash',                provider: 'google',     thinking: null }, // 20/day ⚠️ sparingly
+  'gemini-2.5-flash-g':  { model: 'gemini-2.5-flash',             provider: 'google',     thinking: null }, // 20/day ⚠️ sparingly
+  // 'gemini-g':         { model: 'gemini-3.1-pro-preview', ... }  // LOCKED — free tier 0 RPD
+  // 'gemini-stable-g':  { model: 'gemini-2.5-pro', ... }          // LOCKED — free tier 0 RPD
+  'gemini-lit':          { model: 'gemini-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
+
+  'gemini':       { model: 'gemini-3.1-flash-lite-preview', provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
+  'gemini-flash': { model: 'gemini-3-flash',                provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // DeepSeek
+  //
+  // NVIDIA NIM:     deepseek-v4-pro/flash/v3.2 = "Downloadable" ONLY
+  //                 There is NO free NIM API endpoint for any DeepSeek. Removed.
+  // DeepSeek direct: $0 balance, no free tokens. Removed.
+  // OpenRouter free:
+  //   deepseek/deepseek-r1:free            ✅ 50/day per key
+  //   deepseek/deepseek-chat-v3-0324:free  ✅ 50/day per key
+  //   ⚠️  There is NO deepseek/deepseek-v4-flash:free — V4 is paid only on OR
+  //   ⚠️  deepseek-chat-v3.2:free is a WRONG slug — correct is v3-0324:free
+  // Literouter:
+  //   deepseek-v4-flash-free  ✅ 30/day (ONLY place to get free V4!)
+  //   deepseek-v3-0324-free   ✅ 30/day
+  //   deepseek-free           ✅ 30/day (unknown version)
+  //
+  // Auto route:
+  //   deepseek-r1: OR free → literouter fallback
+  //   deepseek-v4: literouter (only free V4 source) → OR V3 fallback
+  //   deepseek-v3: OR free → literouter fallback
+  // ══════════════════════════════════════════════════════════
+  'deepseek-r1-or':  { model: 'deepseek/deepseek-r1:free',           provider: 'openrouter', thinking: null }, // 50/day ✅
+  'deepseek-v3-or':  { model: 'deepseek/deepseek-chat-v3-0324:free', provider: 'openrouter', thinking: null }, // 50/day ✅ NOT v3.2:free!
+  'deepseek-v4-lit': { model: 'deepseek-v4-flash-free',              provider: 'literouter', thinking: null }, // 30/day ✅ only free V4
+  'deepseek-v3-lit': { model: 'deepseek-v3-0324-free',               provider: 'literouter', thinking: null }, // 30/day ✅
+  'deepseek-lit':    { model: 'deepseek-free',                       provider: 'literouter', thinking: null }, // 30/day ✅ version unknown
+
+  'deepseek-r1': { model: 'deepseek/deepseek-r1:free',           provider: 'openrouter', thinking: null, fallback: { model: 'deepseek-free',              provider: 'literouter', thinking: null } },
+  'deepseek-v4': { model: 'deepseek-v4-flash-free',              provider: 'literouter', thinking: null, fallback: { model: 'deepseek/deepseek-chat-v3-0324:free', provider: 'openrouter', thinking: null } },
+  'deepseek-v3': { model: 'deepseek/deepseek-chat-v3-0324:free', provider: 'openrouter', thinking: null, fallback: { model: 'deepseek-v3-0324-free',        provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // Kimi (Moonshot AI)
+  //
+  // NVIDIA NIM:   moonshotai/kimi-k2-instruct-0905 ✅ free
+  //               ⚠️  Deprecating soon — check build.nvidia.com for updated slug
+  // OpenRouter free:
+  //   moonshotai/kimi-k2-thinking:free  ✅ 50/day — has thinking mode
+  //   moonshotai/kimi-k2.5 (no :free)   = PAID — removed
+  // Literouter:
+  //   kimi-k2.5-free  ✅ 30/day
+  //
+  // Auto route: OR free thinking → Literouter fallback
+  // ══════════════════════════════════════════════════════════
+  'kimi-nv':       { model: 'moonshotai/kimi-k2-instruct-0905', provider: 'nvidia',     thinking: null }, // ⚠️ check NIM for updates
+  'kimi-think-or': { model: 'moonshotai/kimi-k2-thinking:free', provider: 'openrouter', thinking: null }, // 50/day ✅ has thinking
+  'kimi-lit':      { model: 'kimi-k2.5-free',                   provider: 'literouter', thinking: null }, // 30/day ✅
+  // 'kimi-or':    { model: 'moonshotai/kimi-k2.5', ... }  // PAID — removed (no :free suffix)
+
+  'kimi': { model: 'moonshotai/kimi-k2-thinking:free', provider: 'openrouter', thinking: null, fallback: { model: 'kimi-k2.5-free', provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // GPT-OSS (OpenAI open weights)
+  //
+  // NVIDIA NIM:  openai/gpt-oss-120b ✅ free endpoint confirmed
+  //              openai/gpt-oss-20b  ✅ free endpoint confirmed
+  // Literouter:  gpt-oss-120b-free ✅ ∞/day
+  //              gpt-oss-20b-free  ✅ ∞/day
+  // OpenRouter:  openai/gpt-oss-120b:free ✅ 50/day per key
+  //              openai/gpt-oss-20b:free  ✅ 50/day per key
+  //
+  // Auto route: NVIDIA (no daily cap) → Literouter fallback
+  // ══════════════════════════════════════════════════════════
+  'gpt-oss-120b-nv':  { model: 'openai/gpt-oss-120b',      provider: 'nvidia',     thinking: null }, // free ✅
+  'gpt-oss-20b-nv':   { model: 'openai/gpt-oss-20b',       provider: 'nvidia',     thinking: null }, // free ✅
+  'gpt-oss-120b-lit': { model: 'gpt-oss-120b-free',        provider: 'literouter', thinking: null }, // ∞/day ✅
+  'gpt-oss-20b-lit':  { model: 'gpt-oss-20b-free',         provider: 'literouter', thinking: null }, // ∞/day ✅
+  'gpt-oss-120b-or':  { model: 'openai/gpt-oss-120b:free', provider: 'openrouter', thinking: null }, // 50/day ✅
+  'gpt-oss-20b-or':   { model: 'openai/gpt-oss-20b:free',  provider: 'openrouter', thinking: null }, // 50/day ✅
+
+  'gpt-oss-120b': { model: 'openai/gpt-oss-120b', provider: 'nvidia', thinking: null, fallback: { model: 'gpt-oss-120b-free', provider: 'literouter', thinking: null } },
+  'gpt-oss-20b':  { model: 'openai/gpt-oss-20b',  provider: 'nvidia', thinking: null, fallback: { model: 'gpt-oss-20b-free',  provider: 'literouter', thinking: null } },
+
+
+  // ══════════════════════════════════════════════════════════
+  // Qwen (Literouter — best free option, uncensored)
+  //
+  // Literouter:
+  //   qwen3-32b-free:    ∞/day ✅ uncensored
+  //   qwen3-4b-fp8-free: ∞/day ✅ uncensored, smaller/faster
+  //   qwen-free:         30/day ✅ uncensored, version unknown
+  //
+  // NVIDIA NIM Qwen slugs are UNVERIFIED — commented out.
+  // If you want to try them, check build.nvidia.com first.
+  // ══════════════════════════════════════════════════════════
+  'qwen3-32b-lit': { model: 'qwen3-32b-free',    provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored
+  'qwen3-4b-lit':  { model: 'qwen3-4b-fp8-free', provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored, fast
+  'qwen-lit':      { model: 'qwen-free',          provider: 'literouter', thinking: null }, // 30/day ✅ uncensored, version unknown
+  // 'qwen-coder-nv':   { model: 'qwen/qwen3-coder-480b-a35b-instruct', provider: 'nvidia', thinking: null }, // ⚠️ slug unverified
+  // 'qwen-think-nv':   { model: 'qwen/qwen3-next-80b-a3b-thinking',    provider: 'nvidia', thinking: null }, // ⚠️ slug unverified
+
+
+  // ══════════════════════════════════════════════════════════
+  // MiMo V2 Flash (Literouter)
+  //
+  // mimo-v2-flash-free: ∞/day ✅
+  // Reportedly competitive with Claude Sonnet 4.5 on coding/reasoning.
+  // Supports hybrid thinking toggle.
+  // ══════════════════════════════════════════════════════════
+  'mimo-lit': { model: 'mimo-v2-flash-free', provider: 'literouter', thinking: null }, // ∞/day ✅
+
+
+  // ══════════════════════════════════════════════════════════
+  // Llama Nemotron (NVIDIA NIM)
+  //
+  // nvidia/llama-3.1-nemotron-ultra-253b-v1 ✅ free endpoint confirmed
+  // ══════════════════════════════════════════════════════════
+  'llama-nemotron': { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', provider: 'nvidia', thinking: null }, // free ✅
+
+
+  // ══════════════════════════════════════════════════════════
+  // Misc Literouter free models
+  //
+  // All route through Pollinations AI — actual model version may vary.
+  // ══════════════════════════════════════════════════════════
+  'mistral-lit':  { model: 'mistral-free',  provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored
+  'nemotron-lit': { model: 'nemotron-free', provider: 'literouter', thinking: null }, // ∞/day ✅
+  'devstral-lit': { model: 'devstral-free', provider: 'literouter', thinking: null }, // 10/day ✅ coding specialist
+  'grok-lit':     { model: 'grok-free',     provider: 'literouter', thinking: null }, // 30/day ✅
+
+};
 // ============================================================
 // PROVIDER CONFIG
 // ── Z.AI base URL FIXED: /api/paas/v4 (official docs)
