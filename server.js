@@ -15,6 +15,7 @@ app.use(express.json());
 const NIM_API_KEY      = process.env.NIM_API_KEY;
 const ZAI_API_KEY      = process.env.ZAI_API_KEY;
 const GOOGLE_API_KEY   = process.env.GOOGLE_API_KEY;
+const GOOGLE_RELAY_BASE = process.env.GOOGLE_RELAY_BASE || 'https://generativelanguage.googleapis.com/v1beta/openai';
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY; //worthless. thought it gave free tokens at first login.
 
 const LITEROUTER_KEYS = [
@@ -525,7 +526,7 @@ const MODEL_MAPPING = {
 function getProviderConfig(provider) {
   switch (provider) {
     case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                          key: ZAI_API_KEY };
-    case 'google':     return { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: GOOGLE_API_KEY };
+    case 'google':     return { base: GOOGLE_RELAY_BASE, key: GOOGLE_API_KEY };
     case 'deepseek':   return { base: 'https://api.deepseek.com',                               key: DEEPSEEK_API_KEY };
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                           key: getNextOpenRouterKey() };
     case 'literouter': return { base: 'https://api.literouter.com/v1',                          key: getNextLiterouterKey() };
