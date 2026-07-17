@@ -303,24 +303,23 @@ function log(level, msg) {
 // ============================================================
 const MODEL_MAPPING = {
 
-  // ══════════════════════════════════════════════════════════
-  // GLM-5.1
+// ══════════════════════════════════════════════════════════
+  // GLM-5.2
   //
-  // NVIDIA NIM:  z-ai/glm-5.1 ✅ free endpoint — but VERY SLOW (2-5 min)
-  // Z.AI paid:   glm-5.1 DISABLED — balance $0, would charge real money
+  // NVIDIA NIM:  z-ai/glm-5.2 ✅ free endpoint, 1M context
+  // Z.AI paid:   glm-5.2 DISABLED — balance $0, would charge real money
   // Literouter:  glm-free ✅ ∞/day (unknown GLM version, fast)
   //
-  // Auto route:  NVIDIA first (slow, free) → Literouter fallback (fast, unknown ver)
+  // Auto route:  NVIDIA first (free) → Literouter fallback (fast, unknown ver)
   // ══════════════════════════════════════════════════════════
-  'glm-5.1-nv':        { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: null  }, // free ✅ slow
-  'glm-5.1-think-nv':  { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: 'glm' }, // free ✅ slow
-  // 'glm-5.1-z':      { model: 'glm-5.1',       provider: 'zai',   thinking: null  }, // PAID — disabled ($0 balance)
-  // 'glm-5.1-think-z':{ model: 'glm-5.1',       provider: 'zai',   thinking: 'glm' }, // PAID — disabled ($0 balance)
-  'glm-5.1-lit':       { model: 'glm-free',      provider: 'literouter', thinking: null }, // ∞/day ✅
+  'glm-5.2-nv':        { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: null  }, // free ✅
+  'glm-5.2-think-nv':  { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: 'glm' }, // free ✅
+  // 'glm-5.2-z':      { model: 'glm-5.2',       provider: 'zai',   thinking: null  }, // PAID — disabled ($0 balance)
+  // 'glm-5.2-think-z':{ model: 'glm-5.2',       provider: 'zai',   thinking: 'glm' }, // PAID — disabled ($0 balance)
+  'glm-5.2-lit':       { model: 'glm-free',      provider: 'literouter', thinking: null }, // ∞/day ✅
 
-  'glm-5.1':       { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: null,  fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
-  'glm-5.1-think': { model: 'z-ai/glm-5.1', provider: 'nvidia', thinking: 'glm', fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
-
+  'glm-5.2':       { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: null,  fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
+  'glm-5.2-think': { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: 'glm', fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
 
   // ══════════════════════════════════════════════════════════
   // GLM-4.7
@@ -396,11 +395,17 @@ const MODEL_MAPPING = {
   'gemini-flash': { model: 'gemini-3-flash',                provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
 
 
-  // ══════════════════════════════════════════════════════════
-  // DeepSeek
+// ══════════════════════════════════════════════════════════
+  // DeepSeek — NVIDIA NIM now hosts free V4 endpoints
   //
-  // NVIDIA NIM:     deepseek-v4-pro/flash/v3.2 = "Downloadable" ONLY
-  //                 There is NO free NIM API endpoint for any DeepSeek. Removed.
+  // NVIDIA NIM: deepseek-ai/deepseek-v4-pro   ✅ free, 1M context, 40 RPM
+  // NVIDIA NIM: deepseek-ai/deepseek-v4-flash ✅ free, 1M context, 40 RPM, faster/smaller
+  // Both use thinking:true + reasoning_effort:'high' via chat_template_kwargs (the 'dsv4' type)
+  // ══════════════════════════════════════════════════════════
+  'deepseek-v4-pro-nv':        { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: null   },
+  'deepseek-v4-pro-think-nv':  { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: 'dsv4' },
+  'deepseek-v4-flash-nv':      { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null   },
+  'deepseek-v4-flash-think-nv':{ model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: 'dsv4' },
   // DeepSeek direct: $0 balance, no free tokens. Removed.
   // OpenRouter free:
   //   deepseek/deepseek-r1:free            ✅ 50/day per key
@@ -441,7 +446,7 @@ const MODEL_MAPPING = {
   //
   // Auto route: OR free thinking → Literouter fallback
   // ══════════════════════════════════════════════════════════
-  'kimi-nv':       { model: 'moonshotai/kimi-k2-instruct-0905', provider: 'nvidia',     thinking: null }, // ⚠️ check NIM for updates
+  'kimi-k2.6-nv':  { model: 'moonshotai/kimi-k2.6', provider: 'nvidia', thinking: null }, // 262K context
   'kimi-think-or': { model: 'moonshotai/kimi-k2-thinking:free', provider: 'openrouter', thinking: null }, // 50/day ✅ has thinking
   'kimi-lit':      { model: 'kimi-k2.5-free',                   provider: 'literouter', thinking: null }, // 30/day ✅
   // 'kimi-or':    { model: 'moonshotai/kimi-k2.5', ... }  // PAID — removed (no :free suffix)
