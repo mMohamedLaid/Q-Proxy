@@ -1,4 +1,4 @@
-/ server.js - OpenAI to NVIDIA NIM Proxy with Multi-Provider Support
+// server.js - OpenAI to NVIDIA NIM Proxy with Multi-Provider Support
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
