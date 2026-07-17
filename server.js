@@ -455,7 +455,7 @@ async function makeAPICall(mapping, nimRequest, stream) {
   for (const providerConfig of providers) {
     const { base, key } = getProviderConfig(providerConfig.provider);
     const extraBody = getExtraBody(providerConfig.thinking);
-    const body = { ...nimRequest, model: providerConfig.model, extra_body: extraBody || undefined };
+    const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
 
     try {
       const response = await axios.post(
