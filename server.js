@@ -467,7 +467,7 @@ async function makeAPICall(mapping, nimRequest, stream) {
             'Content-Type': 'application/json'
           },
           responseType: stream ? 'stream' : 'json',
-          timeout: 120000
+          timeout: providerConfig.provider === 'nvidia' ? 300000 : 120000
         }
       );
       return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model };
