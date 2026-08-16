@@ -12,11 +12,12 @@ app.use(express.json({ limit: '10mb' }));
 // ============================================================
 // API KEYS (set in Render environment variables)
 // ============================================================
-const NIM_API_KEY      = process.env.NIM_API_KEY;
-const ZAI_API_KEY      = process.env.ZAI_API_KEY;
-const GOOGLE_API_KEY   = process.env.GOOGLE_API_KEY;
+const NIM_API_KEY       = process.env.NIM_API_KEY;
+const ZAI_API_KEY       = process.env.ZAI_API_KEY;
+const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const GOOGLE_RELAY_BASE = process.env.GOOGLE_RELAY_BASE || 'https://generativelanguage.googleapis.com/v1beta/openai';
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY; //worthless. thought it gave free tokens at first login.
+const DEEPSEEK_API_KEY  = process.env.DEEPSEEK_API_KEY; // worthless. thought it gave free tokens at first login.
+const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY; // set this in Render once you've got a key from console.meganova.ai
 
 const LITEROUTER_KEYS = [
   process.env.LITEROUTER_KEY_1,
@@ -30,20 +31,35 @@ const OPENROUTER_KEYS = [
   process.env.OPENROUTER_KEY_5,
 ].filter(Boolean);
 
-// Round-robin trackers
-let openrouterIndex = 0;
+// Literouter: simple round-robin (only one key configured right now anyway)
 let literouterIndex = 0;
-
-function getNextOpenRouterKey() {
-  const key = OPENROUTER_KEYS[openrouterIndex % OPENROUTER_KEYS.length];
-  openrouterIndex++;
-  return key;
-}
-
 function getNextLiterouterKey() {
   const key = LITEROUTER_KEYS[literouterIndex % LITEROUTER_KEYS.length];
   literouterIndex++;
   return key;
+}
+
+// OpenRouter: drain key 1 fully (its full daily cap) before moving to key 2, etc.
+// Resets daily. This is a self-tracked counter, not synced with OpenRouter's own
+// dashboard, so a process restart resets it to 0 even if the real usage wasn't.
+const OPENROUTER_DAILY_CAP = 50;
+const openrouterKeyState = OPENROUTER_KEYS.map(() => ({ count: 0, day: '' }));
+let openrouterKeyIndex = 0;
+
+function getNextOpenRouterKey() {
+  const today = new Date().toISOString().slice(0, 10);
+  openrouterKeyState.forEach(s => { if (s.day !== today) { s.day = today; s.count = 0; } });
+
+  for (let i = 0; i < OPENROUTER_KEYS.length; i++) {
+    const idx = (openrouterKeyIndex + i) % OPENROUTER_KEYS.length;
+    if (openrouterKeyState[idx].count < OPENROUTER_DAILY_CAP) {
+      openrouterKeyIndex = idx;
+      openrouterKeyState[idx].count++;
+      return OPENROUTER_KEYS[idx];
+    }
+  }
+  // all keys drained for today — hand back the last one, it'll 429 and bubble up
+  return OPENROUTER_KEYS[openrouterKeyIndex];
 }
 
 // ============================================================
@@ -93,7 +109,6 @@ const SHARED_KEYS = {
 function buildKeyMap() {
   const keys = {};
   const src = MODE === 'solo' ? SOLO_KEYS : SHARED_KEYS;
-  // Filter out any undefined keys (env vars not set)
   for (const [k, v] of Object.entries(src)) {
     if (k && k !== 'undefined') keys[k] = v;
   }
@@ -131,70 +146,55 @@ function log(level, msg) {
 }
 
 // ============================================================
+// TOKEN ESTIMATE (rough heuristic — chars/4 — good enough for a threshold check)
+// ============================================================
+function estimateTokens(messages) {
+  const text = (messages || []).map(m => String(m.content || '')).join(' ');
+  return Math.ceil(text.length / 4);
+}
+
+// ============================================================
 // MODEL MAPPING
 // ── Naming convention ───────────────────────────────────────
-// model-nv        → NVIDIA NIM specifically
-// model-z         → Z.AI specifically
-// model-g         → Google AI Studio specifically
-// model-ds        → DeepSeek direct API
-// model-or        → OpenRouter round-robin
-// model-lit       → Literouter round-robin
-// model (no suffix) → smart auto-route, best available
+// model            → smart auto-route: walks the full fallback chain,
+//                    tries providers in priority order until one works
+// model-g          → Google AI Studio specifically
+// model-nv         → NVIDIA NIM specifically
+// model-z          → Z.AI specifically
+// model-or         → OpenRouter specifically (round-robin/drain across keys)
+// model-lr         → Literouter specifically
+// model-mn         → MegaNova specifically
+// model-ds         → DeepSeek direct API (disabled — $0 balance)
 //
 // thinking types:
 // null   = no thinking params sent
 // 'glm'  = enable_thinking:true (GLM style)
 // 'dsv4' = thinking:true + reasoning_effort (DeepSeek V4 style)
 //
-// ── Verified model IDs (May 2026) ───────────────────────────
-// NVIDIA NIM base:   https://integrate.api.nvidia.com/v1
-// Z.AI base:         https://api.z.ai/api/paas/v4   ← FIXED (was /api/openai/v1)
-// Google base:       https://generativelanguage.googleapis.com/v1beta/openai
-// DeepSeek base:     https://api.deepseek.com
-// OpenRouter base:   https://openrouter.ai/api/v1
-// LiteRouter base:   https://api.literouter.com/v1
-// ============================================================
-// MODEL MAPPING — 100% FREE ONLY (verified May 2026)
-//
-// Naming convention:
-//   model-nv   → NVIDIA NIM
-//   model-z    → Z.AI (flash = free forever; full = paid, DISABLED)
-//   model-g    → Google AI Studio
-//   model-or   → OpenRouter round-robin
-//   model-lit  → Literouter round-robin
-//   model      → smart auto-route, best available
-//
-// Thinking types:
-//   null   = no thinking params sent
-//   'glm'  = chat_template_kwargs: { enable_thinking: true }
-//   'dsv4' = chat_template_kwargs: { thinking: true, reasoning_effort: 'high' }
-//
-// Fallback: code only reads ONE level of fallback.
-//   { model, provider, fallback: { model, provider } }  ← works
-//   { ..., fallback: { ..., fallback: {} } }            ← level 2 silently ignored!
+// per-hop fields:
+//   timeoutMs → overrides the default 300000ms timeout for that hop only
+//   tpmLimit  → if set, the request's estimated token cost is checked
+//               against this BEFORE the call is attempted; if it would
+//               exceed the budget, that hop is skipped straight to the
+//               next one in the chain (saves burning a doomed request)
 //
 // Provider base URLs:
 //   NVIDIA NIM:   https://integrate.api.nvidia.com/v1
 //   Z.AI:         https://api.z.ai/api/paas/v4
 //   Google:       https://generativelanguage.googleapis.com/v1beta/openai
 //   OpenRouter:   https://openrouter.ai/api/v1
-//   Literouter:   https://api.literouter.com/v1
+//   Literouter:   https://api.literouter.com/v1  (~100 req/hr soft cap per model, not truly infinite)
+//   MegaNova:     https://api.meganova.ai/v1
 //   DeepSeek:     DISABLED — $0 balance, no free tokens
 // ============================================================
 const MODEL_MAPPING = {
 
   // ══════════════════════════════════════════════════════════
-  // GLM-5.1
-  //
-  // NVIDIA NIM:  z-ai/glm-5.1 ✅ free endpoint — but VERY SLOW (2-5 min)
-  // Z.AI paid:   glm-5.1 DISABLED — balance $0, would charge real money
-  // Literouter:  glm-free ✅ ∞/day (unknown GLM version, fast)
-  //
-  // Auto route:  NVIDIA first (slow, free) → Literouter fallback (fast, unknown ver)
+  // GLM-5.2
   // ══════════════════════════════════════════════════════════
-  'glm-5.2-nv':        { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: null  }, // free ✅ 1M context
-  'glm-5.2-think-nv':  { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: 'glm' }, // free ✅ 1M context
-  'glm-5.2-lit':       { model: 'glm-free',      provider: 'literouter', thinking: null }, // ∞/day ✅
+  'glm-5.2-nv':       { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: null  }, // free ✅ 1M context
+  'glm-5.2-think-nv': { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: 'glm' }, // free ✅ 1M context
+  'glm-5.2-lr':       { model: 'glm-free',     provider: 'literouter', thinking: null }, // ~2400/day soft cap
 
   'glm-5.2':       { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: null,  fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
   'glm-5.2-think': { model: 'z-ai/glm-5.2', provider: 'nvidia', thinking: 'glm', fallback: { model: 'glm-free', provider: 'literouter', thinking: null } },
@@ -202,221 +202,145 @@ const MODEL_MAPPING = {
 
   // ══════════════════════════════════════════════════════════
   // GLM-4.7
-  //
-  // NVIDIA NIM:  z-ai/glm4.7 ✅ free endpoint — thinks by default, ~1 min
-  //              NOTE: NIM slug is glm4.7 (no dash), NOT glm-4.7
-  // Z.AI full:   glm-4.7 DISABLED — paid ($0.6/$2.2 per M tokens, balance $0)
-  // Z.AI flash:  glm-4.7-flash ✅ PERMANENTLY FREE regardless of balance
-  // Z.AI flash:  glm-4.5-flash ✅ PERMANENTLY FREE regardless of balance
-  //              NOTE: model IDs are lowercase — glm-4.7-flash NOT glm-4.7-Flash
-  // Literouter:  glm-free ✅ ∞/day (unknown GLM version)
-  //
-  // Auto route:  NVIDIA (confirmed working) → Z.AI flash fallback (free)
   // ══════════════════════════════════════════════════════════
-  'glm-4.7-nv':      { model: 'z-ai/glm4.7',   provider: 'nvidia',     thinking: null }, // free ✅ thinks by default
-  'glm-4.7-flash-z': { model: 'glm-4.7-flash', provider: 'zai',        thinking: null }, // PERMANENTLY FREE ✅ lowercase!
-  'glm-4.5-flash-z': { model: 'glm-4.5-flash', provider: 'zai',        thinking: null }, // PERMANENTLY FREE ✅ lowercase!
-  'glm-lit':         { model: 'glm-free',       provider: 'literouter', thinking: null }, // ∞/day ✅
+  'glm-4.7-nv':      { model: 'z-ai/glm4.7',   provider: 'nvidia', thinking: null }, // free ✅ thinks by default, NIM slug has no dash
+  'glm-4.7-flash-z': { model: 'glm-4.7-flash', provider: 'zai',    thinking: null }, // PERMANENTLY FREE ✅ lowercase slug
+  'glm-4.5-flash-z': { model: 'glm-4.5-flash', provider: 'zai',    thinking: null }, // PERMANENTLY FREE ✅ lowercase slug
+  'glm-4.7-lr':      { model: 'glm-free',       provider: 'literouter', thinking: null },
 
-  'glm-4.7':   { model: 'z-ai/glm4.7',   provider: 'nvidia',     thinking: null, fallback: { model: 'glm-4.7-flash', provider: 'zai',        thinking: null } },
-  'glm-flash': { model: 'glm-4.7-flash', provider: 'zai',        thinking: null, fallback: { model: 'glm-free',      provider: 'literouter', thinking: null } },
+  'glm-4.7':   { model: 'z-ai/glm4.7',   provider: 'nvidia', thinking: null, fallback: { model: 'glm-4.7-flash', provider: 'zai',        thinking: null } },
+  'glm-flash': { model: 'glm-4.7-flash', provider: 'zai',    thinking: null, fallback: { model: 'glm-free',      provider: 'literouter', thinking: null } },
 
 
   // ══════════════════════════════════════════════════════════
-  // Gemma 4 — BEST free daily quota anywhere
-  //
-  // Google AI Studio limits (free tier):
-  //   gemma-4-31b-it:      15 RPM, unlimited TPM, 1500 RPD ✅ PRIMARY
-  //   gemma-4-26b-a4b-it:  15 RPM, unlimited TPM, 1500 RPD ✅ MoE (3.8B active → faster)
-  // OpenRouter free:
-  //   google/gemma-4-31b-it:free      50/day per key ✅
-  //   google/gemma-4-26b-a4b-it:free  50/day per key ✅
-  // Literouter:
-  //   gemma-3-27b-it-free  ∞/day ✅ (Gemma 3 not 4 — different model!)
-  //   gemma-free           ∞/day ✅ (unknown Gemma version)
-  //
-  // ⚠️  Google AI Studio model strings unverified — test gemma-4-31b-it
-  //     against the Studio UI before relying on it in prod.
-  //
-  // Auto route: Google (1500/day) → OR fallback (extra capacity)
+  // Gemma 4
   // ══════════════════════════════════════════════════════════
-  'gemma-4-31b-g':   { model: 'gemma-4-31b-it',               provider: 'google',     thinking: null }, // 1500/day ✅
-  'gemma-4-26b-g':   { model: 'gemma-4-26b-a4b-it',           provider: 'google',     thinking: null }, // 1500/day ✅ faster (MoE)
-  'gemma-4-31b-or':  { model: 'google/gemma-4-31b-it:free',   provider: 'openrouter', thinking: null }, // 50/day per key ✅
-  'gemma-4-26b-or':  { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null }, // 50/day per key ✅
-  'gemma-3-27b-lit': { model: 'gemma-3-27b-it-free',          provider: 'literouter', thinking: null }, // ∞/day ✅ (Gemma 3!)
-  'gemma-lit':       { model: 'gemma-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
-  'gemma-4':      { model: 'gemma-4-31b-it',     provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-31b-it:free',    provider: 'openrouter', thinking: null } },
-  'gemma-4-fast': { model: 'gemma-4-26b-a4b-it', provider: 'google',     thinking: null, fallback: { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null } },
+  'gemma-4-31b-g':  { model: 'gemma-4-31b-it',     provider: 'google',     thinking: null, tpmLimit: 14000 }, // 14K RPD, 16K TPM — buffer kept under real cap
+  'gemma-4-26b-g':  { model: 'gemma-4-26b-a4b-it', provider: 'google',     thinking: null, tpmLimit: 14000 }, // faster (MoE)
+  'gemma-4-31b-nv': { model: 'google/gemma-4-31b-it', provider: 'nvidia', thinking: null }, // free ✅
+  'gemma-4-31b-or': { model: 'google/gemma-4-31b-it:free',    provider: 'openrouter', thinking: null }, // 262K context, 50/day per key
+  'gemma-4-26b-or': { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null },
+  'gemma-3-27b-lr': { model: 'gemma-3-27b-it-free', provider: 'literouter', thinking: null }, // ⚠️ Gemma 3, not 4
+  'gemma-lr':       { model: 'gemma-free',          provider: 'literouter', thinking: null }, // version unconfirmed
+
+  // bare chain: Google first, NVIDIA next (dies after 30s instead of hanging), OpenRouter last.
+  // Literouter left out of this chain on purpose — its Gemma slug's version isn't confirmed
+  // to actually be Gemma 4, so it stays a manual pick only (gemma-lr / gemma-3-27b-lr).
+  'gemma-4-31b': {
+    model: 'gemma-4-31b-it', provider: 'google', thinking: null, tpmLimit: 14000,
+    fallback: {
+      model: 'google/gemma-4-31b-it', provider: 'nvidia', thinking: null, timeoutMs: 30000,
+      fallback: {
+        model: 'google/gemma-4-31b-it:free', provider: 'openrouter', thinking: null
+      }
+    }
+  },
+  'gemma-4-26b': { model: 'gemma-4-26b-a4b-it', provider: 'google', thinking: null, tpmLimit: 14000, fallback: { model: 'google/gemma-4-26b-a4b-it:free', provider: 'openrouter', thinking: null } },
 
 
   // ══════════════════════════════════════════════════════════
   // Gemini — Google AI Studio
-  //
-  // Free tier limits:
-  //   gemini-3.1-flash-lite-preview:  15 RPM, 250K TPM, 500 RPD ✅ BEST for daily use
-  //   gemini-3-flash:                  5 RPM, 250K TPM,  20 RPD ⚠️ use sparingly
-  //   gemini-2.5-flash:                5 RPM, 250K TPM,  20 RPD ⚠️ use sparingly
-  //   gemini-2.5-pro / 3.1-pro:       LOCKED on free tier — 0 RPD
-  // Literouter:
-  //   gemini-free  ∞/day ✅ (unknown Gemini version, routes through Pollinations)
-  //
-  // Auto route: flash-lite (500/day) → Literouter fallback
   // ══════════════════════════════════════════════════════════
   'gemini-flash-lite-g': { model: 'gemini-3.1-flash-lite-preview', provider: 'google',     thinking: null }, // 500/day ✅ primary
   'gemini-flash-g':      { model: 'gemini-3-flash',                provider: 'google',     thinking: null }, // 20/day ⚠️ sparingly
-  'gemini-2.5-flash-g':  { model: 'gemini-2.5-flash',             provider: 'google',     thinking: null }, // 20/day ⚠️ sparingly
-  'gemini-lit':          { model: 'gemini-free',                   provider: 'literouter', thinking: null }, // ∞/day ✅ version unknown
-  'gemini':       { model: 'gemini-3.1-flash-lite-preview', provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
-  'gemini-flash': { model: 'gemini-3-flash',                provider: 'google',     thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
+  'gemini-2.5-flash-g':  { model: 'gemini-2.5-flash',              provider: 'google',     thinking: null }, // 20/day ⚠️ sparingly
+  'gemini-lr':            { model: 'gemini-free',                   provider: 'literouter', thinking: null },
+  'gemini':       { model: 'gemini-3.1-flash-lite-preview', provider: 'google', thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
+  'gemini-flash': { model: 'gemini-3-flash',                provider: 'google', thinking: null, fallback: { model: 'gemini-free', provider: 'literouter', thinking: null } },
+
+  // free quota window: through Aug 20, 2026 — bills at standard rate from Aug 21 onward.
+  // kept as a standalone pick, not wired into the 'gemini' chain above, so nothing
+  // silently starts costing money once the window closes.
+  'gemini-3.7-flash-mn': { model: 'gemini/gemini-3.7-flash', provider: 'meganova', thinking: null },
 
 
   // ══════════════════════════════════════════════════════════
   // DeepSeek
-  //
-  // NVIDIA NIM:     deepseek-v4-pro/flash/v3.2 = "Downloadable" ONLY
-  //                 There is NO free NIM API endpoint for any DeepSeek. Removed.
-  // DeepSeek direct: $0 balance, no free tokens. Removed.
-  // OpenRouter free:
-  //   deepseek/deepseek-r1:free            ✅ 50/day per key
-  //   deepseek/deepseek-chat-v3-0324:free  ✅ 50/day per key
-  //   ⚠️  There is NO deepseek/deepseek-v4-flash:free — V4 is paid only on OR
-  //   ⚠️  deepseek-chat-v3.2:free is a WRONG slug — correct is v3-0324:free
-  // Literouter:
-  //   deepseek-v4-flash-free  ✅ 30/day (ONLY place to get free V4!)
-  //   deepseek-v3-0324-free   ✅ 30/day
-  //   deepseek-free           ✅ 30/day (unknown version)
-  //
-  // Auto route:
-  //   deepseek-r1: OR free → literouter fallback
-  //   deepseek-v4: literouter (only free V4 source) → OR V3 fallback
-  //   deepseek-v3: OR free → literouter fallback
   // ══════════════════════════════════════════════════════════
-  // ⚠️ deepseek/deepseek-r1:free and deepseek/deepseek-chat-v3-0324:free are ABSENT from
-  //    current OpenRouter free-model lists (checked cheahjs/free-llm-api-resources + ShaikhWarsi/free-ai-tools,
-  //    both July 2026) — likely pulled from OR's free tier. Kept below but unverified; don't rely on them.
   'deepseek-v4-pro-nv':         { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: null   }, // free ✅ 1M context, 40 RPM
   'deepseek-v4-pro-think-nv':   { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: 'dsv4' },
-  'deepseek-v4-flash-nv':       { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null   }, // free ✅ 1M context, 40 RPM, faster
+  'deepseek-v4-flash-nv':       { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null   }, // free ✅ 1M context, faster
   'deepseek-v4-flash-think-nv': { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: 'dsv4' },
-  'deepseek-v4-lit': { model: 'deepseek-v4-flash-free',              provider: 'literouter', thinking: null }, // 30/day ✅
-  'deepseek-v3-lit': { model: 'deepseek-v3-0324-free',               provider: 'literouter', thinking: null }, // 30/day ✅
-  'deepseek-lit':    { model: 'deepseek-free',                       provider: 'literouter', thinking: null }, // 30/day ✅ version unknown
+  'deepseek-v4-lr': { model: 'deepseek-v4-flash-free', provider: 'literouter', thinking: null },
+  'deepseek-v3-lr': { model: 'deepseek-v3-0324-free',  provider: 'literouter', thinking: null },
+  'deepseek-lr':    { model: 'deepseek-free',          provider: 'literouter', thinking: null },
 
-  'deepseek-r1': { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: 'dsv4', fallback: { model: 'deepseek-free',        provider: 'literouter', thinking: null } },
+  'deepseek-r1': { model: 'deepseek-ai/deepseek-v4-pro',   provider: 'nvidia', thinking: 'dsv4', fallback: { model: 'deepseek-free',          provider: 'literouter', thinking: null } },
   'deepseek-v4': { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null,   fallback: { model: 'deepseek-v4-flash-free', provider: 'literouter', thinking: null } },
-  'deepseek-v3': { model: 'deepseek-v3-0324-free',         provider: 'literouter', thinking: null, fallback: { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null } },
+  'deepseek-v3': { model: 'deepseek-v3-0324-free', provider: 'literouter', thinking: null, fallback: { model: 'deepseek-ai/deepseek-v4-flash', provider: 'nvidia', thinking: null } },
 
 
   // ══════════════════════════════════════════════════════════
   // Kimi (Moonshot AI)
-  //
-  // NVIDIA NIM:   moonshotai/kimi-k2-instruct-0905 ✅ free
-  //               ⚠️  Deprecating soon — check build.nvidia.com for updated slug
-  // OpenRouter free:
-  //   moonshotai/kimi-k2-thinking:free  ✅ 50/day — has thinking mode
-  //   moonshotai/kimi-k2.5 (no :free)   = PAID — removed
-  // Literouter:
-  //   kimi-k2.5-free  ✅ 30/day
-  //
-  // Auto route: OR free thinking → Literouter fallback
   // ══════════════════════════════════════════════════════════
-  'kimi-k2.6-nv':  { model: 'moonshotai/kimi-k2.6', provider: 'nvidia', thinking: null }, // free ✅ 262K context
-  // ⚠️ moonshotai/kimi-k2-thinking:free is ABSENT from current OpenRouter free-model lists
-  //    (checked cheahjs/free-llm-api-resources + ShaikhWarsi/free-ai-tools, both July 2026) — unverified, may be gone.
-  'kimi-lit':      { model: 'kimi-k2.5-free',                   provider: 'literouter', thinking: null }, // 30/day ✅
+  'kimi-k2.6-nv': { model: 'moonshotai/kimi-k2.6', provider: 'nvidia', thinking: null }, // free ✅ 262K context
+  'kimi-lr':      { model: 'kimi-k2.5-free',        provider: 'literouter', thinking: null },
   'kimi': { model: 'moonshotai/kimi-k2.6', provider: 'nvidia', thinking: null, fallback: { model: 'kimi-k2.5-free', provider: 'literouter', thinking: null } },
 
 
   // ══════════════════════════════════════════════════════════
   // GPT-OSS (OpenAI open weights)
-  //
-  // NVIDIA NIM:  openai/gpt-oss-120b ✅ free endpoint confirmed
-  //              openai/gpt-oss-20b  ✅ free endpoint confirmed
-  // Literouter:  gpt-oss-120b-free ✅ ∞/day
-  //              gpt-oss-20b-free  ✅ ∞/day
-  // OpenRouter:  openai/gpt-oss-120b:free ✅ 50/day per key
-  //              openai/gpt-oss-20b:free  ✅ 50/day per key
-  //
-  // Auto route: NVIDIA (no daily cap) → Literouter fallback
   // ══════════════════════════════════════════════════════════
-  'gpt-oss-120b-nv':  { model: 'openai/gpt-oss-120b',      provider: 'nvidia',     thinking: null }, // free ✅
-  'gpt-oss-20b-nv':   { model: 'openai/gpt-oss-20b',       provider: 'nvidia',     thinking: null }, // free ✅
-  'gpt-oss-120b-lit': { model: 'gpt-oss-120b-free',        provider: 'literouter', thinking: null }, // ∞/day ✅
-  'gpt-oss-20b-lit':  { model: 'gpt-oss-20b-free',         provider: 'literouter', thinking: null }, // ∞/day ✅
-  'gpt-oss-120b-or':  { model: 'openai/gpt-oss-120b:free', provider: 'openrouter', thinking: null }, // 50/day ✅
-  'gpt-oss-20b-or':   { model: 'openai/gpt-oss-20b:free',  provider: 'openrouter', thinking: null }, // 50/day ✅
+  'gpt-oss-120b-nv': { model: 'openai/gpt-oss-120b', provider: 'nvidia',     thinking: null },
+  'gpt-oss-20b-nv':  { model: 'openai/gpt-oss-20b',  provider: 'nvidia',     thinking: null },
+  'gpt-oss-120b-lr': { model: 'gpt-oss-120b-free',   provider: 'literouter', thinking: null },
+  'gpt-oss-20b-lr':  { model: 'gpt-oss-20b-free',    provider: 'literouter', thinking: null },
+  'gpt-oss-120b-or': { model: 'openai/gpt-oss-120b:free', provider: 'openrouter', thinking: null },
+  'gpt-oss-20b-or':  { model: 'openai/gpt-oss-20b:free',  provider: 'openrouter', thinking: null },
 
   'gpt-oss-120b': { model: 'openai/gpt-oss-120b', provider: 'nvidia', thinking: null, fallback: { model: 'gpt-oss-120b-free', provider: 'literouter', thinking: null } },
   'gpt-oss-20b':  { model: 'openai/gpt-oss-20b',  provider: 'nvidia', thinking: null, fallback: { model: 'gpt-oss-20b-free',  provider: 'literouter', thinking: null } },
 
 
   // ══════════════════════════════════════════════════════════
-  // Qwen (Literouter — best free option, uncensored)
-  //
-  // Literouter:
-  //   qwen3-32b-free:    ∞/day ✅ uncensored
-  //   qwen3-4b-fp8-free: ∞/day ✅ uncensored, smaller/faster
-  //   qwen-free:         30/day ✅ uncensored, version unknown
-  //
-  // NVIDIA NIM Qwen slugs are UNVERIFIED — commented out.
-  // If you want to try them, check build.nvidia.com first.
+  // Qwen / OpenRouter-only free models
   // ══════════════════════════════════════════════════════════
-  // ══════════════════════════════════════════════════════════
-  // New free OpenRouter models confirmed via cheahjs/free-llm-api-resources
-  // and ShaikhWarsi/free-ai-tools (both checked July 2026)
-  // ══════════════════════════════════════════════════════════
-  'qwen3-coder-or':     { model: 'qwen/qwen3-coder:free',                 provider: 'openrouter', thinking: null }, // free ✅ coding-focused
-  'minimax-m2.5-or':    { model: 'minimax/minimax-m2.5:free',             provider: 'openrouter', thinking: null }, // free ✅ 80.2% SWE-bench per repo notes
-  'nemotron-3-super-or':{ model: 'nvidia/nemotron-3-super-120b-a12b:free', provider: 'openrouter', thinking: null }, // free ✅ 262K context
+  'qwen3-coder-or':      { model: 'qwen/qwen3-coder:free',                  provider: 'openrouter', thinking: null }, // coding-focused
+  'minimax-m2.5-or':     { model: 'minimax/minimax-m2.5:free',              provider: 'openrouter', thinking: null },
+  'nemotron-3-super-or': { model: 'nvidia/nemotron-3-super-120b-a12b:free', provider: 'openrouter', thinking: null }, // 262K context
 
-  'qwen3-32b-lit': { model: 'qwen3-32b-free',    provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored
-  'qwen3-4b-lit':  { model: 'qwen3-4b-fp8-free', provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored, fast
-  'qwen-lit':      { model: 'qwen-free',          provider: 'literouter', thinking: null }, // 30/day ✅ uncensored, version unknown
+  'qwen3-32b-lr': { model: 'qwen3-32b-free',    provider: 'literouter', thinking: null }, // uncensored
+  'qwen3-4b-lr':  { model: 'qwen3-4b-fp8-free', provider: 'literouter', thinking: null }, // uncensored, fast
+  'qwen-lr':      { model: 'qwen-free',          provider: 'literouter', thinking: null },
+
+  // near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context
+  'minimax-m2.7-lr': { model: 'minimax-m2.7:free', provider: 'literouter', thinking: null },
 
 
   // ══════════════════════════════════════════════════════════
-  // MiMo V2 Flash (Literouter)
-  //
-  // mimo-v2-flash-free: ∞/day ✅
-  // Reportedly competitive with Claude Sonnet 4.5 on coding/reasoning.
-  // Supports hybrid thinking toggle.
+  // MiMo V2 Flash
   // ══════════════════════════════════════════════════════════
-  'mimo-lit': { model: 'mimo-v2-flash-free', provider: 'literouter', thinking: null }, // ∞/day ✅
+  'mimo-lr': { model: 'mimo-v2-flash-free', provider: 'literouter', thinking: null },
 
 
   // ══════════════════════════════════════════════════════════
-  // Llama Nemotron (NVIDIA NIM)
-  //
-  // nvidia/llama-3.1-nemotron-ultra-253b-v1 ✅ free endpoint confirmed
+  // Llama Nemotron
   // ══════════════════════════════════════════════════════════
-  'llama-nemotron': { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', provider: 'nvidia', thinking: null }, // free ✅
+  'llama-nemotron': { model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', provider: 'nvidia', thinking: null },
 
 
   // ══════════════════════════════════════════════════════════
-  // Misc Literouter free models
-  //
-  // All route through Pollinations AI — actual model version may vary.
+  // Misc Literouter free models (route through Pollinations)
   // ══════════════════════════════════════════════════════════
-  'mistral-lit':  { model: 'mistral-free',  provider: 'literouter', thinking: null }, // ∞/day ✅ uncensored
-  'nemotron-lit': { model: 'nemotron-free', provider: 'literouter', thinking: null }, // ∞/day ✅
-  'devstral-lit': { model: 'devstral-free', provider: 'literouter', thinking: null }, // 10/day ✅ coding specialist
-  'grok-lit':     { model: 'grok-free',     provider: 'literouter', thinking: null }, // 30/day ✅
+  'mistral-lr':  { model: 'mistral-free',  provider: 'literouter', thinking: null },
+  'nemotron-lr': { model: 'nemotron-free', provider: 'literouter', thinking: null },
+  'devstral-lr': { model: 'devstral-free', provider: 'literouter', thinking: null }, // coding specialist
+  'grok-lr':     { model: 'grok-free',     provider: 'literouter', thinking: null },
 
 };
+
 // ============================================================
 // PROVIDER CONFIG
-// ── Z.AI base URL FIXED: /api/paas/v4 (official docs)
-// ── Previously was /api/openai/v1 which is undocumented
 // ============================================================
 function getProviderConfig(provider) {
   switch (provider) {
-    case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                          key: ZAI_API_KEY };
-    case 'google':     return { base: GOOGLE_RELAY_BASE,                                          key: GOOGLE_API_KEY };
-    case 'deepseek':   return { base: 'https://api.deepseek.com',                               key: DEEPSEEK_API_KEY };
-    case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                           key: getNextOpenRouterKey() };
-    case 'literouter': return { base: 'https://api.literouter.com/v1',                          key: getNextLiterouterKey() };
-    default:           return { base: 'https://integrate.api.nvidia.com/v1',                    key: NIM_API_KEY };
+    case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                key: ZAI_API_KEY };
+    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_API_KEY };
+    case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
+    case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: getNextOpenRouterKey() };
+    case 'literouter': return { base: 'https://api.literouter.com/v1',               key: getNextLiterouterKey() };
+    case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+    default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
 }
 
@@ -440,19 +364,30 @@ function parseThinkTags(rawText) {
 }
 
 // ============================================================
-// MAKE API CALL (with smart fallback)
+// MAKE API CALL (walks the full fallback chain, any depth)
 // ── 4xx client errors do NOT trigger fallback (your request is
 //    wrong; a different provider won't fix it).
 // ── 5xx, 429 (rate limit), 408 (timeout), network errors DO
 //    trigger fallback (server-side / transient issues).
 // ── Exception: 401/403 also skip fallback (auth failure).
+// ── A hop with tpmLimit set is skipped straight to the next hop
+//    if the request's estimated tokens would exceed it.
 // ============================================================
 async function makeAPICall(mapping, nimRequest, stream) {
-  const providers = [mapping];
-  if (mapping.fallback) providers.push(mapping.fallback);
+  const providers = [];
+  let current = mapping;
+  while (current) { providers.push(current); current = current.fallback; }
 
   let lastError;
   for (const providerConfig of providers) {
+    if (providerConfig.tpmLimit) {
+      const estimated = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
+      if (estimated > providerConfig.tpmLimit) {
+        log('WARN', `Skipping ${providerConfig.provider} — estimated ${estimated} tokens exceeds its ${providerConfig.tpmLimit} TPM budget`);
+        continue;
+      }
+    }
+
     const { base, key } = getProviderConfig(providerConfig.provider);
     const extraBody = getExtraBody(providerConfig.thinking);
     const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
@@ -467,7 +402,7 @@ async function makeAPICall(mapping, nimRequest, stream) {
             'Content-Type': 'application/json'
           },
           responseType: stream ? 'stream' : 'json',
-          timeout: 300000
+          timeout: providerConfig.timeoutMs || 300000
         }
       );
       return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model };
@@ -475,14 +410,12 @@ async function makeAPICall(mapping, nimRequest, stream) {
     } catch (err) {
       const status = err.response?.status;
 
-      // Hard client errors — wrong params/model/auth, fallback won't help
       if (status && status >= 400 && status < 500 && status !== 429 && status !== 408) {
         log('WARN', `Provider ${providerConfig.provider} returned ${status} (client error) — not falling back`);
         throw err;
       }
 
-      // 5xx, 429 (rate limited), 408 (timeout), or network error → try fallback
-      log('WARN', `Provider ${providerConfig.provider} failed [${status || 'network'}]: ${err.message} — trying fallback...`);
+      log('WARN', `Provider ${providerConfig.provider} failed [${status || 'network/timeout'}]: ${err.message} — trying fallback...`);
       lastError = err;
     }
   }
@@ -504,6 +437,12 @@ app.get('/health', (req, res) => {
       : 'n/a'
   }));
   const dsBudget = checkDeepSeekBudget();
+  const today = new Date().toISOString().slice(0, 10);
+  const orStatus = OPENROUTER_KEYS.map((_, i) => ({
+    key: `OPENROUTER_KEY_${i + 1}`,
+    usedToday: openrouterKeyState[i].day === today ? openrouterKeyState[i].count : 0,
+    cap: OPENROUTER_DAILY_CAP
+  }));
   res.json({
     status: 'ok',
     mode: MODE,
@@ -513,7 +452,7 @@ app.get('/health', (req, res) => {
       daily_limit: dsBudget.dailyLimit,
       days_left: dsBudget.daysLeft
     },
-    openrouter_keys: OPENROUTER_KEYS.length,
+    openrouter_keys: orStatus,
     literouter_keys: LITEROUTER_KEYS.length
   });
 });
@@ -587,7 +526,6 @@ app.post('/v1/chat/completions', async (req, res) => {
     const { response, usedProvider, usedModel } = await makeAPICall(mapping, nimRequest, stream || false);
     log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel}`);
 
-    // Track DeepSeek token usage
     if (usedProvider === 'deepseek' && !stream) {
       const tokens = response.data?.usage?.total_tokens || 0;
       deepseekBudget.tokensUsed += tokens;
