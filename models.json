@@ -1,0 +1,535 @@
+{
+  "glm-4.7-nv": {
+    "model": "z-ai/glm4.7",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Thinks by default. NIM slug has no dash."
+  },
+  "glm-4.7-flash-z": {
+    "model": "glm-4.7-flash",
+    "provider": "zai",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Confirmed genuinely free (not trial credits) as of Aug 2026, not just a marketing claim. Lowercase slug."
+  },
+  "glm-4.5-flash-z": {
+    "model": "glm-4.5-flash",
+    "provider": "zai",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Confirmed genuinely free (not trial credits). Lowercase slug."
+  },
+  "glm-4.7-lr": {
+    "model": "glm-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "glm-4.7": {
+    "model": "z-ai/glm4.7",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "glm-4.7-flash",
+      "provider": "zai",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "glm-flash": {
+    "model": "glm-4.7-flash",
+    "provider": "zai",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "glm-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "gemma-4-31b-g": {
+    "model": "gemma-4-31b-it",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "tpmLimit": 14000,
+    "notes": "14K RPD, 16K TPM \u2014 buffer kept under real cap"
+  },
+  "gemma-4-26b-g": {
+    "model": "gemma-4-26b-a4b-it",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "tpmLimit": 14000,
+    "notes": "faster (MoE)"
+  },
+  "gemma-4-31b-nv": {
+    "model": "google/gemma-4-31b-it",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemma-4-31b-or": {
+    "model": "google/gemma-4-31b-it:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "262K context, 50/day per key"
+  },
+  "gemma-4-26b-or": {
+    "model": "google/gemma-4-26b-a4b-it:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemma-3-27b-lr": {
+    "model": "gemma-3-27b-it-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "\u26a0\ufe0f Gemma 3, not 4"
+  },
+  "gemma-lr": {
+    "model": "gemma-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "experimental",
+    "limitType": "rate-limited",
+    "notes": "version unconfirmed"
+  },
+  "gemma-4-31b": {
+    "model": "gemma-4-31b-it",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "tpmLimit": 14000,
+    "notes": "Literouter left out of this chain on purpose \u2014 its Gemma slug's version isn't confirmed to actually be Gemma 4.",
+    "fallback": {
+      "model": "google/gemma-4-31b-it",
+      "provider": "nvidia",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited",
+      "timeoutMs": 30000,
+      "fallback": {
+        "model": "google/gemma-4-31b-it:free",
+        "provider": "openrouter",
+        "thinking": null,
+        "status": "active",
+        "limitType": "rate-limited"
+      }
+    }
+  },
+  "gemma-4-26b": {
+    "model": "gemma-4-26b-a4b-it",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "tpmLimit": 14000,
+    "fallback": {
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "provider": "openrouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "gemini-flash-lite-g": {
+    "model": "gemini-3.1-flash-lite-preview",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "500/day \u2014 primary"
+  },
+  "gemini-flash-g": {
+    "model": "gemini-3-flash",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "20/day \u2014 use sparingly"
+  },
+  "gemini-2.5-flash-g": {
+    "model": "gemini-2.5-flash",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "20/day \u2014 use sparingly"
+  },
+  "gemini-lr": {
+    "model": "gemini-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemini": {
+    "model": "gemini-3.1-flash-lite-preview",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "gemini-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "gemini-flash": {
+    "model": "gemini-3-flash",
+    "provider": "google",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "gemini-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "gemini-3.7-flash-mn": {
+    "model": "gemini/gemini-3.7-flash",
+    "provider": "meganova",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "freeUntil": "2026-08-20",
+    "notes": "Free quota window ends 2026-08-20 \u2014 that's today. Bills at standard rate from 2026-08-21. Kept as a standalone pick, not wired into the 'gemini' chain, on purpose so nothing silently starts costing money once the window closes."
+  },
+  "deepseek-v4-pro-nv": {
+    "model": "deepseek-ai/deepseek-v4-pro",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "1M context, 40 RPM"
+  },
+  "deepseek-v4-pro-think-nv": {
+    "model": "deepseek-ai/deepseek-v4-pro",
+    "provider": "nvidia",
+    "thinking": "dsv4",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-nv": {
+    "model": "deepseek-ai/deepseek-v4-flash",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "1M context, faster"
+  },
+  "deepseek-v4-flash-think-nv": {
+    "model": "deepseek-ai/deepseek-v4-flash",
+    "provider": "nvidia",
+    "thinking": "dsv4",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4-lr": {
+    "model": "deepseek-v4-flash-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v3-lr": {
+    "model": "deepseek-v3-0324-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-lr": {
+    "model": "deepseek-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-r1": {
+    "model": "deepseek-ai/deepseek-v4-pro",
+    "provider": "nvidia",
+    "thinking": "dsv4",
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "deepseek-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "deepseek-v4": {
+    "model": "deepseek-ai/deepseek-v4-flash",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "deepseek-v4-flash-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "deepseek-v3": {
+    "model": "deepseek-v3-0324-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "deepseek-ai/deepseek-v4-flash",
+      "provider": "nvidia",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "kimi-k2.6-nv": {
+    "model": "moonshotai/kimi-k2.6",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "262K context. Worth a quick test before you rely on it \u2014 there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
+  },
+  "kimi-lr": {
+    "model": "kimi-k2.5-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "kimi": {
+    "model": "moonshotai/kimi-k2.6",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "kimi-k2.5-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "kimi-k3-nv": {
+    "model": "moonshotai/kimi-k3",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "experimental",
+    "limitType": "rate-limited",
+    "notes": "UNCONFIRMED SLUG. Kimi K3 (2.8T params) released 2026-07-16. As of 2026-08-20 there's no public NIM catalog/reference page for it (unlike K2/K2.5/K2.6, which all have one) \u2014 there's an open community request thread from ~3 weeks ago asking NVIDIA to add it. This may be why it's 'hidden': NIM has a history of soft-enabling a model on the inference backend before the catalog page goes live (this exact thing happened with K2.6 \u2014 visible/callable for some accounts, 404 for others). Test this slug via the Sync button or a direct call; if it consistently 404s, it isn't live yet. Chained to your working K2.6 entry, then literouter, as a safety net.",
+    "fallback": {
+      "model": "moonshotai/kimi-k2.6",
+      "provider": "nvidia",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited",
+      "fallback": {
+        "model": "kimi-k2.5-free",
+        "provider": "literouter",
+        "thinking": null,
+        "status": "active",
+        "limitType": "rate-limited"
+      }
+    }
+  },
+  "gpt-oss-120b-nv": {
+    "model": "openai/gpt-oss-120b",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-20b-nv": {
+    "model": "openai/gpt-oss-20b",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-120b-lr": {
+    "model": "gpt-oss-120b-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-20b-lr": {
+    "model": "gpt-oss-20b-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-120b-or": {
+    "model": "openai/gpt-oss-120b:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-20b-or": {
+    "model": "openai/gpt-oss-20b:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gpt-oss-120b": {
+    "model": "openai/gpt-oss-120b",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "gpt-oss-120b-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "gpt-oss-20b": {
+    "model": "openai/gpt-oss-20b",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "fallback": {
+      "model": "gpt-oss-20b-free",
+      "provider": "literouter",
+      "thinking": null,
+      "status": "active",
+      "limitType": "rate-limited"
+    }
+  },
+  "qwen3-coder-or": {
+    "model": "qwen/qwen3-coder:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "coding-focused"
+  },
+  "minimax-m2.5-or": {
+    "model": "minimax/minimax-m2.5:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "nemotron-3-super-or": {
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "provider": "openrouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "262K context"
+  },
+  "qwen3-32b-lr": {
+    "model": "qwen3-32b-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "uncensored"
+  },
+  "qwen3-4b-lr": {
+    "model": "qwen3-4b-fp8-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "uncensored, fast"
+  },
+  "qwen-lr": {
+    "model": "qwen-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "minimax-m2.7-lr": {
+    "model": "minimax-m2.7:free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "near-frontier open-weight coder \u2014 56.2 SWE-bench Pro, 200K context"
+  },
+  "mimo-lr": {
+    "model": "mimo-v2-flash-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "llama-nemotron": {
+    "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "mistral-lr": {
+    "model": "mistral-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "nemotron-lr": {
+    "model": "nemotron-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "devstral-lr": {
+    "model": "devstral-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "coding specialist"
+  },
+  "grok-lr": {
+    "model": "grok-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  }
+}

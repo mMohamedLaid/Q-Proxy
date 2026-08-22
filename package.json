@@ -1,0 +1,18 @@
+{
+  "name": "Q-Proxy",
+  "version": "1.0.0",
+  "description": "Q-Proxy — OpenAI-compatible multi-provider LLM router (NVIDIA NIM, Z.AI, Google, OpenRouter, Literouter, MegaNova). Equips every request with whichever provider is still standing.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "keygen": "node keygen.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
