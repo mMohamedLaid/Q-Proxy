@@ -1,1 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0D12;
+    --surface: #12161F;
+    --surface-2: #1A2030;
+    --border: #232B3C;
+    --text: #E7ECF4;
+    --text-dim: #8891A3;
+    --text-faint: #5B6478;
+    --accent: #4FD1C5;
+    --accent-dim: #1F3A38;
+    --free: #34D399;
+    --credits: #FBBF24;
+    --broken: #F87171;
+    --experimental: #A78BFA;
+    --disabled: #5B6478;
+    --unlimited: #60A5FA;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(ellipse 1200px 600px at 20% -10%, #101825 0%, var(--bg) 55%), var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+  a { color: var(--accent); }
+  button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+  button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
 
+  /* ---------- Login gate ---------- */
+  #login-gate {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .login-card {
+    width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 32px 28px;
+  }
+  .login-card h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 6px; }
+  .login-card p { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
+  .login-card input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: var(--font-mono); margin-bottom: 12px;
+  }
+  .login-card button, .btn-primary {
+    width: 100%; background: var(--accent); color: #04211F; border: none; border-radius: 8px;
+    padding: 10px 12px; font-weight: 600; cursor: pointer;
+  }
+  .login-card button:hover, .btn-primary:hover { filter: brightness(1.08); }
+  .login-error { color: var(--broken); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ---------- Shell ---------- */
+  #dashboard { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+  header.top h1 {
+    font-family: var(--font-display); font-size: 22px; letter-spacing: -0.01em; margin: 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--free); box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: pulse 2.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,.5);} 70% { box-shadow: 0 0 0 8px rgba(52,211,153,0);} 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0);} }
+  header.top .meta { color: var(--text-faint); font-size: 12px; font-family: var(--font-mono); }
+
+  /* ---------- Summary stat row ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 22px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .stat .n { font-family: var(--font-display); font-size: 24px; }
+  .stat .l { color: var(--text-dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+
+  /* ---------- Warnings ---------- */
+  #warnings { margin-bottom: 26px; }
+  .warn-item {
+    display: flex; gap: 10px; align-items: flex-start; background: linear-gradient(90deg, rgba(248,113,113,.08), transparent);
+    border: 1px solid rgba(248,113,113,.35); border-left: 3px solid var(--broken); border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 8px; font-size: 13px;
+  }
+  .warn-item.experimental { border-color: rgba(167,139,250,.35); border-left-color: var(--experimental); background: linear-gradient(90deg, rgba(167,139,250,.08), transparent); }
+  .warn-item .id { font-family: var(--font-mono); color: var(--text); }
+  .warn-item .msg { color: var(--text-dim); }
+
+  /* ---------- Section headers ---------- */
+  section { margin-bottom: 30px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .section-head h2 { font-family: var(--font-display); font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0; }
+  .section-head .count { font-family: var(--font-mono); font-size: 12px; color: var(--text-faint); }
+
+  /* ---------- Provider group ---------- */
+  .provider-group { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+  .provider-group-head {
+    display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
+    background: var(--surface-2); border-bottom: 1px solid var(--border);
+  }
+  .provider-group-head .pname { font-family: var(--font-display); font-size: 14px; }
+  .sync-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-result { padding: 10px 16px; font-size: 12.5px; font-family: var(--font-mono); border-bottom: 1px solid var(--border); background: #0D1119; white-space: pre-wrap; }
+
+  .model-card { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .model-card:last-child { border-bottom: none; }
+  .model-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .model-id { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
+  .badge {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600;
+    padding: 2px 7px; border-radius: 100px; border: 1px solid transparent;
+  }
+  .badge.active { color: var(--free); background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.3); }
+  .badge.deprecated { color: var(--broken); background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.3); }
+  .badge.experimental { color: var(--experimental); background: rgba(167,139,250,.1); border-color: rgba(167,139,250,.3); }
+  .badge.disabled { color: var(--disabled); background: rgba(91,100,120,.15); border-color: rgba(91,100,120,.35); }
+  .badge.rate-limited { color: var(--text-dim); background: rgba(255,255,255,.04); border-color: var(--border); }
+  .badge.credits { color: var(--credits); background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.3); }
+  .badge.unlimited { color: var(--unlimited); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); }
+  .badge.paid { color: var(--credits); background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.3); }
+  .del-btn {
+    margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-faint);
+    border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
+  }
+  .del-btn:hover { border-color: var(--broken); color: var(--broken); }
+  .edit-btn {
+    margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-faint);
+    border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
+  }
+  .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .del-btn { margin-left: 6px; }
+  .model-notes { color: var(--text-dim); font-size: 12.5px; margin: 4px 0 10px; }
+  .model-notes.expiry { color: var(--credits); }
+
+  .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
+  .hop {
+    font-family: var(--font-mono); font-size: 11.5px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 9px; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  }
+  .hop.hop-active-recent { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+  .hop .hop-provider { color: var(--text-faint); font-size: 10px; text-transform: uppercase; }
+  .hop .hop-model { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+  .hop .hop-usage { color: var(--text-faint); font-size: 10px; }
+  .chain-arrow { color: var(--text-faint); padding: 0 6px; font-size: 13px; }
+
+  /* ---------- Usage panel ---------- */
+  .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .usage-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .usage-card h3 { font-family: var(--font-display); font-size: 13.5px; margin: 0 0 10px; }
+  .usage-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
+  .usage-row:last-child { border-bottom: none; }
+  .usage-row .k { color: var(--text-dim); }
+  .usage-row .v { font-family: var(--font-mono); }
+  .live-tag { font-size: 9.5px; text-transform: uppercase; background: rgba(52,211,153,.12); color: var(--free); border: 1px solid rgba(52,211,153,.3); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+  .est-tag { font-size: 9.5px; text-transform: uppercase; background: rgba(255,255,255,.05); color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+
+  details.usage-table-wrap { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--text-dim); font-size: 12.5px; padding: 4px 0; }
+  table.usage-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  table.usage-table th { text-align: left; color: var(--text-faint); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10.5px; }
+  table.usage-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); }
+
+  /* ---------- Add model form ---------- */
+  #add-form-toggle {
+    background: var(--surface); border: 1px dashed var(--border); color: var(--text-dim);
+    border-radius: 10px; padding: 12px; width: 100%; cursor: pointer; text-align: left; font-size: 13px;
+  }
+  #add-form-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  #add-model-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+  }
+  .field input[type="text"], .field input[type="number"], .field input[type="date"] { font-family: var(--font-mono); }
+  .hop-block { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; background: #0D1119; }
+  .hop-block-label { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; justify-content: space-between; }
+  .hop-controls { display: flex; gap: 4px; text-transform: none; }
+  .hop-mini-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 5px; width: 22px; height: 22px; cursor: pointer; font-size: 11px; line-height: 1; }
+  .hop-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hop-mini-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
+  .form-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 9px 14px; cursor: pointer; font-size: 13px; }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-remove-hop { background: transparent; border: 1px solid rgba(248,113,113,.3); color: var(--broken); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; cursor: pointer; margin-top: 8px; }
+  #add-model-status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  .empty-note { color: var(--text-faint); font-size: 12.5px; padding: 14px 16px; }
+</style>
+</head>
+<body>
+
+<div id="login-gate">
+  <div class="login-card">
+    <h1>Q</h1>
+    <p>Enter your admin key to open the dashboard. Set the same value as <code>ADMIN_KEY</code> in your Render environment.</p>
+    <input type="password" id="key-input" placeholder="Admin key" autocomplete="off">
+    <button id="key-submit" class="btn-primary">Unlock</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div id="dashboard" hidden>
+  <header class="top">
+    <h1><span class="pulse-dot"></span> Q</h1>
+    <span class="meta" id="header-meta">—</span>
+  </header>
+
+  <div class="stats" id="stats"></div>
+  <section id="warnings"></section>
+
+  <section>
+    <div class="section-head"><h2>Models by provider</h2><span class="count" id="model-count"></span></div>
+    <div id="providers"></div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Usage &amp; credits</h2></div>
+    <div class="usage-grid" id="usage-grid"></div>
+    <details class="usage-table-wrap">
+      <summary>Full per-provider/model request log (self-tracked, resets on restart)</summary>
+      <table class="usage-table" id="usage-table"><thead><tr><th>Provider</th><th>Model</th><th>OK</th><th>Errors</th><th>Last used</th><th>Last status</th></tr></thead><tbody></tbody></table>
+    </details>
+  </section>
+
+  <section>
+    <button id="add-form-toggle">+ Add a model</button>
+    <div id="add-model-panel" hidden></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  let ADMIN_KEY = params.get('key') || '';
+
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', deepseek: 'DeepSeek' };
+  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter']);
+  let currentModels = {};
+
+  async function api(pathname, opts) {
+    opts = opts || {};
+    const headers = Object.assign({ 'X-Admin-Key': ADMIN_KEY }, opts.headers || {});
+    if (opts.body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(pathname, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      const msg = (data && data.error && data.error.message) || (res.status + ' ' + res.statusText);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return null;
+    const d = new Date(iso + (iso.length <= 10 ? 'T00:00:00Z' : ''));
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function daysUntil(iso) {
+    if (!iso) return null;
+    const target = new Date(iso + 'T00:00:00Z').getTime();
+    const now = Date.now();
+    return Math.floor((target - now) / 86400000);
+  }
+  function timeAgo(iso) {
+    if (!iso) return 'never';
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+
+  // ---------- collect every hop of every model, flattened, for usage lookups ----------
+  function flattenHops(entry) {
+    const hops = [];
+    let hop = entry;
+    while (hop) { hops.push(hop); hop = hop.fallback; }
+    return hops;
+  }
+
+  function usageFor(usageIndex, provider, model) {
+    return usageIndex[provider + '|' + model] || null;
+  }
+
+  // ---------- rendering ----------
+  function renderStats(models) {
+    const ids = Object.keys(models);
+    const byStatus = {};
+    const byProvider = {};
+    ids.forEach(id => {
+      const e = models[id];
+      byStatus[e.status || 'active'] = (byStatus[e.status || 'active'] || 0) + 1;
+      byProvider[e.provider] = (byProvider[e.provider] || 0) + 1;
+    });
+    const stats = [
+      { n: ids.length, l: 'Total entries' },
+      { n: Object.keys(byProvider).length, l: 'Providers' },
+      { n: byStatus.deprecated || 0, l: 'Deprecated' },
+      { n: byStatus.experimental || 0, l: 'Experimental' },
+    ];
+    $('#stats').innerHTML = stats.map(s => `<div class="stat"><div class="n">${s.n}</div><div class="l">${s.l}</div></div>`).join('');
+  }
+
+  function renderWarnings(models) {
+    const items = [];
+    Object.entries(models).forEach(([id, entry]) => {
+      flattenHops(entry).forEach((hop, i) => {
+        const label = i === 0 ? id : `${id} → fallback (${hop.provider})`;
+        if (hop.status === 'deprecated') {
+          items.push({ cls: '', id: label, msg: hop.deprecatedOn ? `Deprecated by the provider, effective ${fmtDate(hop.deprecatedOn)}.` : 'Marked deprecated.' });
+        } else if (hop.deprecatedOn) {
+          const d = daysUntil(hop.deprecatedOn);
+          if (d !== null && d <= 14) items.push({ cls: '', id: label, msg: d < 0 ? `Deprecation date (${fmtDate(hop.deprecatedOn)}) has passed.` : `Deprecates in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.deprecatedOn)}).` });
+        }
+        if (hop.freeUntil) {
+          const d = daysUntil(hop.freeUntil);
+          if (d !== null && d <= 7) items.push({ cls: '', id: label, msg: d < 0 ? `Free window ended ${fmtDate(hop.freeUntil)} — likely billing now.` : `Free window ends in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.freeUntil)}).` });
+        }
+        if (hop.status === 'experimental') {
+          items.push({ cls: 'experimental', id: label, msg: hop.notes || 'Unconfirmed / not yet verified — test before relying on it.' });
+        }
+      });
+    });
+    $('#warnings').innerHTML = items.length
+      ? items.map(w => `<div class="warn-item ${w.cls}"><span>⚠</span><div><span class="id">${w.id}</span><br><span class="msg">${escapeHtml(w.msg)}</span></div></div>`).join('')
+      : '';
+  }
+
+  function hopClass(hop) { return (hop.status === 'deprecated') ? 'deprecated' : (hop.status === 'experimental' ? 'experimental' : 'active'); }
+
+  function renderChain(entry, usageIndex) {
+    const hops = flattenHops(entry);
+    // find which hop was most recently actually used
+    let mostRecentIdx = -1, mostRecentTime = 0;
+    hops.forEach((hop, i) => {
+      const u = usageFor(usageIndex, hop.provider, hop.model);
+      if (u && u.lastUsed) {
+        const t = new Date(u.lastUsed).getTime();
+        if (t > mostRecentTime) { mostRecentTime = t; mostRecentIdx = i; }
+      }
+    });
+    return hops.map((hop, i) => {
+      const u = usageFor(usageIndex, hop.provider, hop.model);
+      const usageStr = u ? `${u.count} ok${u.errors ? ', ' + u.errors + ' err' : ''} · ${timeAgo(u.lastUsed)}` : 'no requests yet';
+      const recent = i === mostRecentIdx ? ' hop-active-recent' : '';
+      const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
+      return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
+        <span class="hop-provider">${PROVIDER_LABELS[hop.provider] || hop.provider}</span>
+        <span class="hop-model">${escapeHtml(hop.model)}</span>
+        <span class="hop-usage">${usageStr}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function renderProviders(models, usageIndex) {
+    const groups = {};
+    Object.entries(models).forEach(([id, entry]) => {
+      (groups[entry.provider] = groups[entry.provider] || []).push([id, entry]);
+    });
+
+    const order = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+    $('#model-count').textContent = Object.keys(models).length + ' entries';
+
+    $('#providers').innerHTML = order.map(provider => {
+      const items = groups[provider].sort((a, b) => a[0].localeCompare(b[0]));
+      const syncBtn = SYNCABLE.has(provider) ? `<button class="sync-btn" data-provider="${provider}">Check ${PROVIDER_LABELS[provider] || provider} for updates</button>` : '';
+      const cards = items.map(([id, entry]) => {
+        const notesLine = entry.notes ? `<div class="model-notes">${escapeHtml(entry.notes)}</div>` : '';
+        return `<div class="model-card" data-id="${escapeHtml(id)}">
+          <div class="model-card-top">
+            <span class="model-id">${escapeHtml(id)}</span>
+            <span class="badge ${entry.status || 'active'}">${entry.status || 'active'}</span>
+            <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
+            ${entry.thinking ? `<span class="badge rate-limited">thinking: ${entry.thinking}</span>` : ''}
+            <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
+            <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
+          </div>
+          ${notesLine}
+          <div class="chain">${renderChain(entry, usageIndex)}</div>
+        </div>`;
+      }).join('');
+      return `<div class="provider-group">
+        <div class="provider-group-head">
+          <span class="pname">${PROVIDER_LABELS[provider] || provider} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span>
+          ${syncBtn}
+        </div>
+        <div class="sync-result" data-sync-result="${provider}" hidden></div>
+        ${cards || '<div class="empty-note">No models configured for this provider.</div>'}
+      </div>`;
+    }).join('');
+
+    $$('.del-btn').forEach(btn => btn.addEventListener('click', onDeleteModel));
+    $$('.edit-btn').forEach(btn => btn.addEventListener('click', e => openForm(e.target.getAttribute('data-edit'), currentModels[e.target.getAttribute('data-edit')])));
+    $$('.sync-btn').forEach(btn => btn.addEventListener('click', onSync));
+  }
+
+  function buildUsageIndex(usageList) {
+    const idx = {};
+    usageList.forEach(u => { idx[u.provider + '|' + u.model] = u; });
+    return idx;
+  }
+
+  function renderUsage(usage) {
+    const cards = [];
+
+    // Per-user rate limits
+    cards.push(`<div class="usage-card"><h3>Your keys (per-minute limit)</h3>${
+      usage.perKeyLimits.map(k => `<div class="usage-row"><span class="k">${escapeHtml(k.name)}</span><span class="v">${k.usedThisMinute}/${k.limit}${k.resetsInSec !== null ? ' · resets ' + k.resetsInSec + 's' : ''}</span></div>`).join('') || '<div class="usage-row"><span class="k">No keys configured</span></div>'
+    }</div>`);
+
+    // OpenRouter
+    const orRows = usage.openrouter.selfTracked.map((s, i) => {
+      const live = usage.openrouter.live[i];
+      let liveStr = '';
+      if (live && live.ok && live.data) {
+        const d = live.data;
+        const remaining = (d.limit_remaining !== undefined && d.limit_remaining !== null) ? d.limit_remaining : (d.limit !== undefined ? d.limit : '?');
+        liveStr = `<span class="v">${remaining} left of ${d.limit ?? '∞'}<span class="live-tag">live</span></span>`;
+      } else if (live && !live.ok) {
+        liveStr = `<span class="v" style="color:var(--text-faint)">unavailable<span class="est-tag">${escapeHtml((live.error||'').slice(0,40))}</span></span>`;
+      }
+      return `<div class="usage-row"><span class="k">${s.key}</span>${liveStr || `<span class="v">${s.usedToday}/${s.cap} today<span class="est-tag">self-tracked</span></span>`}</div>`;
+    }).join('');
+    cards.push(`<div class="usage-card"><h3>OpenRouter</h3>${orRows || '<div class="usage-row"><span class="k">No keys configured</span></div>'}</div>`);
+
+    // DeepSeek
+    const dsBudget = usage.deepseek.selfTrackedBudget;
+    let dsLiveRow = '';
+    if (usage.deepseek.live && usage.deepseek.live.ok) {
+      const infos = usage.deepseek.live.data.balance_infos || [];
+      dsLiveRow = infos.map(bi => `<div class="usage-row"><span class="k">Balance (${bi.currency})</span><span class="v">${bi.total_balance}<span class="live-tag">live</span></span></div>`).join('');
+    } else if (usage.deepseek.live && !usage.deepseek.live.ok) {
+      dsLiveRow = `<div class="usage-row"><span class="k">Balance check</span><span class="v" style="color:var(--text-faint)">unavailable<span class="est-tag">${escapeHtml((usage.deepseek.live.error||'').slice(0,40))}</span></span></div>`;
+    } else {
+      dsLiveRow = `<div class="usage-row"><span class="k">Balance</span><span class="v" style="color:var(--text-faint)">DEEPSEEK_API_KEY not set</span></div>`;
+    }
+    cards.push(`<div class="usage-card"><h3>DeepSeek</h3>
+      ${dsLiveRow}
+      <div class="usage-row"><span class="k">Monthly token budget (self-tracked)</span><span class="v">${dsBudget.tokensLeft.toLocaleString()} left<span class="est-tag">self-tracked</span></span></div>
+      <div class="usage-row"><span class="k">Today's soft daily limit</span><span class="v">${dsBudget.dailyLimit.toLocaleString()} tok</span></div>
+    </div>`);
+
+    // Literouter
+    cards.push(`<div class="usage-card"><h3>Literouter</h3><div class="usage-row"><span class="k">Keys loaded</span><span class="v">${usage.literouterKeysLoaded}</span></div><div class="usage-row"><span class="k">Known cap</span><span class="v" style="color:var(--text-faint)">~100/hr per model (soft)</span></div></div>`);
+
+    $('#usage-grid').innerHTML = cards.join('');
+
+    const tbody = $('#usage-table tbody');
+    const rows = usage.providerUsage.slice().sort((a, b) => new Date(b.lastUsed || 0) - new Date(a.lastUsed || 0));
+    tbody.innerHTML = rows.map(u => `<tr>
+      <td>${escapeHtml(u.provider)}</td><td>${escapeHtml(u.model)}</td><td>${u.count}</td><td>${u.errors}</td>
+      <td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--text-faint);font-family:var(--font-body)">No requests recorded since the server last restarted.</td></tr>';
+  }
+
+  // ---------- actions ----------
+  async function onDeleteModel(e) {
+    const id = e.target.getAttribute('data-del');
+    if (!confirm(`Remove "${id}"? This edits models.json immediately.`)) return;
+    try {
+      await api('/admin/api/models/' + encodeURIComponent(id), { method: 'DELETE' });
+      await loadAll();
+    } catch (err) { alert('Could not remove: ' + err.message); }
+  }
+
+  async function onSync(e) {
+    const provider = e.target.getAttribute('data-provider');
+    const out = $(`[data-sync-result="${provider}"]`);
+    out.hidden = false;
+    out.textContent = 'Checking ' + (PROVIDER_LABELS[provider] || provider) + ' …';
+    try {
+      const r = await api('/admin/api/sync/' + provider);
+      let text = `Live models at ${PROVIDER_LABELS[provider] || provider}: ${r.liveCount}\n\n`;
+      text += `Newly available (${r.newlyAvailable.length}):\n` + (r.newlyAvailable.length ? r.newlyAvailable.map(m => '  + ' + m).join('\n') : '  (none)');
+      text += `\n\nConfigured here but not found live (${r.noLongerListed.length}):\n` + (r.noLongerListed.length ? r.noLongerListed.map(m => '  − ' + m).join('\n') : '  (none)');
+      out.textContent = text;
+    } catch (err) {
+      out.textContent = 'Sync failed: ' + err.message;
+    }
+  }
+
+  // ---------- add/edit model form ----------
+  // Internally a flat array of hops (easy to reorder/remove), converted
+  // to/from the nested {fallback:{fallback:...}} shape only at the edges
+  // (flattenEntry on open, nestHops on submit) — this is what makes
+  // reordering an existing chain (incl. bare/no-suffix ones) possible
+  // instead of forcing a full retype.
+  let hopState = [];
+  let editingId = null; // null = adding new; string = editing that id (id locked)
+
+  function emptyHop() {
+    return { model: '', provider: 'nvidia', thinking: '', status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', timeoutMs: '', freeUntil: '', deprecatedOn: '' };
+  }
+
+  function flattenEntry(entry) {
+    const hops = [];
+    let cur = entry;
+    while (cur) {
+      hops.push({
+        model: cur.model || '', provider: cur.provider || 'nvidia', thinking: cur.thinking || '',
+        status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
+        tpmLimit: cur.tpmLimit ?? '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || ''
+      });
+      cur = cur.fallback || null;
+    }
+    return hops;
+  }
+
+  function nestHops(hops) {
+    let result = null;
+    for (let i = hops.length - 1; i >= 0; i--) {
+      const h = hops[i];
+      const entry = { model: h.model.trim(), provider: h.provider, thinking: h.thinking || null, status: h.status, limitType: h.limitType };
+      if (h.notes && h.notes.trim()) entry.notes = h.notes.trim();
+      if (h.tpmLimit !== '' && h.tpmLimit != null) entry.tpmLimit = parseInt(h.tpmLimit, 10);
+      if (h.timeoutMs !== '' && h.timeoutMs != null) entry.timeoutMs = parseInt(h.timeoutMs, 10);
+      if (h.freeUntil) entry.freeUntil = h.freeUntil;
+      if (h.deprecatedOn) entry.deprecatedOn = h.deprecatedOn;
+      if (result) entry.fallback = result;
+      result = entry;
+    }
+    return result;
+  }
+
+  function openForm(id, entry) {
+    editingId = id || null;
+    hopState = entry ? flattenEntry(entry) : [emptyHop()];
+    $('#add-form-toggle').hidden = true;
+    $('#add-model-panel').hidden = false;
+    renderForm();
+    $('#add-model-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function closeForm() {
+    $('#add-model-panel').hidden = true;
+    $('#add-form-toggle').hidden = false;
+  }
+
+  function renderForm() {
+    const panel = $('#add-model-panel');
+    panel.innerHTML = `
+      <div class="form-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Model ID (the string clients call, e.g. "glm-4.7")</label>
+          <input type="text" id="f-id" value="${escapeHtml(editingId || '')}" ${editingId ? 'readonly style="opacity:.6"' : ''} placeholder="e.g. glm-5.3-nv">
+          ${editingId ? '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Editing an existing entry — the ID is locked so this overwrites rather than duplicates. To rename, remove and re-add instead.</div>' : ''}
+        </div>
+      </div>
+      <div id="hop-list"></div>
+      <button type="button" class="btn-secondary" id="add-hop-btn" style="margin-top:2px;">+ Add fallback hop</button>
+      <div class="form-actions">
+        <button class="btn-primary" style="width:auto;" id="submit-model">${editingId ? 'Save changes' : 'Save model'}</button>
+        <button class="btn-secondary" id="cancel-model">Cancel</button>
+      </div>
+      <div id="add-model-status"></div>
+    `;
+    renderHopList();
+    $('#add-hop-btn').addEventListener('click', () => { hopState.push(emptyHop()); renderHopList(); });
+    $('#submit-model').addEventListener('click', onSubmitModel);
+    $('#cancel-model').addEventListener('click', closeForm);
+  }
+
+  function renderHopList() {
+    const root = $('#hop-list');
+    root.innerHTML = hopState.map((h, i) => `
+      <div class="hop-block">
+        <div class="hop-block-label">
+          <span>${i === 0 ? 'Primary' : 'Fallback #' + i}</span>
+          <span class="hop-controls">
+            ${i > 0 ? `<button type="button" class="hop-mini-btn" data-act="up" data-idx="${i}" title="Move earlier in the chain">↑</button>` : ''}
+            ${i < hopState.length - 1 ? `<button type="button" class="hop-mini-btn" data-act="down" data-idx="${i}" title="Move later in the chain">↓</button>` : ''}
+            ${hopState.length > 1 ? `<button type="button" class="hop-mini-btn remove" data-act="remove" data-idx="${i}" title="Remove this hop">✕</button>` : ''}
+          </span>
+        </div>
+        <div class="form-grid">
+          <div class="field"><label>Model slug</label><input type="text" data-f="model" data-idx="${i}" value="${escapeHtml(h.model)}" placeholder="e.g. z-ai/glm4.7"></div>
+          <div class="field"><label>Provider</label><select data-f="provider" data-idx="${i}">${Object.keys(PROVIDER_LABELS).map(p => `<option value="${p}" ${h.provider === p ? 'selected' : ''}>${PROVIDER_LABELS[p]}</option>`).join('')}</select></div>
+          <div class="field"><label>Thinking</label><select data-f="thinking" data-idx="${i}"><option value="" ${!h.thinking ? 'selected' : ''}>none</option><option value="glm" ${h.thinking === 'glm' ? 'selected' : ''}>glm</option><option value="dsv4" ${h.thinking === 'dsv4' ? 'selected' : ''}>dsv4</option></select></div>
+          <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(s => `<option value="${s}" ${h.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+          <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(s => `<option value="${s}" ${h.limitType === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+          <div class="field"><label>TPM limit (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
+          <div class="field"><label>Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}"></div>
+          <div class="field"><label>Free until (opt.)</label><input type="date" data-f="freeUntil" data-idx="${i}" value="${h.freeUntil}"></div>
+          <div class="field"><label>Deprecated on (opt.)</label><input type="date" data-f="deprecatedOn" data-idx="${i}" value="${h.deprecatedOn}"></div>
+        </div>
+        <div class="field"><label>Notes (opt.)</label><input type="text" data-f="notes" data-idx="${i}" value="${escapeHtml(h.notes)}"></div>
+      </div>
+    `).join('');
+
+    $$('#hop-list [data-f]').forEach(el => el.addEventListener('input', e => {
+      hopState[+e.target.dataset.idx][e.target.dataset.f] = e.target.value;
+    }));
+    $$('#hop-list .hop-mini-btn').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx, act = e.currentTarget.dataset.act;
+      if (act === 'remove') hopState.splice(idx, 1);
+      if (act === 'up') [hopState[idx - 1], hopState[idx]] = [hopState[idx], hopState[idx - 1]];
+      if (act === 'down') [hopState[idx + 1], hopState[idx]] = [hopState[idx], hopState[idx + 1]];
+      renderHopList();
+    }));
+  }
+
+  async function onSubmitModel() {
+    const id = $('#f-id').value.trim();
+    const status = $('#add-model-status');
+    if (!id) { status.style.color = 'var(--broken)'; status.textContent = 'Model ID is required.'; return; }
+    if (!hopState[0].model.trim()) { status.style.color = 'var(--broken)'; status.textContent = 'Primary model slug is required.'; return; }
+    const entry = nestHops(hopState);
+    try {
+      await api('/admin/api/models', { method: 'POST', body: { id, entry } });
+      status.style.color = 'var(--free)';
+      status.textContent = `Saved "${id}".`;
+      await loadAll();
+      setTimeout(closeForm, 800);
+    } catch (err) {
+      status.style.color = 'var(--broken)';
+      status.textContent = 'Could not save: ' + err.message;
+    }
+  }
+
+  $('#add-form-toggle').addEventListener('click', () => openForm(null, null));
+
+  // ---------- load ----------
+  async function loadAll() {
+    const [modelsRes, usageRes] = await Promise.all([api('/admin/api/models'), api('/admin/api/usage')]);
+    currentModels = modelsRes.models;
+    const usageIndex = buildUsageIndex(usageRes.providerUsage);
+    renderStats(modelsRes.models);
+    renderWarnings(modelsRes.models);
+    renderProviders(modelsRes.models, usageIndex);
+    renderUsage(usageRes);
+    $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
+  }
+
+  async function tryUnlock(key) {
+    ADMIN_KEY = key;
+    try {
+      await api('/admin/api/models');
+      $('#login-gate').style.display = 'none';
+      $('#dashboard').hidden = false;
+      await loadAll();
+    } catch (err) {
+      $('#login-error').textContent = err.message;
+    }
+  }
+
+  $('#key-submit').addEventListener('click', () => tryUnlock($('#key-input').value.trim()));
+  $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock($('#key-input').value.trim()); });
+
+  if (ADMIN_KEY) {
+    $('#key-input').value = ADMIN_KEY;
+    tryUnlock(ADMIN_KEY);
+  }
+})();
+</script>
+</body>
+</html>
