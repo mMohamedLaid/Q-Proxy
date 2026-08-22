@@ -1,1 +1,1 @@
-# nim-proxy
+# Q-Proxy
