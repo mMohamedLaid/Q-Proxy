@@ -771,6 +771,76 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
 const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter']);
+const PROVIDER_SUFFIX = {
+  nvidia: 'nv',
+  zai: 'z',
+  google: 'g',
+  openrouter: 'or',
+  literouter: 'lr',
+  meganova: 'mn',
+  deepseek: 'ds'
+};
+
+function flattenEntry(entry) {
+  const hops = [];
+  let cur = entry;
+  while (cur) {
+    hops.push({
+      model: cur.model || '',
+      provider: cur.provider || 'nvidia',
+      thinking: cur.thinking || null,
+      status: cur.status || 'active',
+      limitType: cur.limitType || 'rate-limited',
+      notes: cur.notes,
+      tpmLimit: cur.tpmLimit,
+      timeoutMs: cur.timeoutMs,
+      freeUntil: cur.freeUntil,
+      deprecatedOn: cur.deprecatedOn
+    });
+    cur = cur.fallback || null;
+  }
+  return hops;
+}
+
+function nestHops(hops) {
+  let result = null;
+  for (let i = hops.length - 1; i >= 0; i--) {
+    const h = hops[i];
+    const item = {
+      model: h.model,
+      provider: h.provider,
+      thinking: h.thinking ?? null,
+      status: h.status || 'active',
+      limitType: h.limitType || 'rate-limited'
+    };
+    if (h.notes) item.notes = h.notes;
+    if (h.tpmLimit !== undefined) item.tpmLimit = h.tpmLimit;
+    if (h.timeoutMs !== undefined) item.timeoutMs = h.timeoutMs;
+    if (h.freeUntil) item.freeUntil = h.freeUntil;
+    if (h.deprecatedOn) item.deprecatedOn = h.deprecatedOn;
+    if (result) item.fallback = result;
+    result = item;
+  }
+  return result;
+}
+
+function buildSuggestedModelId(provider, model) {
+  const base = String(model || '')
+    .toLowerCase()
+    .replace(/[:/]+/g, '-')
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'new-model';
+  const suffix = PROVIDER_SUFFIX[provider] || provider;
+  const seed = `${base}-${suffix}`;
+  let candidate = seed;
+  let i = 2;
+  while (MODEL_MAPPING[candidate]) {
+    candidate = `${seed}-${i}`;
+    i++;
+  }
+  return candidate;
+}
 
 app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
@@ -806,6 +876,79 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
     });
   }
+});
+
+app.post('/admin/api/sync/:provider/add', requireAdmin, (req, res) => {
+  const provider = req.params.provider;
+  if (!SYNCABLE_PROVIDERS.has(provider)) {
+    return res.status(400).json({ error: { message: `Provider "${provider}" is not syncable.`, type: 'invalid_request_error', code: 400 } });
+  }
+  const { model, id, status, limitType } = req.body || {};
+  if (!model || typeof model !== 'string') {
+    return res.status(400).json({ error: { message: 'Body must include a string "model".', type: 'invalid_request_error', code: 400 } });
+  }
+
+  const safeId = (id && String(id).trim()) || buildSuggestedModelId(provider, model);
+  if (MODEL_MAPPING[safeId]) {
+    return res.status(409).json({ error: { message: `Model id "${safeId}" already exists.`, type: 'conflict_error', code: 409 } });
+  }
+
+  MODEL_MAPPING[safeId] = {
+    model: model.trim(),
+    provider,
+    thinking: null,
+    status: (status || 'active'),
+    limitType: (limitType || 'rate-limited')
+  };
+  try {
+    saveModels(MODEL_MAPPING);
+  } catch (e) {
+    delete MODEL_MAPPING[safeId];
+    return res.status(500).json({ error: { message: `Added in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
+  }
+  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})`);
+  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId] });
+});
+
+app.post('/admin/api/sync/:provider/remove', requireAdmin, (req, res) => {
+  const provider = req.params.provider;
+  if (!SYNCABLE_PROVIDERS.has(provider)) {
+    return res.status(400).json({ error: { message: `Provider "${provider}" is not syncable.`, type: 'invalid_request_error', code: 400 } });
+  }
+  const { model } = req.body || {};
+  if (!model || typeof model !== 'string') {
+    return res.status(400).json({ error: { message: 'Body must include a string "model".', type: 'invalid_request_error', code: 400 } });
+  }
+
+  const touchedIds = [];
+  const removedIds = [];
+  let changed = false;
+
+  for (const id of Object.keys(MODEL_MAPPING)) {
+    const hops = flattenEntry(MODEL_MAPPING[id]);
+    const filtered = hops.filter(h => !(h.provider === provider && h.model === model));
+    if (filtered.length === hops.length) continue;
+    changed = true;
+    touchedIds.push(id);
+    if (!filtered.length) {
+      delete MODEL_MAPPING[id];
+      removedIds.push(id);
+    } else {
+      MODEL_MAPPING[id] = nestHops(filtered);
+    }
+  }
+
+  if (!changed) {
+    return res.status(404).json({ error: { message: `No configured hops found for ${provider} / ${model}.`, type: 'invalid_request_error', code: 404 } });
+  }
+
+  try {
+    saveModels(MODEL_MAPPING);
+  } catch (e) {
+    return res.status(500).json({ error: { message: `Removed in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
+  }
+  log('INFO', `[admin] sync-remove ${provider} / ${model} from ${touchedIds.length} model id(s)`);
+  res.json({ ok: true, provider, model, touchedIds, removedIds });
 });
 
 // ============================================================

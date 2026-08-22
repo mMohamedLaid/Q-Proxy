@@ -161,6 +161,59 @@
   }
   .clear-filters-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+  .quick-usage {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .quick-usage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .quick-usage-tabs { display: inline-flex; gap: 6px; }
+  .quick-tab-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 4px 9px;
+    font-size: 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .quick-tab-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .quick-usage-list { display: grid; gap: 8px; }
+  .quick-usage-item {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  .quick-usage-main { font-family: var(--font-mono); font-size: 12px; }
+  .quick-usage-meta { color: var(--text-faint); font-size: 11px; }
+
+  .provider-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .provider-tab-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .provider-tab-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
   /* ---------- Provider group ---------- */
   .provider-group { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
   .provider-group-head {
@@ -173,7 +226,26 @@
     border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
   }
   .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .sync-result { padding: 10px 16px; font-size: 12.5px; font-family: var(--font-mono); border-bottom: 1px solid var(--border); background: #0D1119; white-space: pre-wrap; }
+  .sync-result { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: #0D1119; }
+  .sync-result-head { color: var(--text-dim); margin-bottom: 8px; }
+  .sync-result-grid { display: grid; gap: 8px; }
+  .sync-result-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: rgba(255,255,255,.02); }
+  .sync-result-title { color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; font-size: 10.5px; margin-bottom: 6px; }
+  .sync-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  .sync-item-code { font-family: var(--font-mono); color: var(--text); font-size: 11.5px; }
+  .sync-item-btn {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .sync-item-btn.add:hover { border-color: var(--free); color: var(--free); }
+  .sync-item-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
+  .sync-result-note { color: var(--text-faint); font-size: 11.5px; }
 
   .model-card { padding: 14px 16px; border-bottom: 1px solid var(--border); }
   .model-card:last-child { border-bottom: none; }
@@ -229,6 +301,7 @@
   }
   .hop.hop-active-recent { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
   .hop .hop-provider { color: var(--text-faint); font-size: 10px; text-transform: uppercase; }
+  .hop .hop-order { color: var(--accent); font-size: 10px; }
   .hop .hop-model { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .hop .hop-usage { color: var(--text-faint); font-size: 10px; }
   .chain-arrow { color: var(--text-faint); padding: 0 6px; font-size: 13px; }
@@ -336,6 +409,8 @@
       <div class="toolbar-help">Include/exclude supports space/comma separated tokens; token:value checks exact inferred tags (example: family:deepseek).</div>
       <div class="active-filters" id="active-filters"></div>
     </div>
+    <div class="quick-usage" id="quick-usage"></div>
+    <div class="provider-tabs" id="provider-tabs"></div>
     <div id="providers"></div>
   </section>
 
@@ -365,8 +440,12 @@
   const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', deepseek: 'DeepSeek' };
   const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter']);
   let currentModels = {};
+  let providerTab = '';
+  let quickUsageTab = 'used';
+  const syncState = {};
   const filterState = { search: '', provider: 'all', status: 'all', limitType: 'all', family: 'all', includeTokens: [], excludeTokens: [], tags: new Set() };
   const FAMILY_HINTS = ['deepseek', 'gemini', 'gemma', 'glm', 'kimi', 'gpt-oss', 'qwen', 'minimax', 'nemotron', 'llama', 'mistral', 'grok', 'devstral', 'mimo'];
+  const DIRECT_SUFFIX_RE = /-(nv|z|g|or|lr|mn|ds)$/;
 
   async function api(pathname, opts) {
     opts = opts || {};
@@ -545,7 +624,15 @@
 
   function hopClass(hop) { return (hop.status === 'deprecated') ? 'deprecated' : (hop.status === 'experimental' ? 'experimental' : 'active'); }
 
-  function renderChain(entry, usageIndex) {
+  function isAggregateModelId(id) {
+    return !DIRECT_SUFFIX_RE.test(String(id || '').toLowerCase());
+  }
+
+  function formatFallbackOrder(hops) {
+    return hops.map((h, i) => `${i + 1}. ${(PROVIDER_LABELS[h.provider] || h.provider)}: ${h.model}`).join(' → ');
+  }
+
+  function renderChain(entry, usageIndex, showOrder) {
     const hops = flattenHops(entry);
     // find which hop was most recently actually used
     let mostRecentIdx = -1, mostRecentTime = 0;
@@ -562,6 +649,7 @@
       const recent = i === mostRecentIdx ? ' hop-active-recent' : '';
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
+        ${showOrder ? `<span class="hop-order">#${i + 1}</span>` : ''}
         <span class="hop-provider">${PROVIDER_LABELS[hop.provider] || hop.provider}</span>
         <span class="hop-model">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
@@ -642,12 +730,80 @@
     $('#active-filters').innerHTML = chips.join('');
   }
 
+  function renderQuickUsage(models, usageList) {
+    const usageToIds = {};
+    Object.entries(models).forEach(([id, entry]) => {
+      flattenHops(entry).forEach(h => {
+        const k = `${h.provider}|${h.model}`;
+        if (!usageToIds[k]) usageToIds[k] = new Set();
+        usageToIds[k].add(id);
+      });
+    });
+    const rankedUsed = usageList.slice().filter(u => u.count > 0).sort((a, b) => b.count - a.count || (b.errors - a.errors)).slice(0, 8);
+    const rankedRecent = usageList.slice().filter(u => u.lastUsed).sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed)).slice(0, 8);
+    const list = quickUsageTab === 'recent' ? rankedRecent : rankedUsed;
+    const title = quickUsageTab === 'recent' ? 'Most recently used' : 'Most used';
+
+    const rows = list.length ? list.map(u => {
+      const ids = Array.from(usageToIds[`${u.provider}|${u.model}`] || []).slice(0, 2);
+      const idsText = ids.length ? ` · IDs: ${ids.join(', ')}` : '';
+      const meta = quickUsageTab === 'recent'
+        ? `${timeAgo(u.lastUsed)} · ${u.count} ok${u.errors ? `, ${u.errors} err` : ''}${idsText}`
+        : `${u.count} ok${u.errors ? `, ${u.errors} err` : ''} · ${timeAgo(u.lastUsed)}${idsText}`;
+      return `<div class="quick-usage-item"><div class="quick-usage-main">${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • ${escapeHtml(u.model)}</div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
+    }).join('') : '<div class="sync-result-note">No usage data yet. These lists appear after requests start flowing.</div>';
+
+    $('#quick-usage').innerHTML = `
+      <div class="quick-usage-head">
+        <strong>${title}</strong>
+        <div class="quick-usage-tabs">
+          <button type="button" class="quick-tab-btn ${quickUsageTab === 'used' ? 'active' : ''}" data-quick-tab="used">Most used</button>
+          <button type="button" class="quick-tab-btn ${quickUsageTab === 'recent' ? 'active' : ''}" data-quick-tab="recent">Most recent</button>
+        </div>
+      </div>
+      <div class="quick-usage-list">${rows}</div>
+    `;
+    $$('.quick-tab-btn').forEach(btn => btn.addEventListener('click', e => {
+      quickUsageTab = e.currentTarget.getAttribute('data-quick-tab') || 'used';
+      renderQuickUsage(currentModels, lastUsageList);
+    }));
+  }
+
+  function renderSyncResult(provider) {
+    const state = syncState[provider];
+    if (!state) return '';
+    if (state.loading) return `<div class="sync-result" data-sync-result="${provider}">Checking ${escapeHtml(PROVIDER_LABELS[provider] || provider)}…</div>`;
+    if (state.error) return `<div class="sync-result" data-sync-result="${provider}">Sync failed: ${escapeHtml(state.error)}</div>`;
+    const r = state.data;
+    if (!r) return '';
+    const addRows = r.newlyAvailable.length
+      ? r.newlyAvailable.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn add" data-sync-act="add" data-provider="${provider}" data-model="${escapeHtml(m)}">Add to config</button></div>`).join('')
+      : '<div class="sync-result-note">None found.</div>';
+    const removeRows = r.noLongerListed.length
+      ? r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')
+      : '<div class="sync-result-note">None found.</div>';
+    return `<div class="sync-result" data-sync-result="${provider}">
+      <div class="sync-result-head">Live models at ${escapeHtml(PROVIDER_LABELS[provider] || provider)}: ${r.liveCount}</div>
+      <div class="sync-result-grid">
+        <div class="sync-result-box">
+          <div class="sync-result-title">Newly available (${r.newlyAvailable.length})</div>
+          ${addRows}
+        </div>
+        <div class="sync-result-box">
+          <div class="sync-result-title">Configured here but not found live (${r.noLongerListed.length})</div>
+          ${removeRows}
+        </div>
+      </div>
+    </div>`;
+  }
+
   let lastUsageList = [];
   function renderProviders(models, usageIndex) {
     refreshFilterState();
     const allItems = buildModelItems(models);
     const filtered = applyFilters(allItems);
     renderActiveFilters();
+    renderQuickUsage(models, lastUsageList);
 
     const groups = {};
     filtered.forEach(item => {
@@ -660,18 +816,39 @@
     $('#model-visible-count').textContent = filtered.length + ' shown';
 
     if (!filtered.length) {
+      providerTab = '';
+      $('#provider-tabs').innerHTML = '';
       $('#providers').innerHTML = '<div class="empty-note big">No models match the current search/filters/tags. Adjust or clear filters.</div>';
       return;
     }
 
-    $('#providers').innerHTML = order.map(provider => {
+    if (!order.includes(providerTab)) providerTab = order[0];
+    $('#provider-tabs').innerHTML = order.map(provider => `
+      <button type="button" class="provider-tab-btn ${providerTab === provider ? 'active' : ''}" data-provider-tab="${provider}">
+        ${escapeHtml(PROVIDER_LABELS[provider] || provider)} (${groups[provider].length})
+      </button>
+    `).join('');
+    $$('.provider-tab-btn').forEach(btn => btn.addEventListener('click', e => {
+      providerTab = e.currentTarget.getAttribute('data-provider-tab') || providerTab;
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    }));
+
+    const visibleProviders = providerTab ? [providerTab] : order;
+    $('#providers').innerHTML = visibleProviders.map(provider => {
       const items = groups[provider].sort((a, b) => a.id.localeCompare(b.id));
       const syncBtn = SYNCABLE.has(provider) ? `<button class="sync-btn" data-provider="${provider}">Check ${PROVIDER_LABELS[provider] || provider} for updates</button>` : '';
       const cards = items.map(item => {
         const id = item.id;
         const entry = item.entry;
         const hops = flattenHops(entry);
+        const aggregate = isAggregateModelId(id);
         const fallbackDepth = Math.max(0, hops.length - 1);
+        const fallbackCountRow = aggregate
+          ? `<div class="model-meta-row"><span class="model-meta-k">Fallbacks</span><span class="model-meta-v">${fallbackDepth}</span></div>`
+          : '';
+        const fallbackRow = aggregate
+          ? `<div class="model-meta-row"><span class="model-meta-k">Fallback order</span><span class="model-meta-v">${escapeHtml(formatFallbackOrder(hops))}</span></div>`
+          : `<div class="model-meta-row"><span class="model-meta-k">Routing</span><span class="model-meta-v">Direct provider variant</span></div>`;
         const notesLine = entry.notes ? `<div class="model-notes">${escapeHtml(entry.notes)}</div>` : '';
         const tags = item.tags.map(tag => `<button class="model-tag ${filterState.tags.has(tag) ? 'active' : ''}" type="button" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('');
         return `<div class="model-card" data-id="${escapeHtml(id)}">
@@ -688,11 +865,12 @@
             <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
             <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
             <div class="model-meta-row"><span class="model-meta-k">Family</span><span class="model-meta-v">${escapeHtml(item.family)}</span></div>
-            <div class="model-meta-row"><span class="model-meta-k">Fallbacks</span><span class="model-meta-v">${fallbackDepth}</span></div>
+            ${fallbackCountRow}
+            ${fallbackRow}
           </div>
           ${notesLine}
           <div class="model-tags">${tags}</div>
-          <div class="chain">${renderChain(entry, usageIndex)}</div>
+          <div class="chain">${renderChain(entry, usageIndex, aggregate)}</div>
         </div>`;
       }).join('');
       return `<div class="provider-group">
@@ -700,7 +878,7 @@
           <span class="pname">${PROVIDER_LABELS[provider] || provider} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span>
           ${syncBtn}
         </div>
-        <div class="sync-result" data-sync-result="${provider}" hidden></div>
+        ${renderSyncResult(provider)}
         ${cards || '<div class="empty-note">No models configured for this provider.</div>'}
       </div>`;
     }).join('');
@@ -708,6 +886,7 @@
     $$('.del-btn').forEach(btn => btn.addEventListener('click', onDeleteModel));
     $$('.edit-btn').forEach(btn => btn.addEventListener('click', e => openForm(e.target.getAttribute('data-edit'), currentModels[e.target.getAttribute('data-edit')])));
     $$('.sync-btn').forEach(btn => btn.addEventListener('click', onSync));
+    $$('.sync-item-btn').forEach(btn => btn.addEventListener('click', onSyncAction));
     $$('.model-tag').forEach(btn => btn.addEventListener('click', e => {
       const tag = e.currentTarget.getAttribute('data-tag');
       if (!tag) return;
@@ -787,17 +966,39 @@
 
   async function onSync(e) {
     const provider = e.target.getAttribute('data-provider');
-    const out = $(`[data-sync-result="${provider}"]`);
-    out.hidden = false;
-    out.textContent = 'Checking ' + (PROVIDER_LABELS[provider] || provider) + ' …';
+    if (!provider) return;
+    syncState[provider] = { loading: true };
+    renderProviders(currentModels, buildUsageIndex(lastUsageList));
     try {
       const r = await api('/admin/api/sync/' + provider);
-      let text = `Live models at ${PROVIDER_LABELS[provider] || provider}: ${r.liveCount}\n\n`;
-      text += `Newly available (${r.newlyAvailable.length}):\n` + (r.newlyAvailable.length ? r.newlyAvailable.map(m => '  + ' + m).join('\n') : '  (none)');
-      text += `\n\nConfigured here but not found live (${r.noLongerListed.length}):\n` + (r.noLongerListed.length ? r.noLongerListed.map(m => '  − ' + m).join('\n') : '  (none)');
-      out.textContent = text;
+      syncState[provider] = { loading: false, data: r };
     } catch (err) {
-      out.textContent = 'Sync failed: ' + err.message;
+      syncState[provider] = { loading: false, error: err.message };
+    }
+    renderProviders(currentModels, buildUsageIndex(lastUsageList));
+  }
+
+  async function onSyncAction(e) {
+    const provider = e.currentTarget.getAttribute('data-provider');
+    const model = e.currentTarget.getAttribute('data-model');
+    const act = e.currentTarget.getAttribute('data-sync-act');
+    if (!provider || !model || !act) return;
+    try {
+      if (act === 'add') {
+        if (!confirm(`Add "${model}" as a new ${PROVIDER_LABELS[provider] || provider} model entry?`)) return;
+        await api('/admin/api/sync/' + provider + '/add', { method: 'POST', body: { model } });
+      } else if (act === 'remove') {
+        if (!confirm(`Remove configured ${PROVIDER_LABELS[provider] || provider} hop "${model}" wherever it appears?`)) return;
+        await api('/admin/api/sync/' + provider + '/remove', { method: 'POST', body: { model } });
+      } else {
+        return;
+      }
+      await loadAll();
+      const fresh = await api('/admin/api/sync/' + provider);
+      syncState[provider] = { loading: false, data: fresh };
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    } catch (err) {
+      alert('Sync action failed: ' + err.message);
     }
   }
 
