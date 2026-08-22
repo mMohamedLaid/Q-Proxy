@@ -1,4 +1,4 @@
-// server.js - Q
+// server.js - Q-proxy
 // OpenAI-compatible router across NVIDIA NIM, Z.AI, Google, OpenRouter,
 // Literouter, MegaNova (and DeepSeek, currently disabled). Quartermaster,
 // not the agent: doesn't do the talking, just makes sure someone always
