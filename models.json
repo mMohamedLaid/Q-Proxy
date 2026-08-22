@@ -1,12 +1,4 @@
 {
-  "glm-4.7-nv": {
-    "model": "z-ai/glm4.7",
-    "provider": "nvidia",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "Thinks by default. NIM slug has no dash."
-  },
   "glm-4.7-flash-z": {
     "model": "glm-4.7-flash",
     "provider": "zai",
@@ -31,18 +23,11 @@
     "limitType": "rate-limited"
   },
   "glm-4.7": {
-    "model": "z-ai/glm4.7",
-    "provider": "nvidia",
+    "model": "glm-4.7-flash",
+    "provider": "zai",
     "thinking": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "glm-4.7-flash",
-      "provider": "zai",
-      "thinking": null,
-      "status": "active",
-      "limitType": "rate-limited"
-    }
+    "limitType": "rate-limited"
   },
   "glm-flash": {
     "model": "glm-4.7-flash",
@@ -65,7 +50,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "14K RPD, 16K TPM \u2014 buffer kept under real cap"
+    "notes": "14K RPD, 16K TPM — buffer kept under real cap"
   },
   "gemma-4-26b-g": {
     "model": "gemma-4-26b-a4b-it",
@@ -104,7 +89,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "\u26a0\ufe0f Gemma 3, not 4"
+    "notes": "⚠️ Gemma 3, not 4"
   },
   "gemma-lr": {
     "model": "gemma-free",
@@ -121,7 +106,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "Literouter left out of this chain on purpose \u2014 its Gemma slug's version isn't confirmed to actually be Gemma 4.",
+    "notes": "Literouter left out of this chain on purpose — its Gemma slug's version isn't confirmed to actually be Gemma 4.",
     "fallback": {
       "model": "google/gemma-4-31b-it",
       "provider": "nvidia",
@@ -159,7 +144,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "500/day \u2014 primary"
+    "notes": "500/day — primary"
   },
   "gemini-flash-g": {
     "model": "gemini-3-flash",
@@ -167,7 +152,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day \u2014 use sparingly"
+    "notes": "20/day — use sparingly"
   },
   "gemini-2.5-flash-g": {
     "model": "gemini-2.5-flash",
@@ -175,7 +160,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day \u2014 use sparingly"
+    "notes": "20/day — use sparingly"
   },
   "gemini-lr": {
     "model": "gemini-free",
@@ -212,45 +197,6 @@
       "limitType": "rate-limited"
     }
   },
-  "gemini-3.7-flash-mn": {
-    "model": "gemini/gemini-3.7-flash",
-    "provider": "meganova",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited",
-    "freeUntil": "2026-08-20",
-    "notes": "Free quota window ends 2026-08-20 \u2014 that's today. Bills at standard rate from 2026-08-21. Kept as a standalone pick, not wired into the 'gemini' chain, on purpose so nothing silently starts costing money once the window closes."
-  },
-  "deepseek-v4-pro-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "1M context, 40 RPM"
-  },
-  "deepseek-v4-pro-think-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
-    "thinking": "dsv4",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "deepseek-v4-flash-nv": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "1M context, faster"
-  },
-  "deepseek-v4-flash-think-nv": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
-    "thinking": "dsv4",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "deepseek-v4-lr": {
     "model": "deepseek-v4-flash-free",
     "provider": "literouter",
@@ -273,46 +219,25 @@
     "limitType": "rate-limited"
   },
   "deepseek-r1": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
-    "thinking": "dsv4",
-    "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-free",
-      "provider": "literouter",
-      "thinking": null,
-      "status": "active",
-      "limitType": "rate-limited"
-    }
-  },
-  "deepseek-v4": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
+    "model": "deepseek-free",
+    "provider": "literouter",
     "thinking": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-v4-flash-free",
-      "provider": "literouter",
-      "thinking": null,
-      "status": "active",
-      "limitType": "rate-limited"
-    }
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4": {
+    "model": "deepseek-v4-flash-free",
+    "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
   },
   "deepseek-v3": {
     "model": "deepseek-v3-0324-free",
     "provider": "literouter",
     "thinking": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-ai/deepseek-v4-flash",
-      "provider": "nvidia",
-      "thinking": null,
-      "status": "active",
-      "limitType": "rate-limited"
-    }
+    "limitType": "rate-limited"
   },
   "kimi-k2.6-nv": {
     "model": "moonshotai/kimi-k2.6",
@@ -320,7 +245,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "262K context. Worth a quick test before you rely on it \u2014 there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
+    "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
   },
   "kimi-lr": {
     "model": "kimi-k2.5-free",
@@ -349,7 +274,7 @@
     "thinking": null,
     "status": "experimental",
     "limitType": "rate-limited",
-    "notes": "UNCONFIRMED SLUG. Kimi K3 (2.8T params) released 2026-07-16. As of 2026-08-20 there's no public NIM catalog/reference page for it (unlike K2/K2.5/K2.6, which all have one) \u2014 there's an open community request thread from ~3 weeks ago asking NVIDIA to add it. This may be why it's 'hidden': NIM has a history of soft-enabling a model on the inference backend before the catalog page goes live (this exact thing happened with K2.6 \u2014 visible/callable for some accounts, 404 for others). Test this slug via the Sync button or a direct call; if it consistently 404s, it isn't live yet. Chained to your working K2.6 entry, then literouter, as a safety net.",
+    "notes": "UNCONFIRMED SLUG. Kimi K3 (2.8T params) released 2026-07-16. As of 2026-08-20 there's no public NIM catalog/reference page for it (unlike K2/K2.5/K2.6, which all have one) — there's an open community request thread from ~3 weeks ago asking NVIDIA to add it. This may be why it's 'hidden': NIM has a history of soft-enabling a model on the inference backend before the catalog page goes live (this exact thing happened with K2.6 — visible/callable for some accounts, 404 for others). Test this slug via the Sync button or a direct call; if it consistently 404s, it isn't live yet. Chained to your working K2.6 entry, then literouter, as a safety net.",
     "fallback": {
       "model": "moonshotai/kimi-k2.6",
       "provider": "nvidia",
@@ -393,20 +318,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gpt-oss-120b-or": {
-    "model": "openai/gpt-oss-120b:free",
-    "provider": "openrouter",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "gpt-oss-20b-or": {
-    "model": "openai/gpt-oss-20b:free",
-    "provider": "openrouter",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gpt-oss-120b": {
     "model": "openai/gpt-oss-120b",
     "provider": "nvidia",
@@ -434,21 +345,6 @@
       "status": "active",
       "limitType": "rate-limited"
     }
-  },
-  "qwen3-coder-or": {
-    "model": "qwen/qwen3-coder:free",
-    "provider": "openrouter",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "coding-focused"
-  },
-  "minimax-m2.5-or": {
-    "model": "minimax/minimax-m2.5:free",
-    "provider": "openrouter",
-    "thinking": null,
-    "status": "active",
-    "limitType": "rate-limited"
   },
   "nemotron-3-super-or": {
     "model": "nvidia/nemotron-3-super-120b-a12b:free",
@@ -487,7 +383,7 @@
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "near-frontier open-weight coder \u2014 56.2 SWE-bench Pro, 200K context"
+    "notes": "near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context"
   },
   "mimo-lr": {
     "model": "mimo-v2-flash-free",
@@ -528,6 +424,20 @@
   "grok-lr": {
     "model": "grok-free",
     "provider": "literouter",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-ai-deepseek-v4-flash-0731-nv": {
+    "model": "deepseek-ai/deepseek-v4-flash-0731",
+    "provider": "nvidia",
+    "thinking": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "z-ai-glm-5.2-free-or": {
+    "model": "z-ai/glm-5.2:free",
+    "provider": "openrouter",
     "thinking": null,
     "status": "active",
     "limitType": "rate-limited"
