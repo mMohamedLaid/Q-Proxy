@@ -1,16 +1,4 @@
 {
-  "glm-4.7-nv": {
-    "model": "z-ai/glm4.7",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "Thinks by default. NIM slug has no dash.",
-    "reasoning": {
-      "enable_thinking": true,
-      "clear_thinking": false
-    },
-    "reasoningSchema": "chat-template-thinking-plus-clear"
-  },
   "glm-4.7-flash-z": {
     "model": "glm-4.7-flash",
     "provider": "zai",
@@ -32,21 +20,12 @@
     "limitType": "rate-limited"
   },
   "glm-4.7": {
-    "model": "z-ai/glm4.7",
-    "provider": "nvidia",
+    "model": "glm-4.7-flash",
+    "provider": "zai",
+    "reasoningSchema": null,
+    "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "glm-4.7-flash",
-      "provider": "zai",
-      "status": "active",
-      "limitType": "rate-limited"
-    },
-    "reasoning": {
-      "enable_thinking": true,
-      "clear_thinking": false
-    },
-    "reasoningSchema": "chat-template-thinking-plus-clear"
+    "limitType": "rate-limited"
   },
   "glm-flash": {
     "model": "glm-4.7-flash",
@@ -210,48 +189,6 @@
     "freeUntil": "2026-08-20",
     "notes": "Free quota window ends 2026-08-20 — that's today. Bills at standard rate from 2026-08-21. Kept as a standalone pick, not wired into the 'gemini' chain, on purpose so nothing silently starts costing money once the window closes."
   },
-  "deepseek-v4-pro-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "1M context, 40 RPM",
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
-  },
-  "deepseek-v4-pro-think-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
-  },
-  "deepseek-v4-flash-nv": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "1M context, faster",
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
-  },
-  "deepseek-v4-flash-think-nv": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
-  },
   "deepseek-v4-lr": {
     "model": "deepseek-v4-flash-free",
     "provider": "literouter",
@@ -271,52 +208,28 @@
     "limitType": "rate-limited"
   },
   "deepseek-r1": {
-    "model": "deepseek-ai/deepseek-v4-pro",
-    "provider": "nvidia",
+    "model": "deepseek-free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    },
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
+    "limitType": "rate-limited"
   },
   "deepseek-v4": {
-    "model": "deepseek-ai/deepseek-v4-flash",
-    "provider": "nvidia",
+    "model": "deepseek-v4-flash-free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-v4-flash-free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    },
-    "reasoning": {
-      "reasoning_effort": "high"
-    },
-    "reasoningSchema": "reasoning-effort-none-high-max"
+    "limitType": "rate-limited"
   },
   "deepseek-v3": {
     "model": "deepseek-v3-0324-free",
     "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "deepseek-ai/deepseek-v4-flash",
-      "provider": "nvidia",
-      "status": "active",
-      "limitType": "rate-limited",
-      "reasoning": {
-        "reasoning_effort": "high"
-      },
-      "reasoningSchema": "reasoning-effort-none-high-max"
-    }
+    "limitType": "rate-limited"
   },
   "kimi-k2.6-nv": {
     "model": "moonshotai/kimi-k2.6",
@@ -348,23 +261,11 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "Working despite not being in the nvidia models list. (it was hidden)",
-    "fallback": {
-      "model": "moonshotai/kimi-k2.6",
-      "provider": "nvidia",
-      "status": "active",
-      "limitType": "rate-limited",
-      "fallback": {
-        "model": "kimi-k2.5-free",
-        "provider": "literouter",
-        "status": "active",
-        "limitType": "rate-limited"
-      }
-    },
+    "reasoningSchema": "reasoning-effort-low-high-max",
     "reasoning": {
       "reasoning_effort": "max"
     },
-    "reasoningSchema": "reasoning-effort-low-high-max"
+    "notes": "Working despite not being in the nvidia models list. (it was hidden)"
   },
   "gpt-oss-120b-nv": {
     "model": "openai/gpt-oss-120b",
