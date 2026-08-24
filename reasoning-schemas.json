@@ -1,0 +1,120 @@
+{
+  "chat-template-thinking-toggle": {
+    "label": "Chat template — enable_thinking",
+    "description": "Adds enable_thinking to chat_template_kwargs. Default is ON.",
+    "transport": "chat_template_kwargs",
+    "fields": {
+      "enable_thinking": {
+        "label": "Thinking",
+        "type": "boolean",
+        "default": true,
+        "description": "Explicitly enable or disable thinking for models whose chat template exposes enable_thinking."
+      }
+    },
+    "match": [
+      {
+        "provider": "nvidia",
+        "modelPrefix": "google/gemma-4-"
+      }
+    ]
+  },
+  "chat-template-thinking-plus-clear": {
+    "label": "Chat template — enable_thinking + clear_thinking",
+    "description": "Two boolean controls forwarded through chat_template_kwargs: enable_thinking and clear_thinking.",
+    "transport": "chat_template_kwargs",
+    "fields": {
+      "enable_thinking": {
+        "label": "Thinking",
+        "type": "boolean",
+        "default": true,
+        "description": "Enable or disable turn-level thinking."
+      },
+      "clear_thinking": {
+        "label": "Clear preserved thinking",
+        "type": "boolean",
+        "default": false,
+        "description": "Controls whether preserved thinking is cleared where the model/deployment supports that feature."
+      }
+    },
+    "match": [
+      {
+        "provider": "nvidia",
+        "modelPrefix": "z-ai/glm4.7"
+      }
+    ]
+  },
+  "reasoning-effort-low-high-max": {
+    "label": "Reasoning effort — low / high / max",
+    "description": "Top-level reasoning_effort with low, high, and max choices.",
+    "transport": "top_level",
+    "fields": {
+      "reasoning_effort": {
+        "label": "Reasoning effort",
+        "type": "select",
+        "options": [
+          "low",
+          "high",
+          "max"
+        ],
+        "default": "max",
+        "description": "Only use this schema when the provider/model explicitly supports these values."
+      }
+    },
+    "match": [
+      {
+        "provider": "nvidia",
+        "modelEquals": "moonshotai/kimi-k3"
+      }
+    ]
+  },
+  "reasoning-effort-none-high-max": {
+    "label": "Reasoning effort — none / high / max",
+    "description": "Top-level reasoning_effort where none disables reasoning and high/max enable it.",
+    "transport": "top_level",
+    "fields": {
+      "reasoning_effort": {
+        "label": "Reasoning effort",
+        "type": "select",
+        "options": [
+          "none",
+          "high",
+          "max"
+        ],
+        "default": "high",
+        "description": "Use none for the model's non-thinking mode."
+      }
+    },
+    "match": [
+      {
+        "provider": "nvidia",
+        "modelPrefix": "deepseek-ai/deepseek-v4-"
+      }
+    ]
+  },
+  "raw-chat-template-kwargs": {
+    "label": "Raw — chat_template_kwargs",
+    "description": "Escape hatch for a model/template whose chat-template parameters are not yet worth turning into structured controls.",
+    "transport": "chat_template_kwargs",
+    "fields": {
+      "__raw": {
+        "label": "chat_template_kwargs JSON",
+        "type": "json",
+        "default": {},
+        "description": "Enter the object that should be sent as chat_template_kwargs."
+      }
+    }
+  },
+  "raw-top-level": {
+    "label": "Raw — top-level request fields",
+    "description": "Escape hatch for provider/model parameters that belong directly in the request body.",
+    "transport": "top_level",
+    "fields": {
+      "__raw": {
+        "label": "Top-level JSON",
+        "type": "json",
+        "default": {},
+        "description": "Enter request fields that should be merged into the chat-completions body."
+      }
+    }
+  }
+}
