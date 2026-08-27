@@ -418,7 +418,7 @@
   "limitType": "rate-limited",
   "reasoningSchema": "chat-template-thinking-boolean",
   "reasoning": {
-    "thinking": false
+    "thinking": true
   },
   "notes": "NVIDIA NIM variant of DeepSeek V4 Pro. Uses chat_template_kwargs.thinking (boolean)."
 }
