@@ -943,19 +943,28 @@
     } catch (err) { alert('Could not remove: ' + err.message); }
   }
 
-  async function onSync(e) {
+async function onSync(e) {
     const provider = e.target.getAttribute('data-provider');
     if (!provider) return;
+
+    // If already synced and not loading, hide it by clearing state
+    const state = syncState[provider];
+    if (state && !state.loading && state.data) {
+        delete syncState[provider];
+        renderProviders(currentModels, buildUsageIndex(lastUsageList));
+        return;
+    }
+
     syncState[provider] = { loading: true };
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
     try {
-      const r = await api('/admin/api/sync/' + provider);
-      syncState[provider] = { loading: false, data: r };
+        const r = await api('/admin/api/sync/' + provider);
+        syncState[provider] = { loading: false, data: r };
     } catch (err) {
-      syncState[provider] = { loading: false, error: err.message };
+        syncState[provider] = { loading: false, error: err.message };
     }
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
-  }
+}
 
   async function onSyncAction(e) {
     const provider = e.currentTarget.getAttribute('data-provider');
