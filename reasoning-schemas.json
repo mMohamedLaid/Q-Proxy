@@ -1,4 +1,22 @@
-{
+{"chat-template-thinking-boolean": {
+  "label": "Chat template — thinking (boolean)",
+  "description": "Passes a boolean 'thinking' flag via chat_template_kwargs. Used by some NVIDIA NIM models.",
+  "transport": "chat_template_kwargs",
+  "fields": {
+    "thinking": {
+      "label": "Thinking",
+      "type": "boolean",
+      "default": true,
+      "description": "Enable or disable thinking for models that support this flag."
+    }
+  },
+  "match": [
+    {
+      "provider": "nvidia",
+      "modelEquals": "deepseek-ai/deepseek-v4-pro-0813"
+    }
+  ]
+}
   "chat-template-thinking-toggle": {
     "label": "Chat template — enable_thinking",
     "description": "Adds enable_thinking to chat_template_kwargs. Default is ON.",
