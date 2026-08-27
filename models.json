@@ -411,4 +411,15 @@
     "status": "active",
     "limitType": "rate-limited"
   }
+  "deepseek-v4-pro-0813-nv": {
+  "model": "deepseek-ai/deepseek-v4-pro-0813",
+  "provider": "nvidia",
+  "status": "active",
+  "limitType": "rate-limited",
+  "reasoningSchema": "chat-template-thinking-boolean",
+  "reasoning": {
+    "thinking": false
+  },
+  "notes": "NVIDIA NIM variant of DeepSeek V4 Pro. Uses chat_template_kwargs.thinking (boolean)."
+}
 }
