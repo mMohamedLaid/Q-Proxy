@@ -1,23 +1,4 @@
 {
-  "chat-template-thinking-boolean": {
-    "label": "Chat template — thinking (boolean)",
-    "description": "Passes a boolean 'thinking' flag via chat_template_kwargs. Used by some NVIDIA NIM models.",
-    "transport": "chat_template_kwargs",
-    "fields": {
-      "thinking": {
-        "label": "Thinking",
-        "type": "boolean",
-        "default": true,
-        "description": "Enable or disable thinking for models that support this flag."
-      }
-    },
-    "match": [
-      {
-        "provider": "nvidia",
-        "modelEquals": "deepseek-ai/deepseek-v4-pro-0813"
-      }
-    ]
-  },
   "chat-template-thinking-toggle": {
     "label": "Chat template — enable_thinking",
     "description": "Adds enable_thinking to chat_template_kwargs. Default is ON.",
@@ -62,40 +43,29 @@
       }
     ]
   },
-  "reasoning-effort-low-high-max": {
-    "label": "Reasoning effort — low / high / max",
-    "description": "Top-level reasoning_effort with low, high, and max choices.",
+  "reasoning-effort-select": {
+    "label": "Reasoning effort (options set per model)",
+    "description": "Top-level reasoning_effort. Different models accept different value sets (low/high/max, none/high/max, low/medium/high/xhigh, etc.) — the schema just fixes the wire shape (a single top-level 'reasoning_effort' string); the actual allowed values are curated per model in the Admin panel, not baked in here.",
     "transport": "top_level",
     "fields": {
       "reasoning_effort": {
         "label": "Reasoning effort",
         "type": "select",
-        "options": ["low", "high", "max"],
+        "optionsPerHop": true,
+        "defaultOptions": [
+          "low",
+          "high",
+          "max"
+        ],
         "default": "max",
-        "description": "Only use this schema when the provider/model explicitly supports these values."
+        "description": "Pick a value from this model's option list, or choose Custom to type a value that isn't listed yet. Nothing is sent for this field until a value is actually picked or typed."
       }
     },
     "match": [
       {
         "provider": "nvidia",
         "modelEquals": "moonshotai/kimi-k3"
-      }
-    ]
-  },
-  "reasoning-effort-none-high-max": {
-    "label": "Reasoning effort — none / high / max",
-    "description": "Top-level reasoning_effort where none disables reasoning and high/max enable it.",
-    "transport": "top_level",
-    "fields": {
-      "reasoning_effort": {
-        "label": "Reasoning effort",
-        "type": "select",
-        "options": ["none", "high", "max"],
-        "default": "high",
-        "description": "Use none for the model's non-thinking mode."
-      }
-    },
-    "match": [
+      },
       {
         "provider": "nvidia",
         "modelPrefix": "deepseek-ai/deepseek-v4-"
