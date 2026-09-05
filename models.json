@@ -263,7 +263,11 @@
     "limitType": "rate-limited",
     "reasoningSchema": "reasoning-effort-select",
     "reasoningFieldOptions": {
-      "reasoning_effort": ["low", "high", "max"]
+      "reasoning_effort": [
+        "low",
+        "high",
+        "max"
+      ]
     },
     "reasoning": {
       "reasoning_effort": "max"
@@ -411,6 +415,14 @@
   "grok-lr": {
     "model": "grok-free",
     "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-ai-deepseek-v4-pro-0813-nv": {
+    "model": "deepseek-ai/deepseek-v4-pro-0813",
+    "provider": "nvidia",
+    "reasoningSchema": "reasoning-effort-select",
+    "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
   }
