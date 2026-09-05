@@ -424,6 +424,16 @@
   </section>
 
   <section>
+    <div class="section-head">
+      <h2>Reasoning schemas</h2>
+      <span class="count" id="schema-count"></span>
+    </div>
+    <div id="schema-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+    <button type="button" class="btn-secondary" id="schema-new-btn">+ New schema (raw JSON)</button>
+    <div id="schema-editor" hidden></div>
+  </section>
+
+  <section>
     <button id="add-form-toggle">+ Add a model</button>
     <div id="add-model-panel" hidden></div>
   </section>
@@ -598,8 +608,21 @@
     $('#stats').innerHTML = stats.map(s => `<div class="stat"><div class="n">${s.n}</div><div class="l">${s.l}</div></div>`).join('');
   }
 
-  function renderWarnings(models) {
+  function renderWarnings(models, githubStatus) {
     const items = [];
+    if (githubStatus && !githubStatus.enabled) {
+      items.push({
+        cls: 'experimental',
+        id: 'GitHub sync',
+        msg: 'GITHUB_TOKEN/GITHUB_REPO are not set — edits made here only live on local disk and will be LOST the next time Render restarts this service. Set both env vars to back edits up to your repo automatically.'
+      });
+    } else if (githubStatus && githubStatus.enabled) {
+      items.push({
+        cls: '',
+        id: 'GitHub sync',
+        msg: `Edits here are committed to ${githubStatus.repo}@${githubStatus.branch} automatically — safe across restarts.`
+      });
+    }
     Object.entries(models).forEach(([id, entry]) => {
       flattenHops(entry).forEach((hop, i) => {
         const label = i === 0 ? id : `${id} → fallback (${hop.provider})`;
@@ -943,28 +966,19 @@
     } catch (err) { alert('Could not remove: ' + err.message); }
   }
 
-async function onSync(e) {
+  async function onSync(e) {
     const provider = e.target.getAttribute('data-provider');
     if (!provider) return;
-
-    // If already synced and not loading, hide it by clearing state
-    const state = syncState[provider];
-    if (state && !state.loading && state.data) {
-        delete syncState[provider];
-        renderProviders(currentModels, buildUsageIndex(lastUsageList));
-        return;
-    }
-
     syncState[provider] = { loading: true };
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
     try {
-        const r = await api('/admin/api/sync/' + provider);
-        syncState[provider] = { loading: false, data: r };
+      const r = await api('/admin/api/sync/' + provider);
+      syncState[provider] = { loading: false, data: r };
     } catch (err) {
-        syncState[provider] = { loading: false, error: err.message };
+      syncState[provider] = { loading: false, error: err.message };
     }
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
-}
+  }
 
   async function onSyncAction(e) {
     const provider = e.currentTarget.getAttribute('data-provider');
@@ -1000,19 +1014,145 @@ async function onSync(e) {
   let editingId = null; // null = adding new; string = editing that id (id locked)
 
   function emptyHop() {
-    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', timeoutMs: '', freeUntil: '', deprecatedOn: '' };
+    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', timeoutMs: '', freeUntil: '', deprecatedOn: '' };
   }
 
   function normalizeReasoningForSchema(h) {
     const schema = reasoningSchemas[h.reasoningSchema];
     if (!schema) { h.reasoning = {}; return; }
     h.reasoning = h.reasoning && typeof h.reasoning === 'object' ? h.reasoning : {};
+    h.reasoningFieldOptions = h.reasoningFieldOptions && typeof h.reasoningFieldOptions === 'object' ? h.reasoningFieldOptions : {};
     for (const [key, field] of Object.entries(schema.fields || {})) {
       if (h.reasoning[key] === undefined && field.default !== undefined) {
         h.reasoning[key] = field.type === 'json' ? JSON.parse(JSON.stringify(field.default)) : field.default;
       }
+      // Options for this field are curated per model, not fixed by the
+      // schema. Seed this hop's own list from the schema's suggested
+      // starting point only the first time — after that it's this hop's
+      // own list to edit, independent of every other model on the schema.
+      if (field.optionsPerHop && !Array.isArray(h.reasoningFieldOptions[key])) {
+        h.reasoningFieldOptions[key] = Array.isArray(field.defaultOptions) ? [...field.defaultOptions] : [];
+      }
     }
   }
+
+  // Switching a hop's reasoningSchema used to always reset `reasoning` to
+  // {} — including when switching TO a raw escape-hatch schema, which
+  // defeats the entire point of "paste what's already here and hand-edit
+  // it". This carries values forward instead:
+  //  - switching to a raw (__raw) schema seeds it with whatever the hop's
+  //    current `reasoning` object already contains, verbatim
+  //  - switching to another structured schema keeps any same-named fields
+  //    and lets normalizeReasoningForSchema fill in defaults for the rest
+  //  - switching to "no override" clears it, since there's nothing to keep
+  function switchReasoningSchema(h, newSchemaId) {
+    const oldReasoning = (h.reasoning && typeof h.reasoning === 'object') ? h.reasoning : {};
+    h.reasoningSchema = newSchemaId;
+    const newSchema = reasoningSchemas[newSchemaId];
+    if (!newSchema) { h.reasoning = {}; return; }
+    const newFieldKeys = Object.keys(newSchema.fields || {});
+    if (newFieldKeys.length === 1 && newFieldKeys[0] === '__raw') {
+      // Raw escape hatch: seed with the old reasoning object directly so
+      // it's immediately editable, not blank.
+      const seed = ('__raw' in oldReasoning) ? oldReasoning.__raw : oldReasoning;
+      h.reasoning = { __raw: (seed && typeof seed === 'object') ? seed : {} };
+      return;
+    }
+    const carried = {};
+    for (const key of newFieldKeys) {
+      if (oldReasoning[key] !== undefined) carried[key] = oldReasoning[key];
+    }
+    h.reasoning = carried;
+    normalizeReasoningForSchema(h);
+  }
+
+  // ---------- Reasoning schema management ----------
+  // This is deliberately a raw-JSON editor, not a field-by-field form
+  // builder: the whole reason schemas felt unmanageable is that trying to
+  // make every shape (booleans, effort enums, raw blobs) fit one generic
+  // UI is what got messy. Text you can paste, tweak, and save is the
+  // actual escape hatch — for schemas themselves, not just per-model
+  // reasoning values.
+  function renderSchemaList() {
+    const root = $('#schema-list');
+    const entries = Object.entries(reasoningSchemas);
+    $('#schema-count').textContent = entries.length + ' schema' + (entries.length === 1 ? '' : 's');
+    if (!entries.length) {
+      root.innerHTML = '<div style="color:var(--text-faint);font-size:12px;">No schemas defined yet.</div>';
+      return;
+    }
+    root.innerHTML = entries.map(([id, schema]) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:12.5px;">${escapeHtml(id)}</div>
+          <div style="font-size:11px;color:var(--text-faint);">${escapeHtml(schema.label || '')} — ${escapeHtml(schema.transport || '')} — fields: ${escapeHtml(Object.keys(schema.fields || {}).join(', ') || 'none')}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button type="button" class="btn-secondary schema-edit-btn" data-id="${escapeHtml(id)}">Edit</button>
+          <button type="button" class="btn-secondary schema-dup-btn" data-id="${escapeHtml(id)}">Duplicate</button>
+          <button type="button" class="hop-mini-btn remove schema-del-btn" data-id="${escapeHtml(id)}" title="Delete">✕</button>
+        </div>
+      </div>
+    `).join('');
+
+    $$('.schema-edit-btn', root).forEach(b => b.addEventListener('click', () => openSchemaEditor(b.dataset.id, reasoningSchemas[b.dataset.id], false)));
+    $$('.schema-dup-btn', root).forEach(b => b.addEventListener('click', () => openSchemaEditor(b.dataset.id + '-copy', reasoningSchemas[b.dataset.id], true)));
+    $$('.schema-del-btn', root).forEach(b => b.addEventListener('click', async () => {
+      if (!confirm(`Delete schema "${b.dataset.id}"? This fails if any model still uses it.`)) return;
+      try {
+        await api('/admin/api/reasoning-schemas/' + encodeURIComponent(b.dataset.id), { method: 'DELETE' });
+        await loadAll();
+      } catch (err) { alert('Could not delete: ' + err.message); }
+    }));
+  }
+
+  function openSchemaEditor(id, schema, isNewOrDuplicate) {
+    const panel = $('#schema-editor');
+    panel.hidden = false;
+    const bodyJson = JSON.stringify(schema || {
+      label: '', description: '', transport: 'chat_template_kwargs',
+      fields: { enable_thinking: { label: 'Thinking', type: 'boolean', default: true } }
+    }, null, 2);
+    panel.innerHTML = `
+      <div class="form-grid" style="margin-top:10px;">
+        <div class="field"><label>Schema ID</label><input type="text" id="schema-id-input" value="${escapeHtml(id)}" ${isNewOrDuplicate ? '' : 'readonly style="opacity:.6"'}></div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Schema JSON (label, description, transport, fields, optional match rules)</label>
+          <textarea id="schema-json-input" rows="14" style="font-family:var(--font-mono);font-size:12px;width:100%;resize:vertical;">${escapeHtml(bodyJson)}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" style="width:auto;" id="schema-save-btn">Save schema</button>
+        <button class="btn-secondary" id="schema-cancel-btn">Cancel</button>
+      </div>
+      <div id="schema-editor-status" style="margin-top:6px;font-size:12px;"></div>
+    `;
+    $('#schema-save-btn').addEventListener('click', async () => {
+      const status = $('#schema-editor-status');
+      const newId = $('#schema-id-input').value.trim();
+      if (!newId) { status.style.color = 'var(--broken)'; status.textContent = 'Schema ID is required.'; return; }
+      let parsed;
+      try { parsed = JSON.parse($('#schema-json-input').value); }
+      catch (e) { status.style.color = 'var(--broken)'; status.textContent = 'Invalid JSON: ' + e.message; return; }
+      try {
+        const result = await api('/admin/api/reasoning-schemas', { method: 'POST', body: { id: newId, schema: parsed } });
+        const syncFailed = result.githubSync && result.githubSync.ok === false && !result.githubSync.skipped;
+        status.style.color = syncFailed ? 'var(--broken)' : 'var(--free)';
+        status.textContent = syncFailed
+          ? `Saved "${newId}" locally, but GitHub sync failed (${result.githubSync.error || 'unknown error'}) — this WILL be lost on the next restart.`
+          : `Saved "${newId}".`;
+        await loadAll();
+        if (!syncFailed) setTimeout(() => { panel.hidden = true; }, 700);
+      } catch (err) {
+        status.style.color = 'var(--broken)';
+        status.textContent = 'Could not save: ' + err.message;
+      }
+    });
+    $('#schema-cancel-btn').addEventListener('click', () => { panel.hidden = true; });
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('#schema-new-btn').addEventListener('click', () => openSchemaEditor('', null, true));
 
   function autoReasoningSchema(h) {
     if (h.reasoningSchema) return h.reasoningSchema;
@@ -1037,6 +1177,7 @@ async function onSync(e) {
       hops.push({
         model: cur.model || '', provider: cur.provider || 'nvidia', reasoningSchema,
         reasoning: cur.reasoning && typeof cur.reasoning === 'object' ? JSON.parse(JSON.stringify(cur.reasoning)) : {},
+        reasoningFieldOptions: cur.reasoningFieldOptions && typeof cur.reasoningFieldOptions === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldOptions)) : {},
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
         tpmLimit: cur.tpmLimit ?? '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || ''
       });
@@ -1054,6 +1195,9 @@ async function onSync(e) {
       if (h.reasoningSchema) {
         entry.reasoningSchema = h.reasoningSchema;
         entry.reasoning = { ...(h.reasoning || {}) };
+        if (h.reasoningFieldOptions && Object.keys(h.reasoningFieldOptions).length) {
+          entry.reasoningFieldOptions = JSON.parse(JSON.stringify(h.reasoningFieldOptions));
+        }
       }
       if (h.notes && h.notes.trim()) entry.notes = h.notes.trim();
       if (h.tpmLimit !== '' && h.tpmLimit != null) entry.tpmLimit = parseInt(h.tpmLimit, 10);
@@ -1117,6 +1261,26 @@ async function onSync(e) {
       const desc = field.description ? `<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">${escapeHtml(field.description)}</div>` : '';
       if (field.type === 'boolean') {
         rows.push(`<div class="field"><label>${escapeHtml(label)}</label><select data-rf="${escapeHtml(key)}" data-idx="${i}"><option value="true" ${value === true ? 'selected' : ''}>ON</option><option value="false" ${value === false ? 'selected' : ''}>OFF</option></select>${desc}</div>`);
+      } else if (field.type === 'select' && field.optionsPerHop) {
+        // Same schema (same wire shape/param name), but each model can
+        // support a different set of values — the option list lives on
+        // this hop, not the schema. "Custom…" covers a value that isn't
+        // in the list yet, and stays a no-op until something is typed.
+        const optionList = Array.isArray(h.reasoningFieldOptions?.[key]) ? h.reasoningFieldOptions[key] : (field.defaultOptions || []);
+        const currentValue = h.reasoning[key];
+        const isKnown = currentValue !== undefined && currentValue !== '' && optionList.map(String).includes(String(currentValue));
+        const selectOptions = optionList.map(opt => `<option value="${escapeHtml(opt)}" ${String(currentValue) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')
+          + `<option value="__custom__" ${!isKnown ? 'selected' : ''}>Custom…</option>`;
+        rows.push(`<div class="field">
+          <label>${escapeHtml(label)}</label>
+          <select data-rf="${escapeHtml(key)}" data-idx="${i}">${selectOptions}</select>
+          ${!isKnown ? `<input type="text" data-rf-custom="${escapeHtml(key)}" data-idx="${i}" placeholder="Type a value for this model" value="${escapeHtml(currentValue || '')}" style="margin-top:6px;">` : ''}
+          <div style="margin-top:6px;">
+            <label style="font-size:10px;color:var(--text-faint);">Values this model accepts (comma-separated)</label>
+            <input type="text" data-rfopt="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(optionList.join(', '))}">
+          </div>
+          ${desc}
+        </div>`);
       } else if (field.type === 'select') {
         rows.push(`<div class="field"><label>${escapeHtml(label)}</label><select data-rf="${escapeHtml(key)}" data-idx="${i}">${(field.options || []).map(opt => `<option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}</select>${desc}</div>`);
       } else if (field.type === 'number') {
@@ -1166,22 +1330,22 @@ async function onSync(e) {
       el.addEventListener('input', e => {
         const idx = +e.target.dataset.idx;
         const field = e.target.dataset.f;
-        hopState[idx][field] = e.target.value;
         if (field === 'reasoningSchema') {
-          hopState[idx].reasoning = {};
-          normalizeReasoningForSchema(hopState[idx]);
+          switchReasoningSchema(hopState[idx], e.target.value);
           renderHopList();
+          return;
         }
+        hopState[idx][field] = e.target.value;
       });
       el.addEventListener('change', e => {
         const idx = +e.target.dataset.idx;
         const field = e.target.dataset.f;
-        hopState[idx][field] = e.target.value;
         if (field === 'reasoningSchema') {
-          hopState[idx].reasoning = {};
-          normalizeReasoningForSchema(hopState[idx]);
+          switchReasoningSchema(hopState[idx], e.target.value);
           renderHopList();
+          return;
         }
+        hopState[idx][field] = e.target.value;
       });
     });
 
@@ -1196,8 +1360,32 @@ async function onSync(e) {
         else if (field?.type === 'json') {
           try { value = JSON.parse(value); e.target.style.borderColor = ''; }
           catch (_) { e.target.style.borderColor = 'var(--broken)'; return; }
+        } else if (field?.optionsPerHop) {
+          // The sentinel from "Custom…" means: nothing is sent for this
+          // field until a real value is typed into the box that appears.
+          value = (value === '__custom__') ? '' : value;
         }
         hopState[idx].reasoning[key] = value;
+        if (field?.optionsPerHop) renderHopList();
+      });
+    });
+
+    $$('#hop-list [data-rf-custom]').forEach(el => {
+      el.addEventListener('input', e => {
+        const idx = +e.target.dataset.idx;
+        const key = e.target.dataset.rfCustom;
+        hopState[idx].reasoning[key] = e.target.value;
+      });
+    });
+
+    $$('#hop-list [data-rfopt]').forEach(el => {
+      el.addEventListener('change', e => {
+        const idx = +e.target.dataset.idx;
+        const key = e.target.dataset.rfopt;
+        const list = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+        hopState[idx].reasoningFieldOptions = hopState[idx].reasoningFieldOptions || {};
+        hopState[idx].reasoningFieldOptions[key] = list;
+        renderHopList();
       });
     });
 
@@ -1217,11 +1405,14 @@ async function onSync(e) {
     if (!hopState[0].model.trim()) { status.style.color = 'var(--broken)'; status.textContent = 'Primary model slug is required.'; return; }
     const entry = nestHops(hopState);
     try {
-      await api('/admin/api/models', { method: 'POST', body: { id, entry } });
-      status.style.color = 'var(--free)';
-      status.textContent = `Saved "${id}".`;
+      const result = await api('/admin/api/models', { method: 'POST', body: { id, entry } });
+      const syncFailed = result.githubSync && result.githubSync.ok === false && !result.githubSync.skipped;
+      status.style.color = syncFailed ? 'var(--broken)' : 'var(--free)';
+      status.textContent = syncFailed
+        ? `Saved "${id}" locally, but GitHub sync failed (${result.githubSync.error || 'unknown error'}) — this WILL be lost on the next restart.`
+        : `Saved "${id}".`;
       await loadAll();
-      setTimeout(closeForm, 800);
+      if (!syncFailed) setTimeout(closeForm, 800);
     } catch (err) {
       status.style.color = 'var(--broken)';
       status.textContent = 'Could not save: ' + err.message;
@@ -1231,15 +1422,21 @@ async function onSync(e) {
   $('#add-form-toggle').addEventListener('click', () => openForm(null, null));
 
   // ---------- load ----------
+  let githubSyncEnabled = true; // optimistic until checked, so we don't flash a false warning
+
   async function loadAll() {
-    const [modelsRes, usageRes, profileRes] = await Promise.all([api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas')]);
+    const [modelsRes, usageRes, profileRes, githubRes] = await Promise.all([
+      api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status')
+    ]);
     currentModels = modelsRes.models;
     reasoningSchemas = profileRes.schemas || {};
+    renderSchemaList();
     lastUsageList = usageRes.providerUsage || [];
     renderFilterControls(modelsRes.models);
     const usageIndex = buildUsageIndex(usageRes.providerUsage);
     renderStats(modelsRes.models);
-    renderWarnings(modelsRes.models);
+    githubSyncEnabled = Boolean(githubRes?.enabled);
+    renderWarnings(modelsRes.models, githubRes);
     renderProviders(modelsRes.models, usageIndex);
     renderUsage(usageRes);
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
