@@ -242,7 +242,7 @@ function estimateTokens(messages) {
 const MODELS_PATH = path.join(__dirname, 'models.json');
 const REASONING_SCHEMAS_PATH = path.join(__dirname, 'reasoning-schemas.json');
 
-function loadReasoningSchemas() {
+function loadReasoningSchemasFromDisk() {
   try {
     return JSON.parse(fs.readFileSync(REASONING_SCHEMAS_PATH, 'utf8'));
   } catch (e) {
@@ -250,21 +250,12 @@ function loadReasoningSchemas() {
   }
 }
 
-const REASONING_SCHEMAS = loadReasoningSchemas();
-
 // Model config now lives in models.json instead of hardcoded here, so the
 // admin panel (see ADMIN ROUTES below) can add/edit/remove models without
 // a redeploy — same "just change it, no redeploy" philosophy as the key
-// rotation below. loadModels() re-reads from disk; saveModels() persists
-// admin edits back to it.
-//
-// NOTE ON PERSISTENCE: on Render, a Free web service has no persistent
-// disk at all — any change written here is lost on the next restart or
-// redeploy, same as the in-memory counters below always have been. On a
-// paid Render plan you can attach a Disk (Render Docs > Persistent Disks)
-// and mount it over this file's directory to make admin edits durable.
-// Without that, treat admin edits as living until the next restart.
-function loadModels() {
+// rotation below. loadModelsFromDisk() re-reads from disk; saveModels()
+// persists admin edits back to it (and to GitHub, see below).
+function loadModelsFromDisk() {
   try {
     const raw = fs.readFileSync(MODELS_PATH, 'utf8');
     return JSON.parse(raw);
@@ -273,11 +264,145 @@ function loadModels() {
   }
 }
 
-function saveModels(mapping) {
-  fs.writeFileSync(MODELS_PATH, JSON.stringify(mapping, null, 2));
+// Bound but populated after the GitHub boot sync below (see
+// bootstrapConfigAndStart) — REASONING_SCHEMAS stays a stable object
+// reference (mutated in place) so every existing `REASONING_SCHEMAS[x]`
+// read/write elsewhere in this file keeps working untouched; MODEL_MAPPING
+// is reassigned wholesale on load/reload, same as before.
+const REASONING_SCHEMAS = {};
+let MODEL_MAPPING = {};
+
+// ============================================================
+// GITHUB SYNC (optional, free) — makes admin-panel edits survive a
+// restart on Render's Free tier.
+//
+// Render's Free web services have NO persistent disk: every restart
+// (crash, redeploy, or Render just cycling the instance) boots a fresh
+// container from the last *deployed* image, not from whatever
+// fs.writeFileSync left lying around. So admin edits used to live only
+// until the next restart, exactly as the old comment here warned.
+//
+// If GITHUB_TOKEN + GITHUB_REPO are set (both free — a GitHub personal
+// access token costs nothing), every admin save is committed straight to
+// that repo, and on boot the server pulls the latest committed copy
+// before falling back to whatever's baked into the deploy image. No paid
+// disk, no external database, no new service to pay for.
+//
+// Required env vars to enable this:
+//   GITHUB_TOKEN   - a fine-grained PAT scoped to this one repo,
+//                    Contents: Read and write
+//   GITHUB_REPO    - "your-username/your-repo-name"
+// Optional:
+//   GITHUB_BRANCH        - defaults to "main"
+//   GITHUB_MODELS_PATH   - defaults to "models.json"
+//   GITHUB_SCHEMAS_PATH  - defaults to "reasoning-schemas.json"
+//
+// If these aren't set, Q-Proxy runs exactly as before — local-disk-only,
+// edits lost on restart — and logs a warning on boot so that's obvious
+// rather than a silent surprise the next time the free instance recycles.
+// ============================================================
+const GITHUB_TOKEN        = process.env.GITHUB_TOKEN || '';
+const GITHUB_REPO         = process.env.GITHUB_REPO || '';
+const GITHUB_BRANCH       = process.env.GITHUB_BRANCH || 'main';
+const GITHUB_MODELS_PATH  = process.env.GITHUB_MODELS_PATH || 'models.json';
+const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schemas.json';
+const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
+
+function githubHeaders() {
+  return {
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'q-proxy-admin',
+  };
 }
 
-let MODEL_MAPPING = loadModels();
+async function githubFetchFile(repoPath) {
+  const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(repoPath)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
+  const res = await axios.get(url, { headers: githubHeaders(), validateStatus: () => true });
+  if (res.status === 404) return null;
+  if (res.status !== 200) throw new Error(`GitHub GET ${repoPath} failed: ${res.status} ${JSON.stringify(res.data)}`);
+  return { sha: res.data.sha, content: Buffer.from(res.data.content, 'base64').toString('utf8') };
+}
+
+// Commits a file to the repo. Fetches the current sha first (GitHub's
+// Contents API requires it for updating an existing file); if that check
+// fails we still attempt the write, since a brand-new file needs no sha
+// and GitHub will just reject it with a clear error otherwise.
+async function githubPutFile(repoPath, contentString, message) {
+  const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(repoPath)}`;
+  let sha;
+  try {
+    const existing = await githubFetchFile(repoPath);
+    sha = existing ? existing.sha : undefined;
+  } catch (_) { /* fall through and let GitHub's own error surface below */ }
+  const res = await axios.put(url, {
+    message,
+    content: Buffer.from(contentString, 'utf8').toString('base64'),
+    branch: GITHUB_BRANCH,
+    ...(sha ? { sha } : {}),
+  }, { headers: githubHeaders(), validateStatus: () => true });
+  if (res.status !== 200 && res.status !== 201) {
+    throw new Error(`GitHub PUT ${repoPath} failed: ${res.status} ${JSON.stringify(res.data)}`);
+  }
+  return res.data;
+}
+
+// Pulls the latest committed config from GitHub down onto local disk
+// before the server loads it, so a freshly-booted container starts from
+// the last saved admin state instead of the code deploy's baked-in copy.
+async function syncConfigFromGitHubOnBoot() {
+  if (!GITHUB_SYNC_ENABLED) {
+    log('WARN', 'GITHUB_TOKEN/GITHUB_REPO not set — admin panel edits will NOT survive a restart on Render Free. See README > Persistence.');
+    return;
+  }
+  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH]]) {
+    try {
+      const remote = await githubFetchFile(repoPath);
+      if (remote) {
+        JSON.parse(remote.content); // sanity-check before overwriting the local copy
+        fs.writeFileSync(localPath, remote.content);
+        log('INFO', `[github-sync] pulled latest ${repoPath} from ${GITHUB_REPO}@${GITHUB_BRANCH} on boot`);
+      } else {
+        log('WARN', `[github-sync] ${repoPath} not found in ${GITHUB_REPO}@${GITHUB_BRANCH} — using the copy baked into this deploy instead`);
+      }
+    } catch (e) {
+      log('WARN', `[github-sync] could not pull ${repoPath} from GitHub on boot (${e.message}) — using the copy baked into this deploy instead`);
+    }
+  }
+}
+
+// Pushes a local save up to GitHub. Never throws — a GitHub outage or bad
+// token should not stop the local save from succeeding; callers get a
+// { ok, error } result back so the admin UI can show "saved locally, but
+// GitHub sync failed" instead of silently losing the change on next restart.
+async function githubSyncFile(repoPath, contentString, message) {
+  if (!GITHUB_SYNC_ENABLED) return { ok: false, skipped: true };
+  try {
+    await githubPutFile(repoPath, contentString, message);
+    return { ok: true };
+  } catch (e) {
+    log('WARN', `[github-sync] push of ${repoPath} failed: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+// Writes models.json/reasoning-schemas.json locally, then (if GitHub sync
+// is configured) pushes the same content to the repo. The local write
+// still throws on failure — that's a real problem and the request should
+// fail. The GitHub push never throws; its result is returned so callers
+// can tell the admin "saved, but not backed up to GitHub" instead of that
+// failing silently until the next restart wipes the local-only change.
+async function saveModels(mapping, commitMessage) {
+  const json = JSON.stringify(mapping, null, 2);
+  fs.writeFileSync(MODELS_PATH, json);
+  return githubSyncFile(GITHUB_MODELS_PATH, json, commitMessage || 'Q-Proxy admin: update models.json');
+}
+
+async function saveReasoningSchemas(commitMessage) {
+  const json = JSON.stringify(REASONING_SCHEMAS, null, 2);
+  fs.writeFileSync(REASONING_SCHEMAS_PATH, json);
+  return githubSyncFile(GITHUB_SCHEMAS_PATH, json, commitMessage || 'Q-Proxy admin: update reasoning-schemas.json');
+}
 
 // ============================================================
 // PROVIDER CONFIG
@@ -289,6 +414,23 @@ function getProviderConfig(provider) {
     case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: getNextOpenRouterKey() };
     case 'literouter': return { base: 'https://api.literouter.com/v1',               key: getNextLiterouterKey() };
+    case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+    default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
+  }
+}
+
+// Same base-URL resolution as getProviderConfig, but never advances the
+// OpenRouter/Literouter rotation counters. Use this anywhere a key is
+// needed just to make a housekeeping call (e.g. admin catalog sync) that
+// isn't a real chat completion — otherwise every sync check silently
+// eats into OpenRouter's real 50/day/key budget for nothing.
+function getProviderConfigReadOnly(provider) {
+  switch (provider) {
+    case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                key: ZAI_API_KEY };
+    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_API_KEY };
+    case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
+    case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: OPENROUTER_KEYS[0] };
+    case 'literouter': return { base: 'https://api.literouter.com/v1',               key: LITEROUTER_KEYS[0] };
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
@@ -313,15 +455,32 @@ function getReasoningBody(providerConfig) {
 
   const values = {};
   for (const [fieldName, field] of Object.entries(schema.fields || {})) {
-    let value = configured[fieldName];
+    const rawValue = configured[fieldName];
+
+    // An explicitly blank value means "Custom was picked for this field but
+    // nothing has been typed yet" — send nothing for it rather than
+    // silently falling back to the schema's default. Nothing should
+    // override the provider's own behavior until a real value is picked.
+    if (rawValue === '') continue;
+
+    let value = rawValue;
     if (value === undefined) value = field.default;
     if (value === undefined) continue;
 
     if (field.type === 'boolean') {
       if (typeof value === 'string') value = value.toLowerCase() === 'true';
       value = Boolean(value);
-    } else if (field.type === 'select' && Array.isArray(field.options) && !field.options.includes(value)) {
-      value = field.default;
+    } else if (field.type === 'select') {
+      if (field.optionsPerHop) {
+        // This field's valid values are curated per model (in the hop's
+        // reasoningFieldOptions), not fixed by the schema — e.g. one model
+        // supports low/high/max, another supports none/medium/high. Trust
+        // whatever value the admin configured or typed in for this
+        // specific hop instead of clamping against a schema-wide list.
+        value = String(value);
+      } else if (Array.isArray(field.options) && !field.options.includes(value)) {
+        value = field.default;
+      }
     } else if (field.type === 'json') {
       if (typeof value === 'string') {
         try { value = JSON.parse(value); } catch { value = field.default ?? {}; }
@@ -400,6 +559,10 @@ async function makeAPICall(mapping, nimRequest, stream) {
 
   let lastError;
   for (const providerConfig of providers) {
+    if (providerConfig.status && providerConfig.status !== 'active') {
+      log('WARN', `Skipping ${providerConfig.provider}/${providerConfig.model} — status is "${providerConfig.status}", not "active"`);
+      continue;
+    }
     if (providerConfig.tpmLimit) {
       const estimated = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
       if (estimated > providerConfig.tpmLimit) {
@@ -440,6 +603,10 @@ async function makeAPICall(mapping, nimRequest, stream) {
       log('WARN', `Provider ${providerConfig.provider} failed [${status || 'network/timeout'}]: ${err.message} — trying fallback...`);
       lastError = err;
     }
+  }
+  if (!lastError) {
+    lastError = new Error('No active hop available for this model (all hops are inactive, skipped, or over their TPM budget).');
+    lastError.response = { status: 503 };
   }
   throw lastError;
 }
@@ -736,14 +903,14 @@ function requireAdmin(req, res, next) {
 // ============================================================
 // ADMIN: MODELS CRUD
 // ── Mutations write straight through to models.json via
-//    saveModels(). See the persistence note above loadModels():
-//    on Render Free this does NOT survive a restart/redeploy.
+//    saveModels(). See the GitHub sync notes above for what survives
+//    a restart on Render Free and what doesn't.
 // ============================================================
 app.get('/admin/api/models', requireAdmin, (req, res) => {
   res.json({ models: MODEL_MAPPING });
 });
 
-app.post('/admin/api/models', requireAdmin, (req, res) => {
+app.post('/admin/api/models', requireAdmin, async (req, res) => {
   const { id, entry } = req.body || {};
   if (!id || typeof id !== 'string') {
     return res.status(400).json({ error: { message: 'Body must include a string "id".', type: 'invalid_request_error', code: 400 } });
@@ -752,39 +919,52 @@ app.post('/admin/api/models', requireAdmin, (req, res) => {
     return res.status(400).json({ error: { message: 'Body must include "entry" with at least "model" and "provider".', type: 'invalid_request_error', code: 400 } });
   }
   MODEL_MAPPING[id] = entry;
+  let sync;
   try {
-    saveModels(MODEL_MAPPING);
+    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: upsert model "${id}"`);
   } catch (e) {
     return res.status(500).json({ error: { message: `Saved in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] upserted model "${id}"`);
-  res.json({ ok: true, id, entry });
+  log('INFO', `[admin] upserted model "${id}"${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id, entry, githubSync: sync });
 });
 
-app.delete('/admin/api/models/:id', requireAdmin, (req, res) => {
+app.delete('/admin/api/models/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (!MODEL_MAPPING[id]) {
     return res.status(404).json({ error: { message: `No model "${id}"`, type: 'invalid_request_error', code: 404 } });
   }
   delete MODEL_MAPPING[id];
+  let sync;
   try {
-    saveModels(MODEL_MAPPING);
+    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: delete model "${id}"`);
   } catch (e) {
     return res.status(500).json({ error: { message: `Deleted in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] deleted model "${id}"`);
-  res.json({ ok: true, id });
+  log('INFO', `[admin] deleted model "${id}"${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id, githubSync: sync });
 });
 
 // Re-read models.json from disk without restarting the process —
 // handy if you edited the file directly (e.g. via git).
 app.post('/admin/api/models/reload', requireAdmin, (req, res) => {
   try {
-    MODEL_MAPPING = loadModels();
+    MODEL_MAPPING = loadModelsFromDisk();
   } catch (e) {
     return res.status(500).json({ error: { message: e.message, type: 'server_error', code: 500 } });
   }
   res.json({ ok: true, count: Object.keys(MODEL_MAPPING).length });
+});
+
+// Reports whether GitHub sync is configured at all, so the admin UI can
+// show a clear "changes will NOT survive a restart" banner instead of
+// people finding out the hard way after Render recycles the instance.
+app.get('/admin/api/github-status', requireAdmin, (req, res) => {
+  res.json({
+    enabled: GITHUB_SYNC_ENABLED,
+    repo: GITHUB_SYNC_ENABLED ? GITHUB_REPO : null,
+    branch: GITHUB_SYNC_ENABLED ? GITHUB_BRANCH : null,
+  });
 });
 
 // ============================================================
@@ -829,7 +1009,7 @@ app.get('/admin/api/reasoning-schemas', requireAdmin, (req, res) => {
   res.json({ schemas: REASONING_SCHEMAS });
 });
 
-app.post('/admin/api/reasoning-schemas', requireAdmin, (req, res) => {
+app.post('/admin/api/reasoning-schemas', requireAdmin, async (req, res) => {
   const { id, schema } = req.body || {};
   if (!id || !/^[a-z0-9][a-z0-9._-]*$/.test(String(id))) {
     return res.status(400).json({ error: { message: 'Schema id must contain only lowercase letters, numbers, dots, underscores, or hyphens.', type: 'invalid_request_error', code: 400 } });
@@ -841,16 +1021,17 @@ app.post('/admin/api/reasoning-schemas', requireAdmin, (req, res) => {
     return res.status(400).json({ error: { message: 'Schema transport must be chat_template_kwargs or top_level.', type: 'invalid_request_error', code: 400 } });
   }
   REASONING_SCHEMAS[id] = { ...schema };
+  let sync;
   try {
-    fs.writeFileSync(REASONING_SCHEMAS_PATH, JSON.stringify(REASONING_SCHEMAS, null, 2));
+    sync = await saveReasoningSchemas(`Q-Proxy admin: save reasoning schema "${id}"`);
   } catch (e) {
     return res.status(500).json({ error: { message: `Schema updated in memory but failed to write reasoning-schemas.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] saved reasoning schema "${id}"`);
-  res.json({ ok: true, id, schema: REASONING_SCHEMAS[id] });
+  log('INFO', `[admin] saved reasoning schema "${id}"${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id, schema: REASONING_SCHEMAS[id], githubSync: sync });
 });
 
-app.delete('/admin/api/reasoning-schemas/:id', requireAdmin, (req, res) => {
+app.delete('/admin/api/reasoning-schemas/:id', requireAdmin, async (req, res) => {
   const id = req.params.id;
   if (!REASONING_SCHEMAS[id]) return res.status(404).json({ error: { message: `Unknown reasoning schema "${id}".`, type: 'invalid_request_error', code: 404 } });
   // Do not delete a schema while any configured hop still references it.
@@ -864,9 +1045,10 @@ app.delete('/admin/api/reasoning-schemas/:id', requireAdmin, (req, res) => {
     }
   }
   delete REASONING_SCHEMAS[id];
-  try { fs.writeFileSync(REASONING_SCHEMAS_PATH, JSON.stringify(REASONING_SCHEMAS, null, 2)); }
+  let sync;
+  try { sync = await saveReasoningSchemas(`Q-Proxy admin: delete reasoning schema "${id}"`); }
   catch (e) { return res.status(500).json({ error: { message: `Deleted in memory but failed to write reasoning-schemas.json: ${e.message}`, type: 'server_error', code: 500 } }); }
-  res.json({ ok: true, id });
+  res.json({ ok: true, id, githubSync: sync });
 });
 
 // ============================================================
@@ -1004,7 +1186,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/admin/api/sync/:provider/add', requireAdmin, (req, res) => {
+app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) {
     return res.status(400).json({ error: { message: `Provider "${provider}" is not syncable.`, type: 'invalid_request_error', code: 400 } });
@@ -1027,17 +1209,18 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, (req, res) => {
     status: (status || 'active'),
     limitType: (limitType || 'rate-limited')
   };
+  let sync;
   try {
-    saveModels(MODEL_MAPPING);
+    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: sync-add "${safeId}"`);
   } catch (e) {
     delete MODEL_MAPPING[safeId];
     return res.status(500).json({ error: { message: `Added in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})`);
-  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId] });
+  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId], githubSync: sync });
 });
 
-app.post('/admin/api/sync/:provider/remove', requireAdmin, (req, res) => {
+app.post('/admin/api/sync/:provider/remove', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) {
     return res.status(400).json({ error: { message: `Provider "${provider}" is not syncable.`, type: 'invalid_request_error', code: 400 } });
@@ -1069,13 +1252,14 @@ app.post('/admin/api/sync/:provider/remove', requireAdmin, (req, res) => {
     return res.status(404).json({ error: { message: `No configured hops found for ${provider} / ${model}.`, type: 'invalid_request_error', code: 404 } });
   }
 
+  let sync;
   try {
-    saveModels(MODEL_MAPPING);
+    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: sync-remove ${provider}/${model}`);
   } catch (e) {
     return res.status(500).json({ error: { message: `Removed in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] sync-remove ${provider} / ${model} from ${touchedIds.length} model id(s)`);
-  res.json({ ok: true, provider, model, touchedIds, removedIds });
+  log('INFO', `[admin] sync-remove ${provider} / ${model} from ${touchedIds.length} model id(s)${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, provider, model, touchedIds, removedIds, githubSync: sync });
 });
 
 // ============================================================
@@ -1091,8 +1275,21 @@ app.use((req, res) => {
   res.status(404).json({ error: { message: `Endpoint ${req.path} not found`, type: 'invalid_request_error', code: 404 } });
 });
 
-app.listen(PORT, () => {
-  log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
-  log('INFO', `OpenRouter keys loaded: ${OPENROUTER_KEYS.length}`);
-  log('INFO', `Literouter keys loaded: ${LITEROUTER_KEYS.length}`);
+async function bootstrapConfigAndStart() {
+  await syncConfigFromGitHubOnBoot();
+
+  Object.assign(REASONING_SCHEMAS, loadReasoningSchemasFromDisk());
+  MODEL_MAPPING = loadModelsFromDisk();
+
+  app.listen(PORT, () => {
+    log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
+    log('INFO', `OpenRouter keys loaded: ${OPENROUTER_KEYS.length}`);
+    log('INFO', `Literouter keys loaded: ${LITEROUTER_KEYS.length}`);
+    log('INFO', `GitHub sync: ${GITHUB_SYNC_ENABLED ? `enabled (${GITHUB_REPO}@${GITHUB_BRANCH})` : 'disabled — admin edits will NOT survive a restart'}`);
+  });
+}
+
+bootstrapConfigAndStart().catch(e => {
+  log('ERROR', `Fatal error during startup: ${e.message}`);
+  process.exit(1);
 });
