@@ -421,9 +421,11 @@
   "deepseek-ai-deepseek-v4-pro-0813-nv": {
     "model": "deepseek-ai/deepseek-v4-pro-0813",
     "provider": "nvidia",
-    "reasoningSchema": "reasoning-effort-select",
-    "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "reasoningSchema": "chat-template-thinking-toggle",
+    "reasoning": {
+      "enable_thinking": true
+    }
   }
 }
