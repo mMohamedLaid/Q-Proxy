@@ -161,14 +161,6 @@
       "limitType": "rate-limited"
     }
   },
-  "gemini-3.7-flash-mn": {
-    "model": "gemini/gemini-3.7-flash",
-    "provider": "meganova",
-    "status": "active",
-    "limitType": "rate-limited",
-    "freeUntil": "2026-08-20",
-    "notes": "Free quota window ends 2026-08-20 — that's today. Bills at standard rate from 2026-08-21. Kept as a standalone pick, not wired into the 'gemini' chain, on purpose so nothing silently starts costing money once the window closes."
-  },
   "deepseek-v4-lr": {
     "model": "deepseek-v4-flash-free",
     "provider": "literouter",
