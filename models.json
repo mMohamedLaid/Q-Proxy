@@ -19,18 +19,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "glm-flash": {
-    "model": "glm-4.7-flash",
-    "provider": "zai",
-    "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "glm-free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    }
-  },
   "gemma-4-31b-g": {
     "model": "gemma-4-31b-it",
     "provider": "google",
