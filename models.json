@@ -137,18 +137,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gemini-flash": {
-    "model": "gemini-3-flash",
-    "provider": "google",
-    "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "gemini-free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    }
-  },
   "deepseek-v4-lr": {
     "model": "deepseek-v4-flash-free",
     "provider": "literouter",
