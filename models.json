@@ -19,14 +19,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "glm-4.7": {
-    "model": "glm-4.7-flash",
-    "provider": "zai",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "glm-flash": {
     "model": "glm-4.7-flash",
     "provider": "zai",
