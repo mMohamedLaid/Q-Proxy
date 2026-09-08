@@ -379,5 +379,12 @@
     "status": "active",
     "limitType": "unlimited",
     "notes": "context cap of 5000"
+  },
+  "deepseek-v4-flash-0731-think-lr": {
+    "model": "deepseek-v4-flash-0731-thinking:free",
+    "provider": "nvidia",
+    "status": "active",
+    "limitType": "unlimited",
+    "notes": "literouter rules more than I thought."
   }
 }
