@@ -142,12 +142,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-lr": {
-    "model": "deepseek-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "deepseek-r1": {
     "model": "deepseek-free",
     "provider": "literouter",
