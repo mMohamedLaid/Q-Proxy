@@ -385,5 +385,12 @@
     "reasoning": {
       "enable_thinking": true
     }
+  },
+  "gemma-4-31b-it-lr": {
+    "model": "gemma-4-31b-it:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "unlimited",
+    "notes": "context cap of 5000"
   }
 }
