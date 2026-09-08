@@ -150,14 +150,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-v4": {
-    "model": "deepseek-v4-flash-free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "deepseek-v3": {
     "model": "deepseek-v3-0324-free",
     "provider": "literouter",
