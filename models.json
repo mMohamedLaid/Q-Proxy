@@ -19,7 +19,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "14K RPD, 16K TPM \u2014 buffer kept under real cap"
+    "notes": "14K RPD, 16K TPM — buffer kept under real cap"
   },
   "gemma-4-26b-g": {
     "model": "gemma-4-26b-a4b-it",
@@ -60,7 +60,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "Bundle built by copying already-defined models in as a starting point (google -> nvidia -> openrouter), then left as-is. Literouter left out on purpose \u2014 its Gemma slug's version isn't confirmed to actually be Gemma 4.",
+    "notes": "Bundle built by copying already-defined models in as a starting point (google -> nvidia -> openrouter), then left as-is. Literouter left out on purpose — its Gemma slug's version isn't confirmed to actually be Gemma 4.",
     "fallback": {
       "model": "google/gemma-4-31b-it",
       "provider": "nvidia",
@@ -98,21 +98,21 @@
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "500/day \u2014 primary"
+    "notes": "500/day — primary"
   },
   "gemini-flash-g": {
     "model": "gemini-3-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day \u2014 use sparingly"
+    "notes": "20/day — use sparingly"
   },
   "gemini-2.5-flash-g": {
     "model": "gemini-2.5-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day \u2014 use sparingly"
+    "notes": "20/day — use sparingly"
   },
   "deepseek-r1": {
     "model": "deepseek-r1:free",
@@ -144,14 +144,14 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "262K context. Worth a quick test before you rely on it \u2014 there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
+    "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
   },
   "kimi": {
     "model": "moonshotai/kimi-k2.6",
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "Literouter fallback removed 2026-09 \u2014 Literouter no longer offers any free-tier Kimi model."
+    "notes": "Literouter fallback removed 2026-09 — Literouter no longer offers any free-tier Kimi model."
   },
   "kimi-k3-nv": {
     "model": "moonshotai/kimi-k3",
@@ -258,7 +258,7 @@
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "near-frontier open-weight coder \u2014 56.2 SWE-bench Pro, 200K context",
+    "notes": "near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context",
     "dailyCap": 30
   },
   "llama-nemotron": {
@@ -271,7 +271,7 @@
     "model": "deepseek-ai/deepseek-v4-pro-0813",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "rate-limited",
+    "limitType": "unlimited",
     "reasoningSchema": "chat-template-thinking-toggle",
     "reasoning": {
       "enable_thinking": true
