@@ -13,19 +13,13 @@
     "limitType": "rate-limited",
     "notes": "Confirmed genuinely free (not trial credits). Lowercase slug."
   },
-  "glm-4.7-lr": {
-    "model": "glm-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gemma-4-31b-g": {
     "model": "gemma-4-31b-it",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "14K RPD, 16K TPM — buffer kept under real cap"
+    "notes": "14K RPD, 16K TPM \u2014 buffer kept under real cap"
   },
   "gemma-4-26b-g": {
     "model": "gemma-4-26b-a4b-it",
@@ -40,6 +34,7 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
+    "timeoutMs": 30000,
     "reasoning": {
       "enable_thinking": true
     },
@@ -58,39 +53,34 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gemma-3-27b-lr": {
-    "model": "gemma-3-27b-it-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "⚠️ Gemma 3, not 4"
-  },
   "gemma-4-31b": {
+    "custom": true,
     "model": "gemma-4-31b-it",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "Literouter left out of this chain on purpose — its Gemma slug's version isn't confirmed to actually be Gemma 4.",
+    "notes": "Bundle built by copying already-defined models in as a starting point (google -> nvidia -> openrouter), then left as-is. Literouter left out on purpose \u2014 its Gemma slug's version isn't confirmed to actually be Gemma 4.",
     "fallback": {
       "model": "google/gemma-4-31b-it",
       "provider": "nvidia",
       "status": "active",
       "limitType": "rate-limited",
       "timeoutMs": 30000,
+      "reasoning": {
+        "enable_thinking": true
+      },
+      "reasoningSchema": "chat-template-thinking-toggle",
       "fallback": {
         "model": "google/gemma-4-31b-it:free",
         "provider": "openrouter",
         "status": "active",
         "limitType": "rate-limited"
-      },
-      "reasoning": {
-        "enable_thinking": true
-      },
-      "reasoningSchema": "chat-template-thinking-toggle"
+      }
     }
   },
   "gemma-4-26b": {
+    "custom": true,
     "model": "gemma-4-26b-a4b-it",
     "provider": "google",
     "status": "active",
@@ -108,42 +98,32 @@
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "500/day — primary"
+    "notes": "500/day \u2014 primary"
   },
   "gemini-flash-g": {
     "model": "gemini-3-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day — use sparingly"
+    "notes": "20/day \u2014 use sparingly"
   },
   "gemini-2.5-flash-g": {
     "model": "gemini-2.5-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day — use sparingly"
-  },
-  "gemini-lr": {
-    "model": "gemini-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "deepseek-v4-lr": {
-    "model": "deepseek-v4-flash-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "deepseek-v3-lr": {
-    "model": "deepseek-v3-0324-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
+    "notes": "20/day \u2014 use sparingly"
   },
   "deepseek-r1": {
-    "model": "deepseek-free",
+    "model": "deepseek-r1:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": null,
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4": {
+    "model": "deepseek-v4-flash:free",
     "provider": "literouter",
     "reasoningSchema": null,
     "reasoning": null,
@@ -151,37 +131,27 @@
     "limitType": "rate-limited"
   },
   "deepseek-v3": {
-    "model": "deepseek-v3-0324-free",
+    "model": "deepseek-v3.2:free",
     "provider": "literouter",
     "reasoningSchema": null,
     "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "notes": "Renamed from deepseek-v3-0324 to deepseek-v3.2 in Literouter's 2026-09 catalog refresh. Free-tier daily cap: briefly showed 30/day, back to unlimited as of the last check — Literouter's caps for this catalog are evidently still moving. Recheck the live page if this starts erroring."
   },
   "kimi-k2.6-nv": {
     "model": "moonshotai/kimi-k2.6",
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
-  },
-  "kimi-lr": {
-    "model": "kimi-k2.5-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
+    "notes": "262K context. Worth a quick test before you rely on it \u2014 there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
   },
   "kimi": {
     "model": "moonshotai/kimi-k2.6",
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
-    "fallback": {
-      "model": "kimi-k2.5-free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    }
+    "notes": "Literouter fallback removed 2026-09 \u2014 Literouter no longer offers any free-tier Kimi model."
   },
   "kimi-k3-nv": {
     "model": "moonshotai/kimi-k3",
@@ -214,13 +184,14 @@
     "limitType": "rate-limited"
   },
   "gpt-oss-120b-lr": {
-    "model": "gpt-oss-120b-free",
+    "model": "gpt-oss-120b:free",
     "provider": "literouter",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "dailyCap": 30
   },
   "gpt-oss-20b-lr": {
-    "model": "gpt-oss-20b-free",
+    "model": "gpt-oss-20b:free",
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited"
@@ -243,10 +214,11 @@
     "status": "active",
     "limitType": "rate-limited",
     "fallback": {
-      "model": "gpt-oss-120b-free",
+      "model": "gpt-oss-120b:free",
       "provider": "literouter",
       "status": "active",
-      "limitType": "rate-limited"
+      "limitType": "rate-limited",
+      "dailyCap": 30
     }
   },
   "gpt-oss-20b": {
@@ -255,7 +227,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "fallback": {
-      "model": "gpt-oss-20b-free",
+      "model": "gpt-oss-20b:free",
       "provider": "literouter",
       "status": "active",
       "limitType": "rate-limited"
@@ -281,67 +253,17 @@
     "limitType": "rate-limited",
     "notes": "262K context"
   },
-  "qwen3-32b-lr": {
-    "model": "qwen3-32b-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "uncensored"
-  },
-  "qwen3-4b-lr": {
-    "model": "qwen3-4b-fp8-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "uncensored, fast"
-  },
-  "qwen-lr": {
-    "model": "qwen-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "minimax-m2.7-lr": {
     "model": "minimax-m2.7:free",
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context"
-  },
-  "mimo-lr": {
-    "model": "mimo-v2-flash-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
+    "notes": "near-frontier open-weight coder \u2014 56.2 SWE-bench Pro, 200K context",
+    "dailyCap": 30
   },
   "llama-nemotron": {
     "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "mistral-lr": {
-    "model": "mistral-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "nemotron-lr": {
-    "model": "nemotron-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "devstral-lr": {
-    "model": "devstral-free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "coding specialist"
-  },
-  "grok-lr": {
-    "model": "grok-free",
-    "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited"
   },
@@ -372,11 +294,158 @@
     "limitType": "unlimited",
     "notes": "context cap of 5000"
   },
-  "deepseek-v4-flash-0731-think-lr": {
+  "glm-4.7-flash-lr": {
+    "model": "glm-4.7-flash:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "gemma-3-27b-it-lr": {
+    "model": "gemma-3-27b-it:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemini-2.5-flash-lite-lr": {
+    "model": "gemini-2.5-flash-lite:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "gemini-2.5-flash-lr": {
+    "model": "gemini-2.5-flash:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "deepseek-v4-flash-lr": {
+    "model": "deepseek-v4-flash:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v3.2-lr": {
+    "model": "deepseek-v3.2:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "claude-haiku-4.5-cheap-lr": {
+    "model": "claude-haiku-4.5-cheap:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 5
+  },
+  "deepseek-reasoner-lr": {
+    "model": "deepseek-reasoner:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-0731-lr": {
+    "model": "deepseek-v4-flash-0731:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-0731-thinking-lr": {
     "model": "deepseek-v4-flash-0731-thinking:free",
     "provider": "literouter",
     "status": "active",
-    "limitType": "unlimited",
-    "notes": "literouter rules more than I thought."
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-thinking-lr": {
+    "model": "deepseek-v4-flash-thinking:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemma-4-26b-a4b-it-lr": {
+    "model": "gemma-4-26b-a4b-it:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "gemma-4-31b-lr": {
+    "model": "gemma-4-31b:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "glm-5.3-flash-lr": {
+    "model": "glm-5.3-flash:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
+  },
+  "l3-8b-lunaris-lr": {
+    "model": "l3-8b-lunaris:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "llama-3-8b-instruct-lr": {
+    "model": "llama-3-8b-instruct:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "llama-3.3-70b-instruct-turbo-lr": {
+    "model": "llama-3.3-70b-instruct-turbo:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "ministral-3b-2512-lr": {
+    "model": "ministral-3b-2512:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "mistral-large-2512-lr": {
+    "model": "mistral-large-2512:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "mistral-large-3-lr": {
+    "model": "mistral-large-3:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "mistral-medium-2508-lr": {
+    "model": "mistral-medium-2508:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
+  },
+  "mistral-small-2603-lr": {
+    "model": "mistral-small-2603:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
+  },
+  "mythomax-l2-13b-lr": {
+    "model": "mythomax-l2-13b:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "qwen3.5-lr": {
+    "model": "qwen3.5:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 30
   }
 }
