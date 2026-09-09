@@ -25,25 +25,24 @@ const GOOGLE_RELAY_BASE = process.env.GOOGLE_RELAY_BASE || 'https://generativela
 const DEEPSEEK_API_KEY  = process.env.DEEPSEEK_API_KEY; // worthless. thought it gave free tokens at first login.
 const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY; 
 
-const LITEROUTER_KEYS = [
-  process.env.LITEROUTER_KEY_1,
-].filter(Boolean);
-
-const OPENROUTER_KEYS = [
-  process.env.OPENROUTER_KEY_1,
-  process.env.OPENROUTER_KEY_2,
-  process.env.OPENROUTER_KEY_3,
-  process.env.OPENROUTER_KEY_4,
-  process.env.OPENROUTER_KEY_5,
-].filter(Boolean);
-
-// Literouter: simple round-robin (only one key configured right now anyway)
-let literouterIndex = 0;
-function getNextLiterouterKey() {
-  const key = LITEROUTER_KEYS[literouterIndex % LITEROUTER_KEYS.length];
-  literouterIndex++;
-  return key;
+// Both key lists are unbounded — set as many PREFIX_KEY_1, PREFIX_KEY_2,
+// PREFIX_KEY_3... env vars as you have keys for. Numbers don't need to be
+// contiguous; whatever's set gets picked up in numeric order at boot.
+function loadNumberedKeys(prefix) {
+  const found = [];
+  for (const envName of Object.keys(process.env)) {
+    const m = envName.match(new RegExp(`^${prefix}_(\\d+)$`));
+    if (m && process.env[envName]) found.push({ n: parseInt(m[1], 10), key: process.env[envName], envName });
+  }
+  found.sort((a, b) => a.n - b.n);
+  return found.map(f => ({ key: f.key, envName: f.envName }));
 }
+
+const LITEROUTER_KEY_ENTRIES = loadNumberedKeys('LITEROUTER_KEY');
+const LITEROUTER_KEYS = LITEROUTER_KEY_ENTRIES.map(e => e.key);
+
+const OPENROUTER_KEY_ENTRIES = loadNumberedKeys('OPENROUTER_KEY');
+const OPENROUTER_KEYS = OPENROUTER_KEY_ENTRIES.map(e => e.key);
 
 // OpenRouter: drain key 1 fully (its full daily cap) before moving to key 2, etc.
 // Resets daily. This is a self-tracked counter, not synced with OpenRouter's own
@@ -66,6 +65,76 @@ function getNextOpenRouterKey() {
   }
   // all keys drained for today — hand back the last one, it'll 429 and bubble up
   return OPENROUTER_KEYS[openrouterKeyIndex];
+}
+
+// ── Literouter: per-(key, model) daily usage. Its free-tier caps are
+// per-model, not a blanket per-key cap like OpenRouter's — key 1 being
+// drained for claude-haiku-4.5-cheap has zero effect on key 1's
+// qwen3.5 bucket. dailyCap comes from the model's own hop config
+// (models.json); undefined/null means Literouter lists it as unlimited,
+// so it's never tracked, just round-robined for load spread.
+const literouterKeyState = {}; // `${keyIndex}|${model}` -> { count, day }
+let literouterRotationIndex = 0;
+
+function literouterUsage(keyIndex, model) {
+  const k = `${keyIndex}|${model}`;
+  const today = new Date().toISOString().slice(0, 10);
+  if (!literouterKeyState[k] || literouterKeyState[k].day !== today) {
+    literouterKeyState[k] = { count: 0, day: today };
+  }
+  return literouterKeyState[k];
+}
+
+// Returns { key, keyIndex } for the first Literouter key with daily headroom
+// left for this specific model, or null if every configured key is
+// exhausted for it today (caller should skip to the next hop, same as a
+// tpm-budget skip).
+function pickLiterouterKey(model, dailyCap) {
+  if (!LITEROUTER_KEYS.length) return null;
+  if (dailyCap == null) {
+    const idx = literouterRotationIndex % LITEROUTER_KEYS.length;
+    literouterRotationIndex++;
+    return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
+  }
+  for (let i = 0; i < LITEROUTER_KEYS.length; i++) {
+    const idx = (literouterRotationIndex + i) % LITEROUTER_KEYS.length;
+    const usage = literouterUsage(idx, model);
+    if (usage.count < dailyCap) {
+      usage.count++;
+      literouterRotationIndex = idx; // drain this key for this model before rotating, same spirit as OpenRouter
+      return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
+    }
+  }
+  return null;
+}
+
+// Snapshot of every (key, model) counter for a model that actually has a
+// dailyCap, for Admin/health display — e.g. "12/30 (key 1), 0/30 (key 2)".
+// Models with no dailyCap aren't tracked per-key, so they're omitted here.
+function literouterCapSnapshot() {
+  const today = new Date().toISOString().slice(0, 10);
+  const byModel = {};
+  for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
+    const hops = [];
+    let cur = entry;
+    while (cur) {
+      if (cur.provider === 'literouter' && cur.dailyCap != null) hops.push(cur);
+      cur = cur.fallback;
+    }
+    for (const hop of hops) {
+      if (byModel[hop.model]) continue; // same model may appear under multiple ids — report once
+      byModel[hop.model] = {
+        model: hop.model,
+        dailyCap: hop.dailyCap,
+        keys: LITEROUTER_KEYS.map((_, idx) => {
+          const state = literouterKeyState[`${idx}|${hop.model}`];
+          const used = (state && state.day === today) ? state.count : 0;
+          return { envName: LITEROUTER_KEY_ENTRIES[idx].envName, used, cap: hop.dailyCap };
+        })
+      };
+    }
+  }
+  return Object.values(byModel);
 }
 
 // ============================================================
@@ -216,6 +285,19 @@ function estimateTokens(messages) {
 // model-mn         → MegaNova specifically
 // model-ds         → DeepSeek direct API (disabled — $0 balance)
 //
+// A "container"/"bundle" entry (custom: true) is built by copying an
+// existing model's config into each hop slot when it's added in the admin
+// UI — a one-time COPY, not a live link. Editing the bundled copy afterward
+// never touches the original standalone entry, and editing the original
+// later never touches the copy — they fork apart the moment you add it.
+// A bundle that's just one untouched copied hop behaves identically to the
+// model it was copied from (same chain, new name) — effectively an alias,
+// until you actually change something in it.
+//
+// "Unlimited"-labeled hops (and nvidia hops by default — see
+// isUnlimitedRetryHop) get retried on the SAME hop, with backoff, before
+// falling through to the next one — see makeAPICall.
+//
 // reasoning schemas live in reasoning-schemas.json. A schema describes how
 // reasoning-related request parameters are represented (for example
 // chat_template_kwargs or top-level fields), without pretending the schema is
@@ -241,6 +323,7 @@ function estimateTokens(messages) {
 // ============================================================
 const MODELS_PATH = path.join(__dirname, 'models.json');
 const REASONING_SCHEMAS_PATH = path.join(__dirname, 'reasoning-schemas.json');
+const MODEL_PRESETS_PATH = path.join(__dirname, 'model-presets.json');
 
 function loadReasoningSchemasFromDisk() {
   try {
@@ -264,13 +347,41 @@ function loadModelsFromDisk() {
   }
 }
 
+// MODEL_PRESETS remembers a confirmed-good full reasoning config for a
+// SPECIFIC model (keyed "provider/model", exact match), separate from the
+// reasoning-schema match rules above which only pick a schema family-wide.
+// Once you've actually tested a model and know what works, re-importing
+// that exact model later (Admin > Sync) applies the saved config
+// automatically instead of resetting to blank switches. Missing this file
+// is not fatal — it just means nothing gets auto-applied on import yet.
+function loadModelPresetsFromDisk() {
+  try {
+    return JSON.parse(fs.readFileSync(MODEL_PRESETS_PATH, 'utf8'));
+  } catch (e) {
+    log('WARN', `Could not load ${MODEL_PRESETS_PATH} (${e.message}) — sync-import won't auto-apply any known-good configs.`);
+    return {};
+  }
+}
+
 // Bound but populated after the GitHub boot sync below (see
-// bootstrapConfigAndStart) — REASONING_SCHEMAS stays a stable object
-// reference (mutated in place) so every existing `REASONING_SCHEMAS[x]`
-// read/write elsewhere in this file keeps working untouched; MODEL_MAPPING
-// is reassigned wholesale on load/reload, same as before.
+// bootstrapConfigAndStart) — REASONING_SCHEMAS and MODEL_PRESETS stay
+// stable object references (mutated in place) so every existing
+// `REASONING_SCHEMAS[x]`/`MODEL_PRESETS[x]` read/write elsewhere in this
+// file keeps working untouched; MODEL_MAPPING is reassigned wholesale on
+// load/reload, same as before.
 const REASONING_SCHEMAS = {};
+const MODEL_PRESETS = {};
 let MODEL_MAPPING = {};
+
+// Presets are keyed by exact "provider/model" — not a prefix or pattern —
+// on purpose. A prefix match here would reintroduce exactly the trap this
+// whole system was built to avoid: assuming two models with a similar
+// name behave identically.
+function presetKeyFor(provider, model) {
+  return `${provider}/${model}`;
+}
+
+
 
 // ============================================================
 // GITHUB SYNC (optional, free) — makes admin-panel edits survive a
@@ -306,6 +417,7 @@ const GITHUB_REPO         = process.env.GITHUB_REPO || '';
 const GITHUB_BRANCH       = process.env.GITHUB_BRANCH || 'main';
 const GITHUB_MODELS_PATH  = process.env.GITHUB_MODELS_PATH || 'models.json';
 const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schemas.json';
+const GITHUB_PRESETS_PATH = process.env.GITHUB_PRESETS_PATH || 'model-presets.json';
 const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
 function githubHeaders() {
@@ -355,7 +467,7 @@ async function syncConfigFromGitHubOnBoot() {
     log('WARN', 'GITHUB_TOKEN/GITHUB_REPO not set — admin panel edits will NOT survive a restart on Render Free. See README > Persistence.');
     return;
   }
-  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH]]) {
+  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH], [GITHUB_PRESETS_PATH, MODEL_PRESETS_PATH]]) {
     try {
       const remote = await githubFetchFile(repoPath);
       if (remote) {
@@ -404,6 +516,12 @@ async function saveReasoningSchemas(commitMessage) {
   return githubSyncFile(GITHUB_SCHEMAS_PATH, json, commitMessage || 'Q-Proxy admin: update reasoning-schemas.json');
 }
 
+async function saveModelPresets(commitMessage) {
+  const json = JSON.stringify(MODEL_PRESETS, null, 2);
+  fs.writeFileSync(MODEL_PRESETS_PATH, json);
+  return githubSyncFile(GITHUB_PRESETS_PATH, json, commitMessage || 'Q-Proxy admin: update model-presets.json');
+}
+
 // ============================================================
 // PROVIDER CONFIG
 // ============================================================
@@ -413,7 +531,10 @@ function getProviderConfig(provider) {
     case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_API_KEY };
     case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: getNextOpenRouterKey() };
-    case 'literouter': return { base: 'https://api.literouter.com/v1',               key: getNextLiterouterKey() };
+    // literouter is normally resolved by makeAPICall via pickLiterouterKey()
+    // (needs the model + dailyCap to pick the right key). This branch is
+    // only a fallback for callers that don't have that context.
+    case 'literouter': return { base: 'https://api.literouter.com/v1',               key: LITEROUTER_KEYS[0] };
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
@@ -452,13 +573,31 @@ function getReasoningBody(providerConfig) {
   const configured = providerConfig.reasoning && typeof providerConfig.reasoning === 'object'
     ? providerConfig.reasoning
     : {};
+  const enabledMap = providerConfig.reasoningFieldEnabled && typeof providerConfig.reasoningFieldEnabled === 'object'
+    ? providerConfig.reasoningFieldEnabled
+    : {};
 
-  const values = {};
+  // Fields within ONE schema can each end up on a different wire
+  // transport per hop (e.g. this model's thinking toggle rides in
+  // chat_template_kwargs, but its effort level is a genuine top-level
+  // field) — so results are grouped by transport instead of assuming the
+  // whole schema shares one.
+  const byTransport = {};
+
   for (const [fieldName, field] of Object.entries(schema.fields || {})) {
+    // A field with an enable switch (the unified thinking+effort schema)
+    // is skipped entirely — not sent, not even blank — unless this hop
+    // explicitly turned it on. That's what "this model doesn't have a
+    // reasoning-effort parameter, don't offer it and don't send anything"
+    // actually means at the wire level. Older schemas without an enable
+    // switch behave exactly as before: present in the schema == in play.
+    const hasEnableSwitch = Object.prototype.hasOwnProperty.call(field, 'enabledByDefault');
+    if (hasEnableSwitch && !enabledMap[fieldName]) continue;
+
     const rawValue = configured[fieldName];
 
-    // An explicitly blank value means "Custom was picked for this field but
-    // nothing has been typed yet" — send nothing for it rather than
+    // An explicitly blank value means "Custom was picked for this field
+    // but nothing has been typed yet" — send nothing for it rather than
     // silently falling back to the schema's default. Nothing should
     // override the provider's own behavior until a real value is picked.
     if (rawValue === '') continue;
@@ -488,26 +627,46 @@ function getReasoningBody(providerConfig) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) value = field.default ?? {};
     }
 
-    values[fieldName] = value;
+    // Some models share the same semantic field (a thinking on/off toggle,
+    // say) but the provider's chat template actually reads a different
+    // literal key for it — e.g. "enable_thinking" on one model, "thinking"
+    // on another. field.keyPerHop lets a hop remap the schema's field name
+    // to whatever key that specific model's template actually expects,
+    // without needing a whole separate schema per key name.
+    const wireKey = (field.keyPerHop && providerConfig.reasoningFieldKeys && providerConfig.reasoningFieldKeys[fieldName])
+      ? providerConfig.reasoningFieldKeys[fieldName]
+      : fieldName;
+
+    // Special case: a raw JSON field (the escape-hatch schemas) IS the
+    // whole body for its transport, not a key inside it.
+    if (fieldName === '__raw') {
+      const transport = field.transportPerHop && providerConfig.reasoningFieldTransport && providerConfig.reasoningFieldTransport[fieldName]
+        ? providerConfig.reasoningFieldTransport[fieldName]
+        : (schema.transport || 'top_level');
+      byTransport[transport] = { ...(byTransport[transport] || {}), ...(value && typeof value === 'object' ? value : {}) };
+      continue;
+    }
+
+    const transport = (field.transportPerHop && providerConfig.reasoningFieldTransport && providerConfig.reasoningFieldTransport[fieldName])
+      ? providerConfig.reasoningFieldTransport[fieldName]
+      : (schema.transport || 'top_level');
+    if (!byTransport[transport]) byTransport[transport] = {};
+    byTransport[transport][wireKey] = value;
   }
 
-  let bodyFields = values;
-  if (Object.prototype.hasOwnProperty.call(values, '__raw')) {
-    bodyFields = values.__raw && typeof values.__raw === 'object' ? values.__raw : {};
+  const result = {};
+  if (byTransport.chat_template_kwargs && Object.keys(byTransport.chat_template_kwargs).length) {
+    result.chat_template_kwargs = byTransport.chat_template_kwargs;
+  }
+  if (byTransport.top_level && Object.keys(byTransport.top_level).length) {
+    Object.assign(result, byTransport.top_level);
+  }
+  for (const [transport, fields] of Object.entries(byTransport)) {
+    if (transport === 'chat_template_kwargs' || transport === 'top_level') continue;
+    log('WARN', `Unsupported reasoning transport "${transport}" in schema "${schemaName}" — dropping fields: ${Object.keys(fields).join(', ')}`);
   }
 
-  if (!Object.keys(bodyFields).length) return undefined;
-
-  if (schema.transport === 'chat_template_kwargs') {
-    return { chat_template_kwargs: bodyFields };
-  }
-
-  if (schema.transport === 'top_level') {
-    return bodyFields;
-  }
-
-  log('WARN', `Unsupported reasoning transport "${schema.transport}" in schema "${schemaName}".`);
-  return undefined;
+  return Object.keys(result).length ? result : undefined;
 }
 
 // ============================================================
@@ -531,12 +690,100 @@ const providerUsage = {}; // { "nvidia|z-ai/glm-5.2": { count, errors, lastUsed,
 
 function trackUsage(provider, model, ok, status) {
   const k = `${provider}|${model}`;
-  if (!providerUsage[k]) providerUsage[k] = { provider, model, count: 0, errors: 0, lastUsed: null, lastStatus: null };
+  if (!providerUsage[k]) providerUsage[k] = { provider, model, count: 0, errors: 0, lastUsed: null, lastStatus: null, skips: 0, lastSkipReason: null, lastSkipAt: null };
   const u = providerUsage[k];
   if (ok) u.count++; else u.errors++;
   u.lastUsed = new Date().toISOString();
   u.lastStatus = ok ? 'ok' : (status || 'error');
 }
+
+// A "skip" is a hop that was passed over in favor of the next one in the
+// chain — either proactively (inactive status, over its TPM budget) or
+// reactively (it errored and the chain rolled to the next hop). Tracked
+// separately from trackUsage's count/errors so /admin/api/usage can show
+// "this hop just ran out and we fell through" without conflating it with
+// genuine successful calls or hard (non-fallback) failures.
+function trackSkip(provider, model, reason) {
+  const k = `${provider}|${model}`;
+  if (!providerUsage[k]) providerUsage[k] = { provider, model, count: 0, errors: 0, lastUsed: null, lastStatus: null, skips: 0, lastSkipReason: null, lastSkipAt: null };
+  const u = providerUsage[k];
+  u.skips = (u.skips || 0) + 1;
+  u.lastSkipReason = reason;
+  u.lastSkipAt = new Date().toISOString();
+}
+
+// ============================================================
+// MODEL CHAIN (walks the fallback linked list — primary hop, then
+// its `.fallback`, then that one's `.fallback`, etc.)
+// ============================================================
+function resolveModelChain(modelId, mapping = MODEL_MAPPING) {
+  const root = mapping[modelId];
+  if (!root) return null;
+  const hops = [];
+  let cur = root;
+  let depth = 0;
+  while (cur) {
+    if (depth++ > 50) throw new Error('Fallback chain is suspiciously deep (50+) — check for a mistake.');
+    const { fallback, ...leaf } = cur;
+    hops.push(leaf);
+    cur = fallback || null;
+  }
+  return hops;
+}
+
+// ============================================================
+// RETRY CLASSIFICATION
+// ── Some errors are worth hammering the SAME hop for (the service
+//    is just flaky/overloaded and will likely come back within
+//    seconds — this describes NVIDIA NIM constantly). Others are
+//    never worth retrying on that hop no matter how many tries are
+//    left, because the exact same request will fail identically
+//    every time:
+//      - the request itself is too big for this hop's context window
+//      - this hop's quota/credits are actually exhausted (even if
+//        it's *labeled* unlimited — labels can be wrong or a
+//        provider can silently start capping something)
+//    Those two ALWAYS skip straight to the next hop, full stop,
+//    regardless of limitType. This check runs before the retry
+//    loop even looks at limitType.
+// ============================================================
+const TOKEN_LIMIT_PATTERNS = /context.?length|context_length_exceeded|maximum context|max(?:imum)? tokens?|too many tokens|token limit|reduce the length|input is too long|prompt is too long|exceeds? the (?:model|context)|maximum number of tokens/i;
+const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded your current quota|daily limit|requests per day\b|resource_exhausted|out of credits|no credits remaining|insufficient credits|billing/i;
+
+function errText(err) {
+  let body = '';
+  try { body = JSON.stringify(err.response?.data || ''); } catch (_) { /* circular/non-serializable */ }
+  return `${body} ${err.message || ''}`;
+}
+function isTokenLimitError(err) { return TOKEN_LIMIT_PATTERNS.test(errText(err)); }
+function isQuotaExhaustedError(err) { return QUOTA_EXHAUSTED_PATTERNS.test(errText(err)); }
+
+// A hop gets the "unlimited" retry treatment (many tries, since there's
+// no daily/hourly cap to actually run out of — just flakiness to wait
+// out) if EITHER:
+//   - its own limitType is explicitly "unlimited", OR
+//   - it's an nvidia hop, since NIM has no real quota by default — it's
+//     just often slow/overloaded/temporarily down, not rate-limited, OR
+//   - it's a literouter hop with no dailyCap set — an unset dailyCap
+//     already means "Literouter itself lists this model as unlimited"
+//     (see pickLiterouterKey), so the same logic applies: nothing to
+//     actually run out of, just flakiness worth waiting out.
+// A specific hop that genuinely IS capped in practice (despite the label)
+// can opt out with `"retryAsUnlimited": false` on that hop without having
+// to touch limitType/dailyCap (which also drive other display/budgeting
+// logic).
+function isUnlimitedRetryHop(providerConfig) {
+  if (typeof providerConfig.retryAsUnlimited === 'boolean') return providerConfig.retryAsUnlimited;
+  if (providerConfig.limitType === 'unlimited') return true;
+  if (providerConfig.provider === 'nvidia') return true;
+  if (providerConfig.provider === 'literouter' && providerConfig.dailyCap == null) return true;
+  return false;
+}
+
+const UNLIMITED_MAX_RETRIES = 100;
+const UNLIMITED_RETRY_BUDGET_MS = 45000; // don't let one flaky hop eat more than ~45s before falling back
+function backoffDelayMs(attemptNum) { return Math.min(250 * Math.pow(2, attemptNum - 1), 4000); }
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 // ============================================================
 // MAKE API CALL (walks the full fallback chain, any depth)
@@ -551,63 +798,166 @@ function trackUsage(provider, model, ok, status) {
 // ── Exception: 401/403 also skip fallback (auth failure).
 // ── A hop with tpmLimit set is skipped straight to the next hop
 //    if the request's estimated tokens would exceed it.
+// ── "Unlimited" hops (see isUnlimitedRetryHop) get retried on the
+//    SAME hop, with backoff, up to 100 times or 45s of wall-clock
+//    time — whichever comes first — before moving to the next hop.
+//    Rate-limited/credits/paid hops get exactly one try, since a
+//    real quota cap won't clear itself in the next few seconds.
+//    Token-limit and quota-exhausted errors NEVER get retried on
+//    the same hop, no matter its limitType — see isTokenLimitError
+//    / isQuotaExhaustedError above.
+// ── Every hop tried (used, skipped, or failed) is recorded in
+//    `attempts`, returned to the caller so it can be surfaced back
+//    to the client (response header) and to the admin dashboard
+//    (trackUsage/trackSkip), instead of only living in server logs.
 // ============================================================
-async function makeAPICall(mapping, nimRequest, stream) {
-  const providers = [];
-  let current = mapping;
-  while (current) { providers.push(current); current = current.fallback; }
+async function makeAPICall(modelId, nimRequest, stream) {
+  let providers;
+  try {
+    providers = resolveModelChain(modelId);
+  } catch (e) {
+    const err = new Error(`Could not resolve model "${modelId}": ${e.message}`);
+    err.response = { status: 400 };
+    throw err;
+  }
+  if (!providers || !providers.length) {
+    const err = new Error(`Model "${modelId}" has no configured hops.`);
+    err.response = { status: 404 };
+    throw err;
+  }
 
+  const attempts = [];
   let lastError;
   for (const providerConfig of providers) {
     if (providerConfig.status && providerConfig.status !== 'active') {
       log('WARN', `Skipping ${providerConfig.provider}/${providerConfig.model} — status is "${providerConfig.status}", not "active"`);
+      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `status:${providerConfig.status}` });
+      trackSkip(providerConfig.provider, providerConfig.model, `status:${providerConfig.status}`);
       continue;
     }
     if (providerConfig.tpmLimit) {
       const estimated = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
       if (estimated > providerConfig.tpmLimit) {
         log('WARN', `Skipping ${providerConfig.provider} — estimated ${estimated} tokens exceeds its ${providerConfig.tpmLimit} TPM budget`);
+        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `tpm-budget:${estimated}>${providerConfig.tpmLimit}` });
+        trackSkip(providerConfig.provider, providerConfig.model, `tpm-budget (~${estimated}>${providerConfig.tpmLimit})`);
         continue;
       }
     }
 
-    const { base, key } = getProviderConfig(providerConfig.provider);
     const extraBody = getReasoningBody(providerConfig);
     const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
+    const unlimited = isUnlimitedRetryHop(providerConfig);
+    const maxAttempts = unlimited ? (providerConfig.maxRetries || UNLIMITED_MAX_RETRIES) : 1;
+    const retryBudgetMs = providerConfig.retryBudgetMs || UNLIMITED_RETRY_BUDGET_MS;
+    const hopStartedAt = Date.now();
+    let hopFinalError = null;
+    let skippedThisHop = false;
 
-    try {
-      const response = await axios.post(
-        `${base}/chat/completions`,
-        body,
-        {
-          headers: {
-            'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json'
-          },
-          responseType: stream ? 'stream' : 'json',
-          timeout: providerConfig.timeoutMs || 300000
+    for (let attemptNum = 1; attemptNum <= maxAttempts; attemptNum++) {
+      // Re-picked every attempt, not just once before the loop — so a
+      // retried literouter hop rotates to a different key on failure
+      // instead of hammering the one key that just failed for the whole
+      // retry budget. Cheap to redo each time (no network call).
+      let pickedLiterouterKey = null;
+      if (providerConfig.provider === 'literouter') {
+        pickedLiterouterKey = pickLiterouterKey(providerConfig.model, providerConfig.dailyCap);
+        if (!pickedLiterouterKey) {
+          log('WARN', `Skipping literouter/${providerConfig.model} — every Literouter key is out of daily quota for this model`);
+          attempts.push({ provider: 'literouter', model: providerConfig.model, outcome: 'skipped', reason: 'literouter-daily-cap-exhausted' });
+          trackSkip('literouter', providerConfig.model, 'literouter-daily-cap-exhausted');
+          skippedThisHop = true;
+          break;
         }
-      );
-      trackUsage(providerConfig.provider, providerConfig.model, true);
-      return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model };
-
-    } catch (err) {
-      const status = err.response?.status;
-      trackUsage(providerConfig.provider, providerConfig.model, false, status);
-
-      if (status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404) {
-        log('WARN', `Provider ${providerConfig.provider} returned ${status} (client error) — not falling back`);
-        throw err;
       }
+      const { base, key } = pickedLiterouterKey
+        ? { base: 'https://api.literouter.com/v1', key: pickedLiterouterKey.key }
+        : getProviderConfig(providerConfig.provider);
 
-      log('WARN', `Provider ${providerConfig.provider} failed [${status || 'network/timeout'}]: ${err.message} — trying fallback...`);
-      lastError = err;
+      try {
+        const response = await axios.post(
+          `${base}/chat/completions`,
+          body,
+          {
+            headers: {
+              'Authorization': `Bearer ${key}`,
+              'Content-Type': 'application/json'
+            },
+            responseType: stream ? 'stream' : 'json',
+            timeout: providerConfig.timeoutMs || 300000
+          }
+        );
+        trackUsage(providerConfig.provider, providerConfig.model, true);
+        attempts.push({
+          provider: providerConfig.provider, model: providerConfig.model, outcome: 'used',
+          ...(attemptNum > 1 ? { retries: attemptNum - 1 } : {})
+        });
+        return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model, attempts };
+
+      } catch (err) {
+        const status = err.response?.status;
+        trackUsage(providerConfig.provider, providerConfig.model, false, status);
+        hopFinalError = err;
+
+        // Token-limit and quota-exhausted errors are NEVER worth retrying
+        // on THIS hop — but unlike a truly malformed request, a DIFFERENT
+        // hop might still handle it fine (bigger context window, or
+        // actual quota left). So these always fall through to the next
+        // hop instead of hard-stopping, even when the status is a 4xx
+        // that would otherwise block fallback below. Checked first, on
+        // purpose, before the generic hard-4xx check.
+        if (isTokenLimitError(err)) {
+          log('WARN', `${providerConfig.provider}/${providerConfig.model} — request exceeds this hop's context window, not retrying it: ${err.message}`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'token-limit-exceeded' });
+          trackSkip(providerConfig.provider, providerConfig.model, 'token-limit-exceeded');
+          hopFinalError = err;
+          break;
+        }
+        if (isQuotaExhaustedError(err)) {
+          log('WARN', `${providerConfig.provider}/${providerConfig.model} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'quota-exhausted' });
+          trackSkip(providerConfig.provider, providerConfig.model, 'quota-exhausted');
+          hopFinalError = err;
+          break;
+        }
+
+        // Genuine hard client errors (malformed request, auth failure,
+        // etc.) — never retry this hop, never fall back to the next one
+        // either, since the exact same broken request would just fail
+        // there too.
+        if (status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404) {
+          log('WARN', `Provider ${providerConfig.provider} returned ${status} (client error) — not falling back`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `http-${status}` });
+          err.attempts = attempts;
+          throw err;
+        }
+
+        const elapsed = Date.now() - hopStartedAt;
+        const reason = status === 429 ? 'rate-limited (429)' : status ? `http-${status}` : (err.code || 'network/timeout');
+        const budgetLeft = elapsed < retryBudgetMs;
+        const attemptsLeft = attemptNum < maxAttempts;
+
+        if (unlimited && budgetLeft && attemptsLeft) {
+          const delay = backoffDelayMs(attemptNum);
+          log('WARN', `${providerConfig.provider}/${providerConfig.model} attempt ${attemptNum}/${maxAttempts} failed [${reason}] — "unlimited" hop, retrying in ${delay}ms (${elapsed}ms into a ${retryBudgetMs}ms budget)...`);
+          await sleep(delay);
+          continue;
+        }
+
+        const triedNote = attemptNum > 1 ? ` after ${attemptNum} attempts over ${elapsed}ms` : '';
+        log('WARN', `${providerConfig.provider}/${providerConfig.model} failed [${reason}]${triedNote} — trying fallback...`);
+        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `${reason}${triedNote}` });
+        trackSkip(providerConfig.provider, providerConfig.model, reason);
+        break;
+      }
     }
+    lastError = hopFinalError;
   }
   if (!lastError) {
     lastError = new Error('No active hop available for this model (all hops are inactive, skipped, or over their TPM budget).');
     lastError.response = { status: 503 };
   }
+  lastError.attempts = attempts;
   throw lastError;
 }
 
@@ -627,7 +977,7 @@ app.get('/health', (req, res) => {
   }));
   const today = new Date().toISOString().slice(0, 10);
   const orStatus = OPENROUTER_KEYS.map((_, i) => ({
-    key: `OPENROUTER_KEY_${i + 1}`,
+    key: OPENROUTER_KEY_ENTRIES[i].envName,
     usedToday: openrouterKeyState[i].day === today ? openrouterKeyState[i].count : 0,
     cap: OPENROUTER_DAILY_CAP
   }));
@@ -637,7 +987,12 @@ app.get('/health', (req, res) => {
     users: status,
     provider_quotas: Object.keys(PROVIDER_QUOTAS).map(getProviderQuotaSnapshot),
     openrouter_keys: orStatus,
-    literouter_keys: LITEROUTER_KEYS.length
+    literouter_keys: LITEROUTER_KEYS.length,
+    // Per-(key, model) breakdown, only for Literouter models that actually
+    // have a dailyCap configured — e.g. "12/30 (LITEROUTER_KEY_1), 0/30
+    // (LITEROUTER_KEY_2)" for claude-haiku-4.5-cheap. Uncapped ("∞") models
+    // aren't tracked per-key and won't appear here.
+    literouter_capped_models: literouterCapSnapshot()
   });
 });
 
@@ -701,8 +1056,22 @@ app.post('/v1/chat/completions', async (req, res) => {
       stream: stream || false
     };
 
-    const { response, usedProvider, usedModel } = await makeAPICall(mapping, nimRequest, stream || false);
+    const { response, usedProvider, usedModel, attempts } = await makeAPICall(model, nimRequest, stream || false);
     log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel}`);
+
+    // Surface the fallback path back to the client, not just server logs —
+    // every hop that was tried, in order, with what happened to it.
+    // X-QProxy-Used is always present; X-QProxy-Fallback-Path only appears
+    // when at least one earlier hop was skipped or failed first.
+    res.setHeader('X-QProxy-Used', `${usedProvider}/${usedModel}`);
+    const priorHops = (attempts || []).filter(a => a.outcome !== 'used');
+    if (priorHops.length) {
+      const pathStr = (attempts || [])
+        .map(a => `${a.provider}/${a.model}:${a.outcome}${a.reason ? `(${a.reason})` : ''}`)
+        .join(' -> ');
+      res.setHeader('X-QProxy-Fallback-Path', pathStr);
+      log('INFO', `[${userName}] fallback path: ${pathStr}`);
+    }
 
     if (!stream) {
       const tokens = response.data?.usage?.total_tokens || 0;
@@ -839,12 +1208,17 @@ app.post('/v1/chat/completions', async (req, res) => {
     let errorBody = 'unavailable';
     try { errorBody = JSON.stringify(error.response?.data); } catch (e) { errorBody = '[stream/circular error]'; }
     log('ERROR', `[${userName}] ${error.message} | status: ${error.response?.status} | body: ${errorBody}`);
+    if (Array.isArray(error.attempts) && error.attempts.length) {
+      const pathStr = error.attempts.map(a => `${a.provider}/${a.model}:${a.outcome}${a.reason ? `(${a.reason})` : ''}`).join(' -> ');
+      res.setHeader('X-QProxy-Fallback-Path', pathStr);
+    }
     res.status(error.response?.status || 500).json({
       error: {
         message: error.message || 'Internal server error',
         type: 'invalid_request_error',
         code: error.response?.status || 500
-      }
+      },
+      ...(Array.isArray(error.attempts) && error.attempts.length ? { attempts: error.attempts } : {})
     });
   }
 });
@@ -910,23 +1284,70 @@ app.get('/admin/api/models', requireAdmin, (req, res) => {
   res.json({ models: MODEL_MAPPING });
 });
 
+// Every hop, at any depth of the `.fallback` chain, needs a model + provider.
+// (Bundle/container entries are just regular entries built from copied
+// hops in the admin UI, not a distinct shape — same validation applies.)
+function validateHopShape(entry) {
+  let cur = entry;
+  let i = 0;
+  while (cur) {
+    if (!cur.model || !cur.provider) {
+      return `Hop #${i + 1} needs both "model" and "provider".`;
+    }
+    cur = cur.fallback || null;
+    i++;
+  }
+  return null;
+}
+
 app.post('/admin/api/models', requireAdmin, async (req, res) => {
-  const { id, entry } = req.body || {};
+  const { id, entry, previousId } = req.body || {};
   if (!id || typeof id !== 'string') {
     return res.status(400).json({ error: { message: 'Body must include a string "id".', type: 'invalid_request_error', code: 400 } });
   }
-  if (!entry || !entry.model || !entry.provider) {
-    return res.status(400).json({ error: { message: 'Body must include "entry" with at least "model" and "provider".', type: 'invalid_request_error', code: 400 } });
+  if (!entry || typeof entry !== 'object') {
+    return res.status(400).json({ error: { message: 'Body must include an "entry" object.', type: 'invalid_request_error', code: 400 } });
   }
+  const shapeError = validateHopShape(entry);
+  if (shapeError) {
+    return res.status(400).json({ error: { message: shapeError, type: 'invalid_request_error', code: 400 } });
+  }
+  const isRename = previousId && typeof previousId === 'string' && previousId !== id;
+  if (isRename) {
+    if (!MODEL_MAPPING[previousId]) {
+      return res.status(404).json({ error: { message: `Can't rename — no existing model "${previousId}".`, type: 'invalid_request_error', code: 404 } });
+    }
+    if (MODEL_MAPPING[id]) {
+      return res.status(409).json({ error: { message: `Can't rename to "${id}" — that id already exists as a different model.`, type: 'conflict_error', code: 409 } });
+    }
+  }
+
+  // Validate the whole reference graph (existence + no cycles) BEFORE
+  // committing anything, using the same resolver the live traffic path
+  // uses — so if it would blow up at request time, it's rejected here
+  // instead. Tried against a scratch copy of MODEL_MAPPING so a bad save
+  // never corrupts the live mapping even transiently.
+  const scratch = { ...MODEL_MAPPING };
+  if (isRename) delete scratch[previousId];
+  scratch[id] = entry;
+  try {
+    resolveModelChain(id, scratch);
+  } catch (e) {
+    return res.status(400).json({ error: { message: `Invalid reference chain: ${e.message}`, type: 'invalid_request_error', code: 400 } });
+  }
+
+  if (isRename) delete MODEL_MAPPING[previousId];
   MODEL_MAPPING[id] = entry;
   let sync;
   try {
-    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: upsert model "${id}"`);
+    sync = await saveModels(MODEL_MAPPING, isRename
+      ? `Q-Proxy admin: rename model "${previousId}" -> "${id}"`
+      : `Q-Proxy admin: upsert model "${id}"`);
   } catch (e) {
     return res.status(500).json({ error: { message: `Saved in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] upserted model "${id}"${sync.ok ? ' (synced to GitHub)' : ''}`);
-  res.json({ ok: true, id, entry, githubSync: sync });
+  log('INFO', `[admin] ${isRename ? `renamed "${previousId}" to "${id}"` : `upserted model "${id}"`}${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id, entry, renamedFrom: isRename ? previousId : null, githubSync: sync });
 });
 
 app.delete('/admin/api/models/:id', requireAdmin, async (req, res) => {
@@ -988,7 +1409,7 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 
   const today = new Date().toISOString().slice(0, 10);
   const openrouterSelfTracked = OPENROUTER_KEYS.map((_, i) => ({
-    key: `OPENROUTER_KEY_${i + 1}`,
+    key: OPENROUTER_KEY_ENTRIES[i].envName,
     usedToday: openrouterKeyState[i].day === today ? openrouterKeyState[i].count : 0,
     cap: OPENROUTER_DAILY_CAP
   }));
@@ -998,9 +1419,13 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
     providerUsage: Object.values(providerUsage),
     openrouter: { selfTracked: openrouterSelfTracked },
     providerQuotas: Object.keys(PROVIDER_QUOTAS).map(getProviderQuotaSnapshot),
-    literouterKeysLoaded: LITEROUTER_KEYS.length
+    literouterKeysLoaded: LITEROUTER_KEYS.length,
+    // Per-model, per-key breakdown for Literouter models that have a
+    // dailyCap set — this is what the Admin dashboard renders as
+    // "12/30 (LITEROUTER_KEY_1)  0/30 (LITEROUTER_KEY_2)" rows.
+    literouterCappedModels: literouterCapSnapshot()
   });
-});;
+});
 
 // ============================================================
 // ADMIN: REASONING SCHEMAS
@@ -1052,6 +1477,46 @@ app.delete('/admin/api/reasoning-schemas/:id', requireAdmin, async (req, res) =>
 });
 
 // ============================================================
+// MODEL PRESETS — confirmed-good reasoning configs for exact models,
+// keyed "provider/model". Applied automatically at sync-import time (see
+// /admin/api/sync/:provider/add above) so a model you've already tested
+// doesn't reset to blank switches if you re-import it later.
+// ============================================================
+app.get('/admin/api/presets', requireAdmin, (req, res) => {
+  res.json({ presets: MODEL_PRESETS });
+});
+
+app.post('/admin/api/presets', requireAdmin, async (req, res) => {
+  const { provider, model, config } = req.body || {};
+  if (!provider || !model || typeof provider !== 'string' || typeof model !== 'string') {
+    return res.status(400).json({ error: { message: 'Body must include string "provider" and "model".', type: 'invalid_request_error', code: 400 } });
+  }
+  if (!config || typeof config !== 'object') {
+    return res.status(400).json({ error: { message: 'Body must include "config" (the reasoning setup to remember for this exact model).', type: 'invalid_request_error', code: 400 } });
+  }
+  const key = presetKeyFor(provider, model);
+  MODEL_PRESETS[key] = { ...config };
+  let sync;
+  try {
+    sync = await saveModelPresets(`Q-Proxy admin: save preset for "${key}"`);
+  } catch (e) {
+    return res.status(500).json({ error: { message: `Saved in memory but failed to write model-presets.json: ${e.message}`, type: 'server_error', code: 500 } });
+  }
+  log('INFO', `[admin] saved preset for "${key}"${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, key, preset: MODEL_PRESETS[key], githubSync: sync });
+});
+
+app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
+  const key = decodeURIComponent(req.params.key);
+  if (!MODEL_PRESETS[key]) return res.status(404).json({ error: { message: `No preset for "${key}".`, type: 'invalid_request_error', code: 404 } });
+  delete MODEL_PRESETS[key];
+  let sync;
+  try { sync = await saveModelPresets(`Q-Proxy admin: delete preset for "${key}"`); }
+  catch (e) { return res.status(500).json({ error: { message: `Deleted in memory but failed to write model-presets.json: ${e.message}`, type: 'server_error', code: 500 } }); }
+  res.json({ ok: true, key, githubSync: sync });
+});
+
+// ============================================================
 // ADMIN: SYNC — ask a provider what models it actually has live
 // right now and diff against what's configured. Deliberately
 // does NOT auto-add or auto-remove anything: a newly-listed model
@@ -1087,6 +1552,203 @@ function inferReasoningSchema(provider, model) {
   return null;
 }
 
+// ============================================================
+// ADMIN: AUTO-DETECT REASONING CONFIG FROM A PROVIDER'S OWN DOCS
+// ============================================================
+// This is the server-side twin of the "paste an example" scanner in
+// Admin (admin.html's detectReasoningFromExample) — same classification
+// logic, duplicated here because admin.html runs in the browser and
+// server.js runs in Node with no shared module between them today.
+// Keep the two in sync if the heuristics change.
+//
+// For providers whose per-model documentation page is (a) public, (b)
+// server-rendered enough that a plain GET returns the sample code as
+// text, and (c) at a URL directly derivable from the model id, this
+// closes the loop without asking a human to paste anything: fetch the
+// page, pull out the code sample, run it through the same classifier.
+// NVIDIA's build.nvidia.com is the only provider confirmed to fit all
+// three right now — its model id ("org/model") IS the URL path
+// (build.nvidia.com/org/model), and every model page ships a Python/
+// curl sample with the exact chat_template_kwargs/reasoning_effort/
+// reasoning_budget it actually needs. This is inherently best-effort:
+// it depends on NVIDIA's page structure staying the same, so the result
+// is always shown for review before anything is written to config —
+// never applied silently.
+const DETECT_BOOL_KEY_RE = /^(enable[_-]?thinking|thinking|reasoning|enable[_-]?reasoning|thinking[_-]?mode|show[_-]?thinking|show[_-]?reasoning|reasoning[_-]?enabled|thinking[_-]?enabled|include[_-]?reasoning)$/i;
+const DETECT_EFFORT_KEY_RE = /^(reasoning[_-]?effort|thinking[_-]?effort|effort|reasoning[_-]?level|thinking[_-]?level|reasoning[_-]?budget|thinking[_-]?budget)$/i;
+const DETECT_REASONING_HINT_RE = /think|reason/i;
+
+function extractBalancedJsonFrom(text, fromIdx) {
+  const start = text.indexOf('{', Math.max(0, fromIdx));
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Finds the outermost ({depth 0}) brace-balanced object that CONTAINS a
+// given text position — not just the nearest preceding "{", which would
+// often grab an inner nested object (e.g. a message's {"role":...}
+// instead of the enclosing "payload = {...}"). Scans left-to-right once.
+function findEnclosingObjectSpan(text, idx) {
+  let depth = 0, start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        if (idx >= start && idx <= i) return text.slice(start, i + 1);
+        start = -1;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizePySnippet(text) {
+  // The samples on provider doc pages are often Python (True/False/None)
+  // rather than strict JSON — close enough to parse once normalized.
+  return text.replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false').replace(/\bNone\b/g, 'null');
+}
+
+function decodeHtmlFragment(s) {
+  return s
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/<[^>]+>/g, '');
+}
+
+// Pulls the first reasoning-looking JSON-ish object out of a raw HTML
+// page: tries <pre>/<code> blocks first (the normal home for a rendered
+// code sample), then falls back to scanning the flattened page text in
+// case the sample lives inside embedded script/JSON data instead.
+function extractReasoningSnippetFromHtml(html) {
+  const blocks = [];
+  const blockRe = /<(?:pre|code)[^>]*>([\s\S]*?)<\/(?:pre|code)>/gi;
+  let m;
+  while ((m = blockRe.exec(html))) blocks.push(m[1]);
+  for (const raw of blocks) {
+    const text = decodeHtmlFragment(raw);
+    if (DETECT_REASONING_HINT_RE.test(text) && /\{/.test(text)) {
+      const idx = text.search(/chat_template_kwargs|reasoning_budget|reasoning_effort|enable_thinking|thinking_budget|thinking_mode/i);
+      const jsonText = idx === -1 ? extractBalancedJsonFrom(text, 0) : findEnclosingObjectSpan(text, idx);
+      if (jsonText) return normalizePySnippet(jsonText);
+    }
+  }
+  const flat = decodeHtmlFragment(html);
+  const idx2 = flat.search(/chat_template_kwargs|reasoning_budget|reasoning_effort|enable_thinking|thinking_budget|thinking_mode/i);
+  if (idx2 !== -1) {
+    const jsonText = findEnclosingObjectSpan(flat, idx2);
+    if (jsonText) return normalizePySnippet(jsonText);
+  }
+  return null;
+}
+
+function extractJsonObjectServer(text) {
+  if (!text || !text.trim()) return null;
+  const trimmed = text.trim();
+  try { return JSON.parse(trimmed); } catch (_) {}
+  const jsonText = extractBalancedJsonFrom(trimmed, 0);
+  if (!jsonText) return null;
+  try { return JSON.parse(jsonText); } catch (_) { return null; }
+}
+
+// Same classification rules as admin.html's detectReasoningFromExample:
+// a clean boolean toggle and/or effort enum go into the structured
+// thinking-and-effort shape; anything nested or non-boolean/non-enum is
+// flagged as a special case for the raw escape hatch instead of being
+// forced into a bad fit.
+function detectReasoningFromExampleServer(exampleText, valuesText) {
+  const parsed = extractJsonObjectServer(exampleText);
+  const result = { ok: false, error: null, toggle: null, effort: null, extraKeys: [], special: false };
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    result.error = 'Could not find a valid JSON object in that text.';
+    return result;
+  }
+  const containers = [
+    { obj: parsed, transport: 'top_level' },
+    { obj: (parsed.chat_template_kwargs && typeof parsed.chat_template_kwargs === 'object' && !Array.isArray(parsed.chat_template_kwargs)) ? parsed.chat_template_kwargs : null, transport: 'chat_template_kwargs' }
+  ].filter(c => c.obj);
+
+  for (const { obj, transport } of containers) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === 'chat_template_kwargs') continue;
+      if (v !== null && typeof v === 'object' && DETECT_REASONING_HINT_RE.test(k)) {
+        result.extraKeys.push({ key: k, value: v, transport });
+        continue;
+      }
+      if (DETECT_BOOL_KEY_RE.test(k) && (typeof v === 'boolean' || v === 'true' || v === 'false') && !result.toggle) {
+        result.toggle = { key: k, value: (v === 'true' ? true : v === 'false' ? false : v), transport };
+      } else if (DETECT_EFFORT_KEY_RE.test(k) && (typeof v === 'string' || typeof v === 'number') && !result.effort) {
+        result.effort = { key: k, value: String(v), transport };
+      } else if (DETECT_REASONING_HINT_RE.test(k)) {
+        result.extraKeys.push({ key: k, value: v, transport });
+      }
+    }
+  }
+
+  const acceptedValues = (valuesText || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  if (result.effort) {
+    const seen = new Set();
+    result.effort.options = [result.effort.value, ...acceptedValues].filter(v => {
+      if (seen.has(v)) return false;
+      seen.add(v);
+      return true;
+    });
+  } else if (acceptedValues.length) {
+    result.effort = { key: 'reasoning_effort', value: acceptedValues[0], transport: 'top_level', options: acceptedValues, guessedKey: true };
+  }
+
+  result.special = result.extraKeys.length > 0;
+  result.ok = Boolean(result.toggle || result.effort || result.special);
+  if (!result.ok) result.error = 'No reasoning-looking fields found in that JSON — nothing to apply.';
+  return result;
+}
+
+// Only NVIDIA is wired up right now — its model id doubles as the docs
+// URL path and its sample code is fetchable with a plain GET. Other
+// providers don't have a confirmed public per-model page at a
+// predictable URL with a real code sample, so they fall through to a
+// clear "not available" response rather than silently guessing a URL
+// that might 404 or scrape the wrong thing.
+const AUTO_DETECT_PAGE_URL = {
+  nvidia: (model) => `https://build.nvidia.com/${model}`
+};
+
+app.get('/admin/api/detect/:provider', requireAdmin, async (req, res) => {
+  const provider = req.params.provider;
+  const model = req.query.model;
+  if (!model || typeof model !== 'string') {
+    return res.status(400).json({ error: { message: 'Query must include ?model=<provider model id>', type: 'invalid_request_error', code: 400 } });
+  }
+  const urlBuilder = AUTO_DETECT_PAGE_URL[provider];
+  if (!urlBuilder) {
+    return res.status(400).json({ error: { message: `Automatic page-based detection isn't available for "${provider}" yet — no confirmed public per-model doc page at a predictable URL. Use the paste-an-example scanner instead.`, type: 'invalid_request_error', code: 400 } });
+  }
+  const pageUrl = urlBuilder(model);
+  try {
+    const r = await axios.get(pageUrl, { timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Q-Proxy-reasoning-detector/1.0)' } });
+    const html = String(r.data || '');
+    const snippet = extractReasoningSnippetFromHtml(html);
+    if (!snippet) {
+      return res.json({ ok: false, error: `No reasoning-looking code sample found on ${pageUrl}. This model may not support reasoning, or the page layout didn't match what we scan for — try pasting an example manually instead.`, pageUrl, snippet: null });
+    }
+    const detection = detectReasoningFromExampleServer(snippet, '');
+    res.json({ ...detection, pageUrl, snippet });
+  } catch (e) {
+    res.status(502).json({ error: { message: `Couldn't fetch ${pageUrl}: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 } });
+  }
+});
+
 function flattenEntry(entry) {
   const hops = [];
   let cur = entry;
@@ -1102,7 +1764,8 @@ function flattenEntry(entry) {
       tpmLimit: cur.tpmLimit,
       timeoutMs: cur.timeoutMs,
       freeUntil: cur.freeUntil,
-      deprecatedOn: cur.deprecatedOn
+      deprecatedOn: cur.deprecatedOn,
+      retryAsUnlimited: cur.retryAsUnlimited
     });
     cur = cur.fallback || null;
   }
@@ -1126,6 +1789,7 @@ function nestHops(hops) {
     if (h.timeoutMs !== undefined) item.timeoutMs = h.timeoutMs;
     if (h.freeUntil) item.freeUntil = h.freeUntil;
     if (h.deprecatedOn) item.deprecatedOn = h.deprecatedOn;
+    if (typeof h.retryAsUnlimited === 'boolean') item.retryAsUnlimited = h.retryAsUnlimited;
     if (result) item.fallback = result;
     result = item;
   }
@@ -1191,7 +1855,7 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
   if (!SYNCABLE_PROVIDERS.has(provider)) {
     return res.status(400).json({ error: { message: `Provider "${provider}" is not syncable.`, type: 'invalid_request_error', code: 400 } });
   }
-  const { model, id, status, limitType } = req.body || {};
+  const { model, id, status, limitType, reasoningOverride } = req.body || {};
   if (!model || typeof model !== 'string') {
     return res.status(400).json({ error: { message: 'Body must include a string "model".', type: 'invalid_request_error', code: 400 } });
   }
@@ -1201,23 +1865,44 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
     return res.status(409).json({ error: { message: `Model id "${safeId}" already exists.`, type: 'conflict_error', code: 409 } });
   }
 
+  // If this exact model has a confirmed-good reasoning config saved from a
+  // previous import (see MODEL_PRESETS / "Save as preset" in Admin), apply
+  // it now instead of leaving every switch off and making you reconfigure
+  // it from scratch. Falls back to the old family-level schema guess (still
+  // starts with every switch off) when no preset exists for this exact
+  // model.
+  //
+  // `reasoningOverride` takes priority over both: it's what the Admin UI
+  // sends when you scanned a pasted example for this specific model on the
+  // sync screen (via 🧪) before hitting "Add to config" — an actually-
+  // inspected config, not a guess or a config carried over from a
+  // differently-versioned model that happened to share a name prefix.
+  const preset = MODEL_PRESETS[presetKeyFor(provider, model.trim())];
+  const usedPreset = Boolean(preset) && !reasoningOverride;
+  const usedDetection = Boolean(reasoningOverride && typeof reasoningOverride === 'object' && reasoningOverride.reasoningSchema);
+  const src = usedDetection ? reasoningOverride : preset;
   MODEL_MAPPING[safeId] = {
     model: model.trim(),
     provider,
-    reasoningSchema: inferReasoningSchema(provider, model.trim()),
-    reasoning: {},
+    reasoningSchema: src?.reasoningSchema ?? inferReasoningSchema(provider, model.trim()),
+    reasoning: src?.reasoning ? JSON.parse(JSON.stringify(src.reasoning)) : {},
+    ...(src?.reasoningFieldEnabled ? { reasoningFieldEnabled: JSON.parse(JSON.stringify(src.reasoningFieldEnabled)) } : {}),
+    ...(src?.reasoningFieldKeys ? { reasoningFieldKeys: JSON.parse(JSON.stringify(src.reasoningFieldKeys)) } : {}),
+    ...(src?.reasoningFieldTransport ? { reasoningFieldTransport: JSON.parse(JSON.stringify(src.reasoningFieldTransport)) } : {}),
+    ...(src?.reasoningFieldOptions ? { reasoningFieldOptions: JSON.parse(JSON.stringify(src.reasoningFieldOptions)) } : {}),
+    ...(preset?.notes && !usedDetection ? { notes: preset.notes } : {}),
     status: (status || 'active'),
     limitType: (limitType || 'rate-limited')
   };
   let sync;
   try {
-    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: sync-add "${safeId}"`);
+    sync = await saveModels(MODEL_MAPPING, `Q-Proxy admin: sync-add "${safeId}"${usedDetection ? ' (from detected example)' : usedPreset ? ' (from preset)' : ''}`);
   } catch (e) {
     delete MODEL_MAPPING[safeId];
     return res.status(500).json({ error: { message: `Added in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})${sync.ok ? ' (synced to GitHub)' : ''}`);
-  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId], githubSync: sync });
+  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})${usedDetection ? ' — applied detected example config' : usedPreset ? ' — applied saved preset' : ''}${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId], usedPreset, usedDetection, githubSync: sync });
 });
 
 app.post('/admin/api/sync/:provider/remove', requireAdmin, async (req, res) => {
@@ -1279,12 +1964,14 @@ async function bootstrapConfigAndStart() {
   await syncConfigFromGitHubOnBoot();
 
   Object.assign(REASONING_SCHEMAS, loadReasoningSchemasFromDisk());
+  Object.assign(MODEL_PRESETS, loadModelPresetsFromDisk());
   MODEL_MAPPING = loadModelsFromDisk();
 
   app.listen(PORT, () => {
     log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
     log('INFO', `OpenRouter keys loaded: ${OPENROUTER_KEYS.length}`);
     log('INFO', `Literouter keys loaded: ${LITEROUTER_KEYS.length}`);
+    log('INFO', `Model presets loaded: ${Object.keys(MODEL_PRESETS).length}`);
     log('INFO', `GitHub sync: ${GITHUB_SYNC_ENABLED ? `enabled (${GITHUB_REPO}@${GITHUB_BRANCH})` : 'disabled — admin edits will NOT survive a restart'}`);
   });
 }
