@@ -304,6 +304,7 @@
   .hop .hop-order { color: var(--accent); font-size: 10px; }
   .hop .hop-model { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .hop .hop-usage { color: var(--text-faint); font-size: 10px; }
+  .hop .hop-skip-badge { color: #f59e0b; font-size: 9.5px; border: 1px solid rgba(245,158,11,.35); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
   .chain-arrow { color: var(--text-faint); padding: 0 6px; font-size: 13px; }
 
   /* ---------- Usage panel ---------- */
@@ -670,6 +671,11 @@
     return hops.map((hop, i) => {
       const u = usageFor(usageIndex, hop.provider, hop.model);
       const usageStr = u ? `${u.count} ok${u.errors ? ', ' + u.errors + ' err' : ''} · ${timeAgo(u.lastUsed)}` : 'no requests yet';
+      // "ran out" surfacing: a hop that has been skipped recently (rate
+      // limit, TPM budget, deprecated/inactive, transient failure — see
+      // trackSkip in server.js) shows a small warning badge with the
+      // reason and how long ago, right in the chain, not just in logs.
+      const skipBadge = (u && u.skips) ? `<span class="hop-skip-badge" title="${escapeHtml(u.lastSkipReason || '')} · ${u.skips} skip(s) total">⚠ ran out (${escapeHtml(u.lastSkipReason || 'skipped')}) · ${timeAgo(u.lastSkipAt)}</span>` : '';
       const recent = i === mostRecentIdx ? ' hop-active-recent' : '';
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
@@ -677,6 +683,7 @@
         <span class="hop-provider">${PROVIDER_LABELS[hop.provider] || hop.provider}</span>
         <span class="hop-model">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
+        ${skipBadge}
       </div>`;
     }).join('');
   }
@@ -793,6 +800,48 @@
     }));
   }
 
+  // Per-row scan state for the sync ("check for updates") screen — keyed
+  // by "provider::model" rather than a hop index, since these rows aren't
+  // hops yet. Same detector/applier as the per-hop 🧪 button, just a
+  // different place to stash the in-progress scan before Add actually
+  // commits anything.
+  const syncDetectState = {};
+  function syncDetectKey(provider, model) { return provider + '::' + model; }
+
+  function renderSyncDetectResult(provider, model) {
+    const st = syncDetectState[syncDetectKey(provider, model)];
+    const d = st && st.result;
+    if (!d) return '';
+    if (d.error) return `<div style="margin-top:6px;font-size:11px;color:var(--broken);">${escapeHtml(d.error)}</div>`;
+    const lines = [];
+    if (d.toggle) lines.push(`Thinking toggle: <code>${escapeHtml(d.toggle.key)}</code> = <strong>${d.toggle.value}</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.toggle.transport)})</span>`);
+    if (d.effort) lines.push(`Reasoning effort: <code>${escapeHtml(d.effort.key)}</code>${d.effort.guessedKey ? ' <span style="color:var(--text-faint);">(no effort key found — check this)</span>' : ''} = <strong>"${escapeHtml(d.effort.value)}"</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.effort.transport)})</span>, accepted: ${(d.effort.options || []).map(v => escapeHtml(v)).join(', ')}`);
+    if (d.special) lines.push(`<span style="color:var(--broken);">Special case</span> — will add as <strong>Raw</strong> with everything detected pasted in.`);
+    return `<div style="margin-top:6px;font-size:11px;line-height:1.6;background:var(--bg);border-radius:6px;padding:6px 8px;">${lines.join('<br>')}</div>`;
+  }
+
+  function renderSyncDetectPanel(provider, model) {
+    const key = syncDetectKey(provider, model);
+    const st = syncDetectState[key] || {};
+    if (!st.open) return '';
+    const autoBtn = provider === 'nvidia'
+      ? `<button type="button" class="sync-item-btn" data-sync-detect-act="auto" data-provider="${provider}" data-model="${escapeHtml(model)}">${st.autoLoading ? 'Fetching…' : '🪄 Auto-fetch from NVIDIA page'}</button>`
+      : '';
+    const pageNote = st.pageUrl ? `<div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Fetched from <a href="${escapeHtml(st.pageUrl)}" target="_blank" rel="noopener">${escapeHtml(st.pageUrl)}</a> — this is a scrape of NVIDIA's public docs page, not a real capability API, so double-check it.</div>` : '';
+    return `<div class="field" style="margin-top:6px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;padding:8px 10px;">
+      ${autoBtn}
+      ${pageNote}
+      <label style="font-size:10.5px;margin-top:${autoBtn ? '8px' : '0'};display:block;">Paste an example request for this model (full body, curl snippet, or just the kwargs) — or use auto-fetch above</label>
+      <textarea rows="4" data-sync-detect-input="1" data-provider="${provider}" data-model="${escapeHtml(model)}" style="font-family:var(--font-mono);font-size:11px;width:100%;margin-top:3px;resize:vertical;" placeholder='{"chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "high"}}'>${escapeHtml(st.input || '')}</textarea>
+      <label style="font-size:10.5px;margin-top:6px;display:block;">Accepted effort values, if the docs list them (comma/newline separated) — optional</label>
+      <textarea rows="2" data-sync-detect-values="1" data-provider="${provider}" data-model="${escapeHtml(model)}" style="font-family:var(--font-mono);font-size:11px;width:100%;margin-top:3px;resize:vertical;" placeholder="low, medium, high, xhigh">${escapeHtml(st.values || '')}</textarea>
+      <div style="margin-top:6px;display:flex;gap:6px;">
+        <button type="button" class="sync-item-btn" data-sync-detect-act="scan" data-provider="${provider}" data-model="${escapeHtml(model)}">Scan</button>
+      </div>
+      ${renderSyncDetectResult(provider, model)}
+    </div>`;
+  }
+
   function renderSyncResult(provider) {
     const state = syncState[provider];
     if (!state) return '';
@@ -801,7 +850,18 @@
     const r = state.data;
     if (!r) return '';
     const addRows = r.newlyAvailable.length
-      ? r.newlyAvailable.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn add" data-sync-act="add" data-provider="${provider}" data-model="${escapeHtml(m)}">Add to config</button></div>`).join('')
+      ? r.newlyAvailable.map(m => {
+          const st = syncDetectState[syncDetectKey(provider, m)] || {};
+          const scanned = st.result && st.result.ok;
+          return `<div class="sync-item-wrap">
+            <div class="sync-item">
+              <span class="sync-item-code">${escapeHtml(m)}</span>
+              <button type="button" class="sync-item-btn" data-sync-detect-act="toggle" data-provider="${provider}" data-model="${escapeHtml(m)}" title="Paste an example to detect this model's reasoning controls before adding it">🧪</button>
+              <button class="sync-item-btn add" data-sync-act="add" data-provider="${provider}" data-model="${escapeHtml(m)}">${scanned ? 'Add with detected config' : 'Add to config'}</button>
+            </div>
+            ${renderSyncDetectPanel(provider, m)}
+          </div>`;
+        }).join('')
       : '<div class="sync-result-note">None found.</div>';
     const removeRows = r.noLongerListed.length
       ? r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')
@@ -822,7 +882,72 @@
   }
 
   let lastUsageList = [];
+  function renderModelCard(item) {
+    const id = item.id;
+    const entry = item.entry;
+    const hops = flattenHops(entry);
+    const aggregate = isAggregateModelId(id);
+    const fallbackDepth = Math.max(0, hops.length - 1);
+    const fallbackCountRow = aggregate
+      ? `<div class="model-meta-row"><span class="model-meta-k">Fallbacks</span><span class="model-meta-v">${fallbackDepth}</span></div>`
+      : '';
+    const fallbackRow = aggregate
+      ? `<div class="model-meta-row"><span class="model-meta-k">Fallback order</span><span class="model-meta-v">${escapeHtml(formatFallbackOrder(hops))}</span></div>`
+      : `<div class="model-meta-row"><span class="model-meta-k">Routing</span><span class="model-meta-v">Direct provider variant</span></div>`;
+    const notesLine = entry.notes ? `<div class="model-notes">${escapeHtml(entry.notes)}</div>` : '';
+    const tags = item.tags.map(tag => `<button class="model-tag ${filterState.tags.has(tag) ? 'active' : ''}" type="button" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('');
+    return `<div class="model-card" data-id="${escapeHtml(id)}">
+      <div class="model-card-top">
+        <span class="model-id">${escapeHtml(id)}</span>
+        <span class="badge ${entry.status || 'active'}">${entry.status || 'active'}</span>
+        <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
+        ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
+        ${entry.custom ? `<span class="badge rate-limited">🗂 custom bundle</span>` : ''}
+        <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
+        <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
+      </div>
+      <div class="model-combo">${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</div>
+      <div class="model-meta">
+        <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
+        <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
+        <div class="model-meta-row"><span class="model-meta-k">Model group</span><span class="model-meta-v">${escapeHtml(item.family)}</span></div>
+        ${fallbackCountRow}
+        ${fallbackRow}
+      </div>
+      ${notesLine}
+      <div class="model-tags">${tags}</div>
+      <div class="chain">${renderChain(entry, lastRenderUsageIndex, aggregate)}</div>
+    </div>`;
+  }
+
+  function bindModelCardEvents() {
+    $$('.del-btn').forEach(btn => btn.addEventListener('click', onDeleteModel));
+    $$('.edit-btn').forEach(btn => btn.addEventListener('click', e => openForm(e.target.getAttribute('data-edit'), currentModels[e.target.getAttribute('data-edit')])));
+    $$('.sync-btn').forEach(btn => btn.addEventListener('click', onSync));
+    $$('.sync-item-btn').forEach(btn => btn.addEventListener('click', onSyncAction));
+    $$('[data-sync-detect-act]').forEach(btn => btn.addEventListener('click', onSyncDetectAction));
+    $$('[data-sync-detect-input]').forEach(el => el.addEventListener('input', e => {
+      const key = syncDetectKey(e.target.dataset.provider, e.target.dataset.model);
+      syncDetectState[key] = syncDetectState[key] || { open: true };
+      syncDetectState[key].input = e.target.value;
+    }));
+    $$('[data-sync-detect-values]').forEach(el => el.addEventListener('input', e => {
+      const key = syncDetectKey(e.target.dataset.provider, e.target.dataset.model);
+      syncDetectState[key] = syncDetectState[key] || { open: true };
+      syncDetectState[key].values = e.target.value;
+    }));
+    $$('.model-tag').forEach(btn => btn.addEventListener('click', e => {
+      const tag = e.currentTarget.getAttribute('data-tag');
+      if (!tag) return;
+      if (filterState.tags.has(tag)) filterState.tags.delete(tag); else filterState.tags.add(tag);
+      renderProviders(currentModels, lastRenderUsageIndex);
+    }));
+  }
+
+  let lastRenderUsageIndex = {};
+
   function renderProviders(models, usageIndex) {
+    lastRenderUsageIndex = usageIndex;
     refreshFilterState();
     const allItems = buildModelItems(models);
     const filtered = applyFilters(allItems);
@@ -833,9 +958,10 @@
     filtered.forEach(item => {
       const provider = item.entry.provider;
       (groups[provider] = groups[provider] || []).push(item);
+      if (item.entry.custom) (groups.__custom__ = groups.__custom__ || []).push(item);
     });
 
-    const order = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+    const order = Object.keys(groups).filter(k => k !== '__custom__').sort((a, b) => groups[b].length - groups[a].length);
     $('#model-count').textContent = Object.keys(models).length + ' total';
     $('#model-visible-count').textContent = filtered.length + ' shown';
 
@@ -846,57 +972,41 @@
       return;
     }
 
-    if (!order.includes(providerTab)) providerTab = order[0];
-    $('#provider-tabs').innerHTML = order.map(provider => `
-      <button type="button" class="provider-tab-btn ${providerTab === provider ? 'active' : ''}" data-provider-tab="${provider}">
-        ${escapeHtml(PROVIDER_LABELS[provider] || provider)} (${groups[provider].length})
-      </button>
-    `).join('');
+    const tabOrder = ['__all__', ...order, ...(groups.__custom__ ? ['__custom__'] : [])];
+    if (!tabOrder.includes(providerTab)) providerTab = '__all__';
+    $('#provider-tabs').innerHTML = tabOrder.map(provider => {
+      const label = provider === '__all__' ? 'All' : provider === '__custom__' ? '🗂 Custom bundles' : (PROVIDER_LABELS[provider] || provider);
+      const count = provider === '__all__' ? filtered.length : groups[provider].length;
+      return `<button type="button" class="provider-tab-btn ${providerTab === provider ? 'active' : ''}" data-provider-tab="${provider}">
+        ${escapeHtml(label)} (${count})
+      </button>`;
+    }).join('');
     $$('.provider-tab-btn').forEach(btn => btn.addEventListener('click', e => {
       providerTab = e.currentTarget.getAttribute('data-provider-tab') || providerTab;
       renderProviders(currentModels, buildUsageIndex(lastUsageList));
     }));
 
-    const visibleProviders = providerTab ? [providerTab] : order;
+    // "All" reuses the normal per-provider sectioned rendering (one
+    // section per real provider, each with its own sync button) — same
+    // as the old default view before there were explicit tabs. "Custom"
+    // is its own single section: bundle entries aren't really "owned" by
+    // whichever provider their first hop happens to use, so they get one
+    // flat list with no sync button (there's no single provider to sync
+    // against) instead of being folded into that provider's section.
+    if (providerTab === '__custom__') {
+      const items = (groups.__custom__ || []).slice().sort((a, b) => a.id.localeCompare(b.id));
+      $('#providers').innerHTML = `<div class="provider-group">
+        <div class="provider-group-head"><span class="pname">🗂 Custom bundles <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span></div>
+        <div class="model-cards">${items.map(item => renderModelCard(item)).join('') || '<div class="empty-note">No entries flagged as custom bundles yet — tick the box in the model form.</div>'}</div>
+      </div>`;
+      bindModelCardEvents();
+      return;
+    }
+    const visibleProviders = providerTab === '__all__' ? order : [providerTab];
     $('#providers').innerHTML = visibleProviders.map(provider => {
       const items = groups[provider].sort((a, b) => a.id.localeCompare(b.id));
       const syncBtn = SYNCABLE.has(provider) ? `<button class="sync-btn" data-provider="${provider}">Check ${PROVIDER_LABELS[provider] || provider} for updates</button>` : '';
-      const cards = items.map(item => {
-        const id = item.id;
-        const entry = item.entry;
-        const hops = flattenHops(entry);
-        const aggregate = isAggregateModelId(id);
-        const fallbackDepth = Math.max(0, hops.length - 1);
-        const fallbackCountRow = aggregate
-          ? `<div class="model-meta-row"><span class="model-meta-k">Fallbacks</span><span class="model-meta-v">${fallbackDepth}</span></div>`
-          : '';
-        const fallbackRow = aggregate
-          ? `<div class="model-meta-row"><span class="model-meta-k">Fallback order</span><span class="model-meta-v">${escapeHtml(formatFallbackOrder(hops))}</span></div>`
-          : `<div class="model-meta-row"><span class="model-meta-k">Routing</span><span class="model-meta-v">Direct provider variant</span></div>`;
-        const notesLine = entry.notes ? `<div class="model-notes">${escapeHtml(entry.notes)}</div>` : '';
-        const tags = item.tags.map(tag => `<button class="model-tag ${filterState.tags.has(tag) ? 'active' : ''}" type="button" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('');
-        return `<div class="model-card" data-id="${escapeHtml(id)}">
-          <div class="model-card-top">
-            <span class="model-id">${escapeHtml(id)}</span>
-            <span class="badge ${entry.status || 'active'}">${entry.status || 'active'}</span>
-            <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
-            ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
-            <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
-            <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
-          </div>
-          <div class="model-combo">${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</div>
-          <div class="model-meta">
-            <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
-            <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
-            <div class="model-meta-row"><span class="model-meta-k">Model group</span><span class="model-meta-v">${escapeHtml(item.family)}</span></div>
-            ${fallbackCountRow}
-            ${fallbackRow}
-          </div>
-          ${notesLine}
-          <div class="model-tags">${tags}</div>
-          <div class="chain">${renderChain(entry, usageIndex, aggregate)}</div>
-        </div>`;
-      }).join('');
+      const cards = items.map(item => renderModelCard(item)).join('');
       return `<div class="provider-group">
         <div class="provider-group-head">
           <span class="pname">${PROVIDER_LABELS[provider] || provider} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span>
@@ -907,16 +1017,7 @@
       </div>`;
     }).join('');
 
-    $$('.del-btn').forEach(btn => btn.addEventListener('click', onDeleteModel));
-    $$('.edit-btn').forEach(btn => btn.addEventListener('click', e => openForm(e.target.getAttribute('data-edit'), currentModels[e.target.getAttribute('data-edit')])));
-    $$('.sync-btn').forEach(btn => btn.addEventListener('click', onSync));
-    $$('.sync-item-btn').forEach(btn => btn.addEventListener('click', onSyncAction));
-    $$('.model-tag').forEach(btn => btn.addEventListener('click', e => {
-      const tag = e.currentTarget.getAttribute('data-tag');
-      if (!tag) return;
-      if (filterState.tags.has(tag)) filterState.tags.delete(tag); else filterState.tags.add(tag);
-      renderProviders(currentModels, usageIndex);
-    }));
+    bindModelCardEvents();
   }
 
   function buildUsageIndex(usageList) {
@@ -949,7 +1050,18 @@
     }).join('') : '<div class="usage-row"><span class="k">Configured provider quotas</span><span class="v">None — unavailable balances stay unknown</span></div>';
     cards.push(`<div class="usage-card"><h3>Provider credits / quotas</h3>${quotaRows}<div class="usage-row"><span class="k">Tracked usage</span><span class="v">Self-tracked token usage can be enabled per provider</span></div></div>`);
 
-    cards.push(`<div class="usage-card"><h3>Literouter</h3><div class="usage-row"><span class="k">Keys loaded</span><span class="v">${usage.literouterKeysLoaded}</span></div><div class="usage-row"><span class="k">Known cap</span><span class="v" style="color:var(--text-faint)">~100/hr per model (soft)</span></div></div>`);
+    // Literouter's caps are per-model, not per-key like OpenRouter's — so
+    // instead of one bucket, this renders one row per (model, key) pair,
+    // grouped by model, only for models that actually have a dailyCap set.
+    // Uncapped ("∞") models aren't tracked per-key and don't show a bucket.
+    const capped = usage.literouterCappedModels || [];
+    const cappedRows = capped.map(m => {
+      const keyRows = m.keys.map(k =>
+        `<span class="v" style="margin-left:8px;">${escapeHtml(k.envName)}: ${k.used}/${k.cap}</span>`
+      ).join('');
+      return `<div class="usage-row"><span class="k">${escapeHtml(m.model)}</span>${keyRows}<span class="est-tag">Q-Proxy counter</span></div>`;
+    }).join('');
+    cards.push(`<div class="usage-card"><h3>Literouter</h3><div class="usage-row"><span class="k">Keys loaded</span><span class="v">${usage.literouterKeysLoaded}</span></div>${cappedRows || '<div class="usage-row"><span class="k">Capped models</span><span class="v" style="color:var(--text-faint)">None configured — models with no dailyCap are treated as unlimited and just round-robin across keys</span></div>'}</div>`);
     $('#usage-grid').innerHTML = cards.join('');
 
     const tbody = $('#usage-table tbody');
@@ -980,6 +1092,75 @@
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
   }
 
+  function buildReasoningOverrideFromDetection(detection) {
+    if (!detection || !detection.ok) return null;
+    if (detection.special) {
+      const rawObj = {};
+      if (detection.toggle) rawObj[detection.toggle.key] = detection.toggle.value;
+      if (detection.effort && !detection.effort.guessedKey) rawObj[detection.effort.key] = detection.effort.value;
+      for (const ex of detection.extraKeys) rawObj[ex.key] = ex.value;
+      const transport = (detection.toggle && detection.toggle.transport) || (detection.effort && detection.effort.transport) || (detection.extraKeys[0] && detection.extraKeys[0].transport) || 'chat_template_kwargs';
+      return {
+        reasoningSchema: 'raw',
+        reasoning: { __raw: rawObj },
+        reasoningFieldTransport: { __raw: transport }
+      };
+    }
+    const out = { reasoningSchema: 'thinking-and-effort', reasoning: {}, reasoningFieldEnabled: {}, reasoningFieldKeys: {}, reasoningFieldTransport: {}, reasoningFieldOptions: {} };
+    if (detection.toggle) {
+      out.reasoningFieldEnabled.thinking_toggle = true;
+      out.reasoning.thinking_toggle = detection.toggle.value;
+      out.reasoningFieldKeys.thinking_toggle = detection.toggle.key;
+      out.reasoningFieldTransport.thinking_toggle = detection.toggle.transport;
+    }
+    if (detection.effort) {
+      out.reasoningFieldEnabled.reasoning_effort = true;
+      out.reasoning.reasoning_effort = detection.effort.value;
+      out.reasoningFieldKeys.reasoning_effort = detection.effort.guessedKey ? 'reasoning_effort' : detection.effort.key;
+      out.reasoningFieldTransport.reasoning_effort = detection.effort.transport;
+      out.reasoningFieldOptions.reasoning_effort = detection.effort.options && detection.effort.options.length ? detection.effort.options : [detection.effort.value];
+    }
+    return out;
+  }
+
+  async function onSyncDetectAction(e) {
+    const provider = e.currentTarget.getAttribute('data-provider');
+    const model = e.currentTarget.getAttribute('data-model');
+    const act = e.currentTarget.getAttribute('data-sync-detect-act');
+    if (!provider || !model || !act) return;
+    const key = syncDetectKey(provider, model);
+    if (act === 'toggle') {
+      syncDetectState[key] = syncDetectState[key] || {};
+      syncDetectState[key].open = !syncDetectState[key].open;
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    } else if (act === 'scan') {
+      const st = syncDetectState[key] || {};
+      st.result = detectReasoningFromExample(st.input, st.values);
+      syncDetectState[key] = st;
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    } else if (act === 'auto') {
+      const st = syncDetectState[key] || { open: true };
+      st.autoLoading = true;
+      syncDetectState[key] = st;
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+      try {
+        const data = await api('/admin/api/detect/' + provider + '?model=' + encodeURIComponent(model));
+        const st2 = syncDetectState[key] || { open: true };
+        st2.autoLoading = false;
+        st2.pageUrl = data.pageUrl || '';
+        if (data.snippet) st2.input = data.snippet;
+        st2.result = data;
+        syncDetectState[key] = st2;
+      } catch (err) {
+        const st2 = syncDetectState[key] || { open: true };
+        st2.autoLoading = false;
+        st2.result = { ok: false, error: err.message };
+        syncDetectState[key] = st2;
+      }
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    }
+  }
+
   async function onSyncAction(e) {
     const provider = e.currentTarget.getAttribute('data-provider');
     const model = e.currentTarget.getAttribute('data-model');
@@ -987,8 +1168,14 @@
     if (!provider || !model || !act) return;
     try {
       if (act === 'add') {
-        if (!confirm(`Add "${model}" as a new ${PROVIDER_LABELS[provider] || provider} model entry?`)) return;
-        await api('/admin/api/sync/' + provider + '/add', { method: 'POST', body: { model } });
+        const detection = syncDetectState[syncDetectKey(provider, model)]?.result;
+        const reasoningOverride = buildReasoningOverrideFromDetection(detection);
+        const confirmMsg = reasoningOverride
+          ? `Add "${model}" as a new ${PROVIDER_LABELS[provider] || provider} model entry, using the reasoning config you just scanned?`
+          : `Add "${model}" as a new ${PROVIDER_LABELS[provider] || provider} model entry?`;
+        if (!confirm(confirmMsg)) return;
+        await api('/admin/api/sync/' + provider + '/add', { method: 'POST', body: reasoningOverride ? { model, reasoningOverride } : { model } });
+        delete syncDetectState[syncDetectKey(provider, model)];
       } else if (act === 'remove') {
         if (!confirm(`Remove configured ${PROVIDER_LABELS[provider] || provider} hop "${model}" wherever it appears?`)) return;
         await api('/admin/api/sync/' + provider + '/remove', { method: 'POST', body: { model } });
@@ -1012,9 +1199,10 @@
   // instead of forcing a full retype.
   let hopState = [];
   let editingId = null; // null = adding new; string = editing that id (id locked)
+  let editingCustomFlag = false; // top-level "custom bundle" flag for the entry being edited
 
   function emptyHop() {
-    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', timeoutMs: '', freeUntil: '', deprecatedOn: '' };
+    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '' };
   }
 
   function normalizeReasoningForSchema(h) {
@@ -1022,6 +1210,9 @@
     if (!schema) { h.reasoning = {}; return; }
     h.reasoning = h.reasoning && typeof h.reasoning === 'object' ? h.reasoning : {};
     h.reasoningFieldOptions = h.reasoningFieldOptions && typeof h.reasoningFieldOptions === 'object' ? h.reasoningFieldOptions : {};
+    h.reasoningFieldKeys = h.reasoningFieldKeys && typeof h.reasoningFieldKeys === 'object' ? h.reasoningFieldKeys : {};
+    h.reasoningFieldEnabled = h.reasoningFieldEnabled && typeof h.reasoningFieldEnabled === 'object' ? h.reasoningFieldEnabled : {};
+    h.reasoningFieldTransport = h.reasoningFieldTransport && typeof h.reasoningFieldTransport === 'object' ? h.reasoningFieldTransport : {};
     for (const [key, field] of Object.entries(schema.fields || {})) {
       if (h.reasoning[key] === undefined && field.default !== undefined) {
         h.reasoning[key] = field.type === 'json' ? JSON.parse(JSON.stringify(field.default)) : field.default;
@@ -1032,6 +1223,22 @@
       // own list to edit, independent of every other model on the schema.
       if (field.optionsPerHop && !Array.isArray(h.reasoningFieldOptions[key])) {
         h.reasoningFieldOptions[key] = Array.isArray(field.defaultOptions) ? [...field.defaultOptions] : [];
+      }
+      // Some models send this same concept under a different literal key
+      // (enable_thinking vs thinking). Seed the hop's own wire key to the
+      // schema's field name by default — only override it for the models
+      // that actually need something else.
+      if (field.keyPerHop && h.reasoningFieldKeys[key] === undefined) {
+        h.reasoningFieldKeys[key] = key;
+      }
+      // Fields with an enable switch (the combined thinking+effort schema)
+      // start OFF unless the schema says otherwise — "does this model even
+      // have this parameter" defaults to "no" until a human confirms it.
+      if (Object.prototype.hasOwnProperty.call(field, 'enabledByDefault') && h.reasoningFieldEnabled[key] === undefined) {
+        h.reasoningFieldEnabled[key] = Boolean(field.enabledByDefault);
+      }
+      if (field.transportPerHop && !h.reasoningFieldTransport[key]) {
+        h.reasoningFieldTransport[key] = schema.transport || 'top_level';
       }
     }
   }
@@ -1047,15 +1254,19 @@
   //  - switching to "no override" clears it, since there's nothing to keep
   function switchReasoningSchema(h, newSchemaId) {
     const oldReasoning = (h.reasoning && typeof h.reasoning === 'object') ? h.reasoning : {};
+    const oldTransport = (h.reasoningFieldTransport && typeof h.reasoningFieldTransport === 'object') ? h.reasoningFieldTransport : {};
     h.reasoningSchema = newSchemaId;
     const newSchema = reasoningSchemas[newSchemaId];
-    if (!newSchema) { h.reasoning = {}; return; }
+    if (!newSchema) { h.reasoning = {}; h.reasoningFieldEnabled = {}; return; }
     const newFieldKeys = Object.keys(newSchema.fields || {});
     if (newFieldKeys.length === 1 && newFieldKeys[0] === '__raw') {
       // Raw escape hatch: seed with the old reasoning object directly so
-      // it's immediately editable, not blank.
+      // it's immediately editable, not blank. Guess a starting transport
+      // from whatever this hop was last using, defaulting to
+      // chat_template_kwargs since that's the far more common case.
       const seed = ('__raw' in oldReasoning) ? oldReasoning.__raw : oldReasoning;
       h.reasoning = { __raw: (seed && typeof seed === 'object') ? seed : {} };
+      h.reasoningFieldTransport = { __raw: oldTransport.__raw || 'chat_template_kwargs' };
       return;
     }
     const carried = {};
@@ -1154,6 +1365,171 @@
 
   $('#schema-new-btn').addEventListener('click', () => openSchemaEditor('', null, true));
 
+  // ---------- Detect reasoning config from a pasted example ----------
+  // The admin pastes whatever they have from the provider's docs / API
+  // reference / playground — either the bare reasoning kwargs object, or a
+  // full example request body with unrelated params mixed in — and this
+  // tries to classify what it finds into the same shape the structured
+  // "thinking-and-effort" schema already understands (a boolean toggle key
+  // + an effort-enum key, each with their own wire key name and transport).
+  // Anything that doesn't cleanly match either pattern is treated as a
+  // special case and handed to the "raw" escape-hatch schema instead of
+  // being forced into a bad fit.
+  const DETECT_BOOL_KEY_RE = /^(enable[_-]?thinking|thinking|reasoning|enable[_-]?reasoning|thinking[_-]?mode|show[_-]?thinking|show[_-]?reasoning|reasoning[_-]?enabled|thinking[_-]?enabled|include[_-]?reasoning)$/i;
+  const DETECT_EFFORT_KEY_RE = /^(reasoning[_-]?effort|thinking[_-]?effort|effort|reasoning[_-]?level|thinking[_-]?level|reasoning[_-]?budget)$/i;
+  const DETECT_REASONING_HINT_RE = /think|reason/i;
+
+  // Accepts strict JSON, or a curl/docs snippet with a JSON object buried
+  // in it (e.g. `curl ... -d '{"chat_template_kwargs": {...}}'`) — grabs
+  // the first balanced {...} block and parses that instead of giving up.
+  function extractJsonObject(text) {
+    if (!text || !text.trim()) return null;
+    const trimmed = text.trim();
+    try { return JSON.parse(trimmed); } catch (_) {}
+    const start = trimmed.indexOf('{');
+    if (start === -1) return null;
+    let depth = 0;
+    for (let i = start; i < trimmed.length; i++) {
+      if (trimmed[i] === '{') depth++;
+      else if (trimmed[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(trimmed.slice(start, i + 1)); } catch (_) { return null; }
+        }
+      }
+    }
+    return null;
+  }
+
+  function detectReasoningFromExample(exampleText, valuesText) {
+    const parsed = extractJsonObject(exampleText);
+    const result = { ok: false, error: null, toggle: null, effort: null, extraKeys: [], special: false };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      result.error = 'Could not find a valid JSON object in that text. Paste the example request body (or just the reasoning kwargs object).';
+      return result;
+    }
+
+    // Only two containers count as a real transport: the request's top
+    // level, and chat_template_kwargs — those are the only two transports
+    // Q-Proxy actually knows how to send. Anything nested any deeper than
+    // that (e.g. a provider that wraps everything in {"reasoning": {...}})
+    // is exactly the "special case" this is supposed to catch, not
+    // something to keep drilling into.
+    const containers = [
+      { obj: parsed, transport: 'top_level' },
+      { obj: (parsed.chat_template_kwargs && typeof parsed.chat_template_kwargs === 'object' && !Array.isArray(parsed.chat_template_kwargs)) ? parsed.chat_template_kwargs : null, transport: 'chat_template_kwargs' }
+    ].filter(c => c.obj);
+
+    for (const { obj, transport } of containers) {
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === 'chat_template_kwargs') continue; // scanned as its own container above
+        if (v !== null && typeof v === 'object' && DETECT_REASONING_HINT_RE.test(k)) {
+          // e.g. {"reasoning": {"effort": "high"}} — a nested wrapper, not
+          // a flat boolean/enum. Don't try to guess inside it; flag it.
+          result.extraKeys.push({ key: k, value: v, transport });
+          continue;
+        }
+        if (DETECT_BOOL_KEY_RE.test(k) && (typeof v === 'boolean' || v === 'true' || v === 'false') && !result.toggle) {
+          result.toggle = { key: k, value: (v === 'true' ? true : v === 'false' ? false : v), transport };
+        } else if (DETECT_EFFORT_KEY_RE.test(k) && (typeof v === 'string' || typeof v === 'number') && !result.effort) {
+          result.effort = { key: k, value: String(v), transport };
+        } else if (DETECT_REASONING_HINT_RE.test(k)) {
+          result.extraKeys.push({ key: k, value: v, transport });
+        }
+      }
+    }
+
+    // A single example call only ever shows ONE effort value actually in
+    // use — it can't reveal the full accepted range. If the admin pasted
+    // the documented list of accepted values alongside it, fold those in;
+    // the detected value always leads so it's pre-selected.
+    const acceptedValues = (valuesText || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    if (result.effort) {
+      const seen = new Set();
+      result.effort.options = [result.effort.value, ...acceptedValues].filter(v => {
+        if (seen.has(v)) return false;
+        seen.add(v);
+        return true;
+      });
+    } else if (acceptedValues.length) {
+      // No effort key found in the example itself, but a values list was
+      // given anyway — still surface it rather than silently dropping it.
+      result.effort = { key: 'reasoning_effort', value: acceptedValues[0], transport: 'top_level', options: acceptedValues, guessedKey: true };
+    }
+
+    result.special = result.extraKeys.length > 0;
+    result.ok = Boolean(result.toggle || result.effort || result.special);
+    if (!result.ok) result.error = 'No reasoning-looking fields found in that JSON — nothing to apply.';
+    return result;
+  }
+
+  // Commits a scan result into the hop's actual config. Clean matches go
+  // into the structured "thinking-and-effort" schema (same fields/controls
+  // as configuring by hand); anything special falls back to "raw" with the
+  // detected object seeded in, exactly like manually switching to raw.
+  function applyDetectionToHop(h, detection) {
+    if (detection.special) {
+      const rawObj = {};
+      if (detection.toggle) rawObj[detection.toggle.key] = detection.toggle.value;
+      if (detection.effort && !detection.effort.guessedKey) rawObj[detection.effort.key] = detection.effort.value;
+      for (const ex of detection.extraKeys) rawObj[ex.key] = ex.value;
+      const transport = (detection.toggle && detection.toggle.transport) || (detection.effort && detection.effort.transport) || (detection.extraKeys[0] && detection.extraKeys[0].transport) || 'chat_template_kwargs';
+      h.reasoningSchema = 'raw';
+      h.reasoning = { __raw: rawObj };
+      h.reasoningFieldTransport = { __raw: transport };
+      h.reasoningFieldEnabled = {};
+      h.reasoningFieldKeys = {};
+      h.reasoningFieldOptions = {};
+      return;
+    }
+    h.reasoningSchema = 'thinking-and-effort';
+    h.reasoning = h.reasoning || {};
+    h.reasoningFieldEnabled = h.reasoningFieldEnabled || {};
+    h.reasoningFieldKeys = h.reasoningFieldKeys || {};
+    h.reasoningFieldTransport = h.reasoningFieldTransport || {};
+    h.reasoningFieldOptions = h.reasoningFieldOptions || {};
+    if (detection.toggle) {
+      h.reasoningFieldEnabled.thinking_toggle = true;
+      h.reasoning.thinking_toggle = detection.toggle.value;
+      h.reasoningFieldKeys.thinking_toggle = detection.toggle.key;
+      h.reasoningFieldTransport.thinking_toggle = detection.toggle.transport;
+    }
+    if (detection.effort) {
+      h.reasoningFieldEnabled.reasoning_effort = true;
+      h.reasoning.reasoning_effort = detection.effort.value;
+      h.reasoningFieldKeys.reasoning_effort = detection.effort.guessedKey ? 'reasoning_effort' : detection.effort.key;
+      h.reasoningFieldTransport.reasoning_effort = detection.effort.transport;
+      h.reasoningFieldOptions.reasoning_effort = detection.effort.options && detection.effort.options.length ? detection.effort.options : [detection.effort.value];
+    }
+    normalizeReasoningForSchema(h);
+  }
+
+  function renderDetectResult(h, i) {
+    const d = h._detectResult;
+    if (!d) return '';
+    if (d.error) return `<div style="margin-top:8px;font-size:11.5px;color:var(--broken);">${escapeHtml(d.error)}</div>`;
+    const lines = [];
+    if (d.toggle) lines.push(`Thinking toggle: <code>${escapeHtml(d.toggle.key)}</code> = <strong>${d.toggle.value}</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.toggle.transport)})</span>`);
+    if (d.effort) lines.push(`Reasoning effort: <code>${escapeHtml(d.effort.key)}</code>${d.effort.guessedKey ? ' <span style="color:var(--text-faint);">(no effort key found — using values list only, check the key name)</span>' : ''} = <strong>"${escapeHtml(d.effort.value)}"</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.effort.transport)})</span>, accepted: ${(d.effort.options || []).map(v => escapeHtml(v)).join(', ')}`);
+    if (d.special) lines.push(`<span style="color:var(--broken);">Special case</span> — found field(s) that don't fit a plain toggle/effort shape (${d.extraKeys.map(e => escapeHtml(e.key)).join(', ')}). Applying will switch this hop to the <strong>Raw</strong> schema with everything detected pasted in, instead of forcing it into structured controls.`);
+    return `<div style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
+      <button type="button" class="btn-primary" style="margin-top:8px;width:auto;" data-act="detect-apply" data-idx="${i}">Apply detected config${d.special ? ' (as raw)' : ''}</button>`;
+  }
+
+  function renderDetectPanel(h, i) {
+    return `<div class="field" style="grid-column:1/-1;background:var(--surface);border:1px dashed var(--border);border-radius:8px;padding:10px 12px;">
+      <label style="font-size:11px;">Paste an example request from this provider's docs — full request body, curl snippet, or just the reasoning kwargs object</label>
+      <textarea rows="5" data-detect-input="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:11.5px;width:100%;margin-top:4px;resize:vertical;" placeholder='{"chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "high"}}'>${escapeHtml(h._detectInput || '')}</textarea>
+      <label style="font-size:11px;margin-top:8px;display:block;">Full list of accepted effort values, if the docs spell them out (comma or newline separated) — optional</label>
+      <textarea rows="2" data-detect-values="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:11.5px;width:100%;margin-top:4px;resize:vertical;" placeholder="low, medium, high, xhigh">${escapeHtml(h._detectValues || '')}</textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button type="button" class="btn-secondary" data-act="detect-scan" data-idx="${i}">Scan</button>
+        <button type="button" class="btn-secondary" data-act="detect-cancel" data-idx="${i}">Close</button>
+      </div>
+      ${renderDetectResult(h, i)}
+    </div>`;
+  }
+
   function autoReasoningSchema(h) {
     if (h.reasoningSchema) return h.reasoningSchema;
     const model = String(h.model || '');
@@ -1178,8 +1554,12 @@
         model: cur.model || '', provider: cur.provider || 'nvidia', reasoningSchema,
         reasoning: cur.reasoning && typeof cur.reasoning === 'object' ? JSON.parse(JSON.stringify(cur.reasoning)) : {},
         reasoningFieldOptions: cur.reasoningFieldOptions && typeof cur.reasoningFieldOptions === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldOptions)) : {},
+        reasoningFieldKeys: cur.reasoningFieldKeys && typeof cur.reasoningFieldKeys === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldKeys)) : {},
+        reasoningFieldEnabled: cur.reasoningFieldEnabled && typeof cur.reasoningFieldEnabled === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldEnabled)) : {},
+        reasoningFieldTransport: cur.reasoningFieldTransport && typeof cur.reasoningFieldTransport === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldTransport)) : {},
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
-        tpmLimit: cur.tpmLimit ?? '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || ''
+        tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
+        retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : ''
       });
       cur = cur.fallback || null;
     }
@@ -1198,12 +1578,24 @@
         if (h.reasoningFieldOptions && Object.keys(h.reasoningFieldOptions).length) {
           entry.reasoningFieldOptions = JSON.parse(JSON.stringify(h.reasoningFieldOptions));
         }
+        if (h.reasoningFieldKeys && Object.keys(h.reasoningFieldKeys).length) {
+          entry.reasoningFieldKeys = JSON.parse(JSON.stringify(h.reasoningFieldKeys));
+        }
+        if (h.reasoningFieldEnabled && Object.keys(h.reasoningFieldEnabled).length) {
+          entry.reasoningFieldEnabled = JSON.parse(JSON.stringify(h.reasoningFieldEnabled));
+        }
+        if (h.reasoningFieldTransport && Object.keys(h.reasoningFieldTransport).length) {
+          entry.reasoningFieldTransport = JSON.parse(JSON.stringify(h.reasoningFieldTransport));
+        }
       }
       if (h.notes && h.notes.trim()) entry.notes = h.notes.trim();
       if (h.tpmLimit !== '' && h.tpmLimit != null) entry.tpmLimit = parseInt(h.tpmLimit, 10);
+      if (h.dailyCap !== '' && h.dailyCap != null) entry.dailyCap = parseInt(h.dailyCap, 10);
       if (h.timeoutMs !== '' && h.timeoutMs != null) entry.timeoutMs = parseInt(h.timeoutMs, 10);
       if (h.freeUntil) entry.freeUntil = h.freeUntil;
       if (h.deprecatedOn) entry.deprecatedOn = h.deprecatedOn;
+      if (h.retryAsUnlimited === 'true') entry.retryAsUnlimited = true;
+      else if (h.retryAsUnlimited === 'false') entry.retryAsUnlimited = false;
       if (result) entry.fallback = result;
       result = entry;
     }
@@ -1212,6 +1604,7 @@
 
   function openForm(id, entry) {
     editingId = id || null;
+    editingCustomFlag = Boolean(entry && entry.custom);
     hopState = entry ? flattenEntry(entry) : [emptyHop()];
     $('#add-form-toggle').hidden = true;
     $('#add-model-panel').hidden = false;
@@ -1230,8 +1623,14 @@
       <div class="form-grid">
         <div class="field" style="grid-column: 1 / -1;">
           <label>Model ID (the string clients call, e.g. "glm-4.7")</label>
-          <input type="text" id="f-id" value="${escapeHtml(editingId || '')}" ${editingId ? 'readonly style="opacity:.6"' : ''} placeholder="e.g. glm-5.3-nv">
-          ${editingId ? '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Editing an existing entry — the ID is locked so this overwrites rather than duplicates. To rename, remove and re-add instead.</div>' : ''}
+          <input type="text" id="f-id" value="${escapeHtml(editingId || '')}" placeholder="e.g. glm-5.3-nv">
+          ${editingId ? '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Change this to rename the model — this is the id clients pass in the API\'s "model" field, independent of the actual provider/model slug configured below.</div>' : ''}
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
+            <input type="checkbox" id="f-custom" ${editingCustomFlag ? 'checked' : ''} style="width:auto;">
+            Custom bundle — this entry's real identity is "one logical model across several providers," not really owned by hop 1's provider. Shows it in a dedicated "Custom" tab in addition to its normal provider tab(s).
+          </label>
         </div>
       </div>
       <div id="hop-list"></div>
@@ -1256,11 +1655,58 @@
     normalizeReasoningForSchema(h);
     const rows = [];
     for (const [key, field] of Object.entries(schema.fields || {})) {
+      const hasEnableSwitch = Object.prototype.hasOwnProperty.call(field, 'enabledByDefault');
+      const isEnabled = !hasEnableSwitch || Boolean(h.reasoningFieldEnabled?.[key]);
       const value = h.reasoning[key] !== undefined ? h.reasoning[key] : field.default;
       const label = field.label || key;
       const desc = field.description ? `<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">${escapeHtml(field.description)}</div>` : '';
+
+      // "Does this model even have this parameter?" — a real yes/no switch,
+      // independent of every other field on this schema. No means: render
+      // nothing else for this field, and send nothing for it, at all.
+      const enableSwitch = hasEnableSwitch ? `<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;cursor:pointer;">
+        <input type="checkbox" data-rfenable="${escapeHtml(key)}" data-idx="${i}" ${isEnabled ? 'checked' : ''}>
+        This model has "${escapeHtml(label)}"
+      </label>` : `<label>${escapeHtml(label)}</label>`;
+
+      if (hasEnableSwitch && !isEnabled) {
+        // Collapsed: just the switch. Nothing configured, nothing sent.
+        rows.push(`<div class="field">${enableSwitch}${desc}</div>`);
+        continue;
+      }
+
+      // Some models send this same concept under a different literal key
+      // (enable_thinking vs thinking, say). Rendered as a dropdown of
+      // common real-world names plus a Custom fallback — same pattern as
+      // the value picker below, just for the key name instead of the
+      // value.
+      let keyRemapBox = '';
+      if (field.keyPerHop) {
+        const commonKeys = Array.isArray(field.commonKeys) ? field.commonKeys : [];
+        const currentKey = h.reasoningFieldKeys?.[key] ?? key;
+        const isKnownKey = commonKeys.includes(currentKey);
+        const keySelectOptions = commonKeys.map(k => `<option value="${escapeHtml(k)}" ${currentKey === k ? 'selected' : ''}>${escapeHtml(k)}</option>`).join('')
+          + `<option value="__custom__" ${!isKnownKey ? 'selected' : ''}>Custom…</option>`;
+        keyRemapBox = `<div style="margin-top:6px;">
+          <label style="font-size:10px;color:var(--text-faint);">Sent as (this model's actual param key)</label>
+          <select data-rfkey-select="${escapeHtml(key)}" data-idx="${i}">${keySelectOptions}</select>
+          ${!isKnownKey ? `<input type="text" data-rfkey-custom="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(currentKey)}" placeholder="exact param name" style="margin-top:4px;">` : ''}
+        </div>`;
+      }
+
+      // Same field can ride chat_template_kwargs on one model and be a
+      // genuine top-level field on another.
+      const transportBox = field.transportPerHop ? `<div style="margin-top:6px;">
+        <label style="font-size:10px;color:var(--text-faint);">Sent via</label>
+        <select data-rftransport="${escapeHtml(key)}" data-idx="${i}">
+          <option value="chat_template_kwargs" ${(h.reasoningFieldTransport?.[key] || 'top_level') === 'chat_template_kwargs' ? 'selected' : ''}>chat_template_kwargs</option>
+          <option value="top_level" ${(h.reasoningFieldTransport?.[key] || 'top_level') === 'top_level' ? 'selected' : ''}>Top-level request field</option>
+        </select>
+      </div>` : '';
+
+      let controlHtml = '';
       if (field.type === 'boolean') {
-        rows.push(`<div class="field"><label>${escapeHtml(label)}</label><select data-rf="${escapeHtml(key)}" data-idx="${i}"><option value="true" ${value === true ? 'selected' : ''}>ON</option><option value="false" ${value === false ? 'selected' : ''}>OFF</option></select>${desc}</div>`);
+        controlHtml = `<select data-rf="${escapeHtml(key)}" data-idx="${i}"><option value="true" ${value === true ? 'selected' : ''}>ON</option><option value="false" ${value === false ? 'selected' : ''}>OFF</option></select>`;
       } else if (field.type === 'select' && field.optionsPerHop) {
         // Same schema (same wire shape/param name), but each model can
         // support a different set of values — the option list lives on
@@ -1271,35 +1717,57 @@
         const isKnown = currentValue !== undefined && currentValue !== '' && optionList.map(String).includes(String(currentValue));
         const selectOptions = optionList.map(opt => `<option value="${escapeHtml(opt)}" ${String(currentValue) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')
           + `<option value="__custom__" ${!isKnown ? 'selected' : ''}>Custom…</option>`;
-        rows.push(`<div class="field">
-          <label>${escapeHtml(label)}</label>
-          <select data-rf="${escapeHtml(key)}" data-idx="${i}">${selectOptions}</select>
+        // "Values this model accepts" is a checklist over the canonical
+        // vocabulary (commonValues) plus a free-text box for anything
+        // outside it — ticking/unticking updates this hop's own list.
+        const commonValues = Array.isArray(field.commonValues) ? field.commonValues : [];
+        const extras = optionList.filter(v => !commonValues.includes(v));
+        const checklist = commonValues.map(v => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;margin:2px 8px 2px 0;">
+          <input type="checkbox" data-rfoptcheck="${escapeHtml(key)}" data-val="${escapeHtml(v)}" data-idx="${i}" ${optionList.includes(v) ? 'checked' : ''}> ${escapeHtml(v)}
+        </label>`).join('');
+        controlHtml = `<select data-rf="${escapeHtml(key)}" data-idx="${i}">${selectOptions}</select>
           ${!isKnown ? `<input type="text" data-rf-custom="${escapeHtml(key)}" data-idx="${i}" placeholder="Type a value for this model" value="${escapeHtml(currentValue || '')}" style="margin-top:6px;">` : ''}
           <div style="margin-top:6px;">
-            <label style="font-size:10px;color:var(--text-faint);">Values this model accepts (comma-separated)</label>
-            <input type="text" data-rfopt="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(optionList.join(', '))}">
-          </div>
-          ${desc}
-        </div>`);
+            <label style="font-size:10px;color:var(--text-faint);">Values this model accepts</label>
+            <div>${checklist}</div>
+            <input type="text" data-rfopt-extra="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(extras.join(', '))}" placeholder="other values, comma-separated" style="margin-top:4px;">
+          </div>`;
       } else if (field.type === 'select') {
-        rows.push(`<div class="field"><label>${escapeHtml(label)}</label><select data-rf="${escapeHtml(key)}" data-idx="${i}">${(field.options || []).map(opt => `<option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}</select>${desc}</div>`);
+        controlHtml = `<select data-rf="${escapeHtml(key)}" data-idx="${i}">${(field.options || []).map(opt => `<option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}</select>`;
       } else if (field.type === 'number') {
-        rows.push(`<div class="field"><label>${escapeHtml(label)}</label><input type="number" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}" min="${field.min ?? ''}" max="${field.max ?? ''}">${desc}</div>`);
+        controlHtml = `<input type="number" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}" min="${field.min ?? ''}" max="${field.max ?? ''}">`;
       } else if (field.type === 'text') {
-        rows.push(`<div class="field"><label>${escapeHtml(label)}</label><input type="text" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}">${desc}</div>`);
+        controlHtml = `<input type="text" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}">`;
       } else if (field.type === 'json') {
-        rows.push(`<div class="field" style="grid-column:1/-1;"><label>${escapeHtml(label)}</label><textarea rows="6" data-rf="${escapeHtml(key)}" data-rf-json="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:12px;resize:vertical;">${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</textarea>${desc}</div>`);
+        controlHtml = `<textarea rows="6" data-rf="${escapeHtml(key)}" data-rf-json="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:12px;resize:vertical;width:100%;">${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</textarea>`;
       }
+
+      const wide = field.type === 'json' ? 'style="grid-column:1/-1;"' : '';
+      rows.push(`<div class="field" ${wide}>${enableSwitch}<div style="margin-top:6px;">${controlHtml}</div>${transportBox}${keyRemapBox}${desc}</div>`);
     }
     return `<div class="form-grid" style="grid-column:1/-1;margin-top:2px;"><div style="grid-column:1/-1;font-size:12px;color:var(--text-dim);"><strong>${escapeHtml(schema.label || h.reasoningSchema)}</strong><div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${escapeHtml(schema.description || '')}</div></div>${rows.join('')}</div>`;
   }
 
   function renderHopList() {
     const root = $('#hop-list');
+    // Existing models this hop could be pre-filled from — excludes whatever
+    // id is currently being edited. Picking one COPIES that model's fields
+    // in as a one-time starting point (a fork): editing the copy afterward
+    // never touches the original, and editing the original later never
+    // touches this copy either.
+    const cloneableIds = Object.keys(currentModels).filter(mid => mid !== editingId).sort();
     root.innerHTML = hopState.map((h, i) => {
       const suggestedSchema = autoReasoningSchema(h);
       if (!h.reasoningSchema && suggestedSchema) { h.reasoningSchema = suggestedSchema; normalizeReasoningForSchema(h); }
       const schemaOptions = `<option value="" ${!h.reasoningSchema ? 'selected' : ''}>Provider/model default (no override)</option>` + Object.entries(reasoningSchemas).map(([key, p]) => `<option value="${escapeHtml(key)}" ${h.reasoningSchema === key ? 'selected' : ''}>${escapeHtml(p.label || key)}</option>`).join('');
+
+      const cloneOptions = `<option value="">— or copy fields from an existing model —</option>` +
+        cloneableIds.map(mid => `<option value="${escapeHtml(mid)}">${escapeHtml(mid)}</option>`).join('');
+      const cloneRow = `<div class="field" style="grid-column:1 / -1;">
+        <select data-clonefrom="1" data-idx="${i}">${cloneOptions}</select>
+        ${!cloneableIds.length ? `<div style="font-size:10.5px;color:var(--text-faint);margin-top:4px;">No other models exist yet to copy from — this'll fill up once you've saved a few.</div>` : `<div style="font-size:10.5px;color:var(--text-faint);margin-top:4px;">One-time copy, not a live link — it becomes a normal editable hop below, independent of the original.</div>`}
+      </div>`;
+
       return `
       <div class="hop-block">
         <div class="hop-block-label">
@@ -1307,24 +1775,70 @@
           <span class="hop-controls">
             ${i > 0 ? `<button type="button" class="hop-mini-btn" data-act="up" data-idx="${i}" title="Move earlier in the chain">↑</button>` : ''}
             ${i < hopState.length - 1 ? `<button type="button" class="hop-mini-btn" data-act="down" data-idx="${i}" title="Move later in the chain">↓</button>` : ''}
+            ${h.model.trim() ? `<button type="button" class="hop-mini-btn apply-preset-btn" data-idx="${i}" title="Check for a saved known-good config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} and apply it">🔍</button>` : ''}
+            <button type="button" class="hop-mini-btn detect-btn" data-idx="${i}" title="Paste an example request from the provider's docs to auto-detect the reasoning toggle/effort controls">🧪</button>
+            ${h.reasoningSchema && h.model.trim() ? `<button type="button" class="hop-mini-btn save-preset-btn" data-idx="${i}" title="Remember this reasoning config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} — auto-applied next time you import this exact model">💾</button>` : ''}
             ${hopState.length > 1 ? `<button type="button" class="hop-mini-btn remove" data-act="remove" data-idx="${i}" title="Remove this hop">✕</button>` : ''}
           </span>
         </div>
         <div class="form-grid">
+          ${cloneRow}
           <div class="field"><label>Model slug</label><input type="text" data-f="model" data-idx="${i}" value="${escapeHtml(h.model)}" placeholder="e.g. z-ai/glm4.7"></div>
           <div class="field"><label>Provider</label><select data-f="provider" data-idx="${i}">${Object.keys(PROVIDER_LABELS).map(p => `<option value="${p}" ${h.provider === p ? 'selected' : ''}>${PROVIDER_LABELS[p]}</option>`).join('')}</select></div>
-          <div class="field" style="grid-column:1 / -1;"><label>Reasoning schema</label><select data-f="reasoningSchema" data-idx="${i}">${schemaOptions}</select><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Choose how this model expects reasoning parameters to be sent. The controls below are generated from that schema.</div></div>
+          <div class="field" style="grid-column:1 / -1;"><label>Reasoning schema</label><select data-f="reasoningSchema" data-idx="${i}">${schemaOptions}</select><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Choose how this model expects reasoning parameters to be sent, or hit 🧪 above to detect it from an example instead. The controls below are generated from that schema.</div></div>
+          ${h._detectOpen ? renderDetectPanel(h, i) : ''}
           ${renderReasoningControls(h, i)}
           <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(st => `<option value="${st}" ${h.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(st => `<option value="${st}" ${h.limitType === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>TPM limit (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
+          ${h.provider === 'literouter' ? `<div class="field"><label>Daily cap (opt., Literouter)</label><input type="number" data-f="dailyCap" data-idx="${i}" value="${h.dailyCap}" placeholder="blank = unlimited"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Literouter's own per-model daily free-request cap (e.g. 5 or 30). Leave blank if Literouter lists it as unlimited — this drives the per-key rotation and the usage bars below, not the request itself.</div></div>` : ''}
           <div class="field"><label>Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}"></div>
           <div class="field"><label>Free until (opt.)</label><input type="date" data-f="freeUntil" data-idx="${i}" value="${h.freeUntil}"></div>
           <div class="field"><label>Deprecated on (opt.)</label><input type="date" data-f="deprecatedOn" data-idx="${i}" value="${h.deprecatedOn}"></div>
+          <div class="field" style="grid-column:1 / -1;">
+            <label>Retry-as-unlimited override (opt.)</label>
+            <select data-f="retryAsUnlimited" data-idx="${i}">
+              <option value="" ${h.retryAsUnlimited === '' ? 'selected' : ''}>Default (auto: on for limitType=unlimited or provider=nvidia)</option>
+              <option value="true" ${h.retryAsUnlimited === 'true' ? 'selected' : ''}>Force ON — retry this hop up to ~100x on flaky errors before falling back</option>
+              <option value="false" ${h.retryAsUnlimited === 'false' ? 'selected' : ''}>Force OFF — try once, then fall back immediately</option>
+            </select>
+            <div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Only use this to override the default — e.g. an nvidia model you've found is actually capped, so it shouldn't get the 100x-retry treatment.</div>
+          </div>
         </div>
         <div class="field"><label>Notes (opt.)</label><input type="text" data-f="notes" data-idx="${i}" value="${escapeHtml(h.notes)}"></div>
       </div>`;
     }).join('');
+
+    $$('#hop-list [data-clonefrom]').forEach(el => {
+      el.addEventListener('change', e => {
+        const idx = +e.target.dataset.idx;
+        const sourceId = e.target.value;
+        if (!sourceId || !currentModels[sourceId]) return;
+        // Copy just the SOURCE MODEL'S OWN top-level hop (not its whole
+        // fallback chain) into this slot — one hop per pick, so building a
+        // multi-hop bundle out of several existing models means picking
+        // "+ Add fallback hop" and copying a different one into each slot.
+        const src = currentModels[sourceId];
+        const notes = hopState[idx].notes || '';
+        hopState[idx] = {
+          ...emptyHop(),
+          model: src.model || '', provider: src.provider || 'nvidia',
+          reasoningSchema: src.reasoningSchema || '',
+          reasoning: src.reasoning && typeof src.reasoning === 'object' ? JSON.parse(JSON.stringify(src.reasoning)) : {},
+          reasoningFieldOptions: src.reasoningFieldOptions ? JSON.parse(JSON.stringify(src.reasoningFieldOptions)) : {},
+          reasoningFieldKeys: src.reasoningFieldKeys ? JSON.parse(JSON.stringify(src.reasoningFieldKeys)) : {},
+          reasoningFieldEnabled: src.reasoningFieldEnabled ? JSON.parse(JSON.stringify(src.reasoningFieldEnabled)) : {},
+          reasoningFieldTransport: src.reasoningFieldTransport ? JSON.parse(JSON.stringify(src.reasoningFieldTransport)) : {},
+          status: src.status || 'active', limitType: src.limitType || 'rate-limited',
+          tpmLimit: src.tpmLimit ?? '', dailyCap: src.dailyCap ?? '', timeoutMs: src.timeoutMs ?? '',
+          freeUntil: src.freeUntil || '', deprecatedOn: src.deprecatedOn || '',
+          retryAsUnlimited: typeof src.retryAsUnlimited === 'boolean' ? String(src.retryAsUnlimited) : '',
+          notes
+        };
+        normalizeReasoningForSchema(hopState[idx]);
+        renderHopList();
+      });
+    });
 
     $$('#hop-list [data-f]').forEach(el => {
       el.addEventListener('input', e => {
@@ -1346,6 +1860,9 @@
           return;
         }
         hopState[idx][field] = e.target.value;
+        // Daily cap only applies to (and is only shown for) literouter hops —
+        // re-render so switching provider in/out of literouter shows/hides it.
+        if (field === 'provider') renderHopList();
       });
     });
 
@@ -1378,13 +1895,73 @@
       });
     });
 
-    $$('#hop-list [data-rfopt]').forEach(el => {
+    // "Does this model even have this parameter?" switch — flipping it
+    // re-renders so the rest of that field's controls appear/disappear.
+    $$('#hop-list [data-rfenable]').forEach(el => {
       el.addEventListener('change', e => {
         const idx = +e.target.dataset.idx;
-        const key = e.target.dataset.rfopt;
-        const list = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-        hopState[idx].reasoningFieldOptions = hopState[idx].reasoningFieldOptions || {};
-        hopState[idx].reasoningFieldOptions[key] = list;
+        const key = e.target.dataset.rfenable;
+        hopState[idx].reasoningFieldEnabled = hopState[idx].reasoningFieldEnabled || {};
+        hopState[idx].reasoningFieldEnabled[key] = e.target.checked;
+        renderHopList();
+      });
+    });
+
+    // "Sent as" key-name dropdown: a real selection sets the wire key
+    // directly; the Custom sentinel reveals a free-text box instead.
+    $$('#hop-list [data-rfkey-select]').forEach(el => {
+      el.addEventListener('change', e => {
+        const idx = +e.target.dataset.idx;
+        const key = e.target.dataset.rfkeySelect;
+        hopState[idx].reasoningFieldKeys = hopState[idx].reasoningFieldKeys || {};
+        if (e.target.value === '__custom__') {
+          hopState[idx].reasoningFieldKeys[key] = '';
+        } else {
+          hopState[idx].reasoningFieldKeys[key] = e.target.value;
+        }
+        renderHopList();
+      });
+    });
+    $$('#hop-list [data-rfkey-custom]').forEach(el => {
+      el.addEventListener('input', e => {
+        const idx = +e.target.dataset.idx;
+        const key = e.target.dataset.rfkeyCustom;
+        hopState[idx].reasoningFieldKeys = hopState[idx].reasoningFieldKeys || {};
+        hopState[idx].reasoningFieldKeys[key] = e.target.value.trim() || key;
+      });
+    });
+
+    // "Sent via" transport picker — the same field can be chat_template_kwargs
+    // on one model and a genuine top-level field on another.
+    $$('#hop-list [data-rftransport]').forEach(el => {
+      el.addEventListener('change', e => {
+        const idx = +e.target.dataset.idx;
+        const key = e.target.dataset.rftransport;
+        hopState[idx].reasoningFieldTransport = hopState[idx].reasoningFieldTransport || {};
+        hopState[idx].reasoningFieldTransport[key] = e.target.value;
+      });
+    });
+
+    // "Values this model accepts" — a checklist over the canonical
+    // vocabulary plus a free-text box for anything outside it. Either one
+    // changing recomputes the hop's full option list from scratch.
+    function recomputeOptionList(idx, key) {
+      const scope = document.querySelector(`#hop-list [data-rfoptcheck="${CSS.escape(key)}"][data-idx="${idx}"]`)?.closest('.field') || document;
+      const checked = $$(`[data-rfoptcheck="${key}"][data-idx="${idx}"]`, scope).filter(c => c.checked).map(c => c.dataset.val);
+      const extraEl = $(`[data-rfopt-extra="${CSS.escape(key)}"][data-idx="${idx}"]`, scope);
+      const extras = extraEl ? extraEl.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+      hopState[idx].reasoningFieldOptions = hopState[idx].reasoningFieldOptions || {};
+      hopState[idx].reasoningFieldOptions[key] = [...checked, ...extras];
+    }
+    $$('#hop-list [data-rfoptcheck]').forEach(el => {
+      el.addEventListener('change', e => {
+        recomputeOptionList(+e.target.dataset.idx, e.target.dataset.rfoptcheck);
+        renderHopList();
+      });
+    });
+    $$('#hop-list [data-rfopt-extra]').forEach(el => {
+      el.addEventListener('change', e => {
+        recomputeOptionList(+e.target.dataset.idx, e.target.dataset.rfoptExtra);
         renderHopList();
       });
     });
@@ -1396,21 +1973,111 @@
       if (act === 'down') [hopState[idx + 1], hopState[idx]] = [hopState[idx], hopState[idx + 1]];
       renderHopList();
     }));
+
+    $$('#hop-list .detect-btn').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx;
+      hopState[idx]._detectOpen = !hopState[idx]._detectOpen;
+      if (!hopState[idx]._detectOpen) hopState[idx]._detectResult = null;
+      renderHopList();
+    }));
+    $$('#hop-list [data-detect-input]').forEach(el => el.addEventListener('input', e => {
+      hopState[+e.target.dataset.idx]._detectInput = e.target.value;
+    }));
+    $$('#hop-list [data-detect-values]').forEach(el => el.addEventListener('input', e => {
+      hopState[+e.target.dataset.idx]._detectValues = e.target.value;
+    }));
+    $$('#hop-list [data-act="detect-scan"]').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx;
+      const h = hopState[idx];
+      h._detectResult = detectReasoningFromExample(h._detectInput, h._detectValues);
+      renderHopList();
+    }));
+    $$('#hop-list [data-act="detect-cancel"]').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx;
+      hopState[idx]._detectOpen = false;
+      hopState[idx]._detectResult = null;
+      renderHopList();
+    }));
+    $$('#hop-list [data-act="detect-apply"]').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx;
+      const h = hopState[idx];
+      applyDetectionToHop(h, h._detectResult);
+      h._detectOpen = false;
+      h._detectResult = null;
+      h._detectInput = '';
+      h._detectValues = '';
+      renderHopList();
+    }));
+
+    $$('#hop-list .apply-preset-btn').forEach(btn => btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx;
+      const h = hopState[idx];
+      const key = `${h.provider}/${h.model.trim()}`;
+      const preset = modelPresets[key];
+      if (!preset) {
+        alert(`No saved config found for ${key} yet. Configure it manually, then use the 💾 button to remember it for next time.`);
+        return;
+      }
+      h.reasoningSchema = preset.reasoningSchema || '';
+      h.reasoning = preset.reasoning ? JSON.parse(JSON.stringify(preset.reasoning)) : {};
+      h.reasoningFieldEnabled = preset.reasoningFieldEnabled ? JSON.parse(JSON.stringify(preset.reasoningFieldEnabled)) : {};
+      h.reasoningFieldKeys = preset.reasoningFieldKeys ? JSON.parse(JSON.stringify(preset.reasoningFieldKeys)) : {};
+      h.reasoningFieldTransport = preset.reasoningFieldTransport ? JSON.parse(JSON.stringify(preset.reasoningFieldTransport)) : {};
+      h.reasoningFieldOptions = preset.reasoningFieldOptions ? JSON.parse(JSON.stringify(preset.reasoningFieldOptions)) : {};
+      if (preset.notes && !h.notes) h.notes = preset.notes;
+      renderHopList();
+    }));
+
+    $$('#hop-list .save-preset-btn').forEach(btn => btn.addEventListener('click', async e => {
+      const idx = +e.currentTarget.dataset.idx;
+      const h = hopState[idx];
+      const config = {
+        reasoningSchema: h.reasoningSchema,
+        reasoning: h.reasoning || {},
+        reasoningFieldEnabled: h.reasoningFieldEnabled || {},
+        reasoningFieldKeys: h.reasoningFieldKeys || {},
+        reasoningFieldTransport: h.reasoningFieldTransport || {},
+        reasoningFieldOptions: h.reasoningFieldOptions || {}
+      };
+      const btnLabel = e.currentTarget.textContent;
+      e.currentTarget.textContent = '…';
+      try {
+        await api('/admin/api/presets', { method: 'POST', body: { provider: h.provider, model: h.model.trim(), config } });
+        e.currentTarget.textContent = '✓';
+        setTimeout(() => { e.currentTarget.textContent = btnLabel; }, 1200);
+      } catch (err) {
+        alert('Could not save preset: ' + err.message);
+        e.currentTarget.textContent = btnLabel;
+      }
+    }));
   }
 
   async function onSubmitModel() {
     const id = $('#f-id').value.trim();
     const status = $('#add-model-status');
     if (!id) { status.style.color = 'var(--broken)'; status.textContent = 'Model ID is required.'; return; }
-    if (!hopState[0].model.trim()) { status.style.color = 'var(--broken)'; status.textContent = 'Primary model slug is required.'; return; }
-    const entry = nestHops(hopState);
+    // At least one hop needs to be filled in — either a "ref" pointing at
+    // an existing model, or a model+provider — somewhere, not necessarily
+    // hop 0. Blank/unfilled hops of either kind are just dropped on save.
+    // At least one hop needs a model+provider filled in somewhere — not
+    // necessarily hop 0. This lets you add a few empty "+ Add fallback
+    // hop" rows first and fill them in in any order (or copy them from
+    // existing models via the picker), rather than being forced to
+    // complete the first one before you're even allowed to add a second.
+    // Blank hops (no model typed in) are just dropped on save.
+    const filledHops = hopState.filter(h => h.model && h.model.trim());
+    if (!filledHops.length) { status.style.color = 'var(--broken)'; status.textContent = 'At least one hop needs a model slug filled in.'; return; }
+    const entry = nestHops(filledHops);
+    if ($('#f-custom').checked) entry.custom = true;
     try {
-      const result = await api('/admin/api/models', { method: 'POST', body: { id, entry } });
+      const body = { id, entry };
+      if (editingId && editingId !== id) body.previousId = editingId;
+      const result = await api('/admin/api/models', { method: 'POST', body });
       const syncFailed = result.githubSync && result.githubSync.ok === false && !result.githubSync.skipped;
       status.style.color = syncFailed ? 'var(--broken)' : 'var(--free)';
       status.textContent = syncFailed
         ? `Saved "${id}" locally, but GitHub sync failed (${result.githubSync.error || 'unknown error'}) — this WILL be lost on the next restart.`
-        : `Saved "${id}".`;
+        : (result.renamedFrom ? `Renamed "${result.renamedFrom}" to "${id}".` : `Saved "${id}".`);
       await loadAll();
       if (!syncFailed) setTimeout(closeForm, 800);
     } catch (err) {
@@ -1424,12 +2091,15 @@
   // ---------- load ----------
   let githubSyncEnabled = true; // optimistic until checked, so we don't flash a false warning
 
+  let modelPresets = {};
+
   async function loadAll() {
-    const [modelsRes, usageRes, profileRes, githubRes] = await Promise.all([
-      api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status')
+    const [modelsRes, usageRes, profileRes, githubRes, presetsRes] = await Promise.all([
+      api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status'), api('/admin/api/presets')
     ]);
     currentModels = modelsRes.models;
     reasoningSchemas = profileRes.schemas || {};
+    modelPresets = presetsRes.presets || {};
     renderSchemaList();
     lastUsageList = usageRes.providerUsage || [];
     renderFilterControls(modelsRes.models);
