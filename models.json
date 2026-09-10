@@ -440,5 +440,12 @@
     "status": "active",
     "limitType": "rate-limited",
     "dailyCap": 30
+  },
+  "glm-5.2:free-lr": {
+    "model": "glm-5.2:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 100
   }
 }
