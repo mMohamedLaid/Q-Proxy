@@ -333,13 +333,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "claude-haiku-4.5-cheap-lr": {
-    "model": "claude-haiku-4.5-cheap:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "dailyCap": 5
-  },
   "deepseek-reasoner-lr": {
     "model": "deepseek-reasoner:free",
     "provider": "literouter",
