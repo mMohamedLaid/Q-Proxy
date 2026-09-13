@@ -448,11 +448,9 @@
     "limitType": "rate-limited",
     "dailyCap": 100
   },
-  "models-gemini-3.8-flash-g": {
+  "gemini-3.8-flash-g": {
     "model": "models/gemini-3.8-flash",
     "provider": "google",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
   }
