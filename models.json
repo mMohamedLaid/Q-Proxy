@@ -171,12 +171,6 @@
     },
     "notes": "Working despite not being in the nvidia models list. (it was hidden)"
   },
-  "gpt-oss-120b-nv": {
-    "model": "openai/gpt-oss-120b",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gpt-oss-20b-nv": {
     "model": "openai/gpt-oss-20b",
     "provider": "nvidia",
@@ -209,17 +203,12 @@
     "limitType": "rate-limited"
   },
   "gpt-oss-120b": {
-    "model": "openai/gpt-oss-120b",
-    "provider": "nvidia",
+    "model": "gpt-oss-120b:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "gpt-oss-120b:free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited",
-      "dailyCap": 30
-    }
+    "limitType": "rate-limited"
   },
   "gpt-oss-20b": {
     "model": "openai/gpt-oss-20b",
