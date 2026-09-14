@@ -210,18 +210,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gpt-oss-20b": {
-    "model": "openai/gpt-oss-20b",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "fallback": {
-      "model": "gpt-oss-20b:free",
-      "provider": "literouter",
-      "status": "active",
-      "limitType": "rate-limited"
-    }
-  },
   "qwen3-coder-or": {
     "model": "qwen/qwen3-coder:free",
     "provider": "openrouter",
