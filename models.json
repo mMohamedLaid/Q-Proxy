@@ -427,7 +427,7 @@
     "model": "deepseek-ai/deepseek-v4-flash-0731",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "rate-limited",
+    "limitType": "unlimited",
     "reasoningSchema": "reasoning-effort-select",
     "reasoning": {
       "reasoning_effort": "max"
