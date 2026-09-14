@@ -267,26 +267,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-ai-deepseek-v4-pro-0813-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro-0813",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "unlimited",
-    "reasoningSchema": "chat-template-thinking-toggle",
-    "reasoning": {
-      "enable_thinking": true
-    }
-  },
-  "deepseek-v4-pro-0813-nv": {
-    "model": "deepseek-ai/deepseek-v4-pro-0813",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "reasoningSchema": "chat-template-thinking-toggle",
-    "reasoning": {
-      "enable_thinking": true
-    }
-  },
   "gemma-4-31b-it-lr": {
     "model": "gemma-4-31b-it:free",
     "provider": "literouter",
