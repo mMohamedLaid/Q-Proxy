@@ -423,12 +423,21 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-ai-deepseek-v4-flash-0731-nv": {
+  "deepseek-v4-flash-0731-nv": {
     "model": "deepseek-ai/deepseek-v4-flash-0731",
     "provider": "nvidia",
-    "reasoningSchema": "reasoning-effort-select",
-    "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "reasoningSchema": "reasoning-effort-select",
+    "reasoning": {
+      "reasoning_effort": "max"
+    },
+    "reasoningFieldOptions": {
+      "reasoning_effort": [
+        "low",
+        "high",
+        "max"
+      ]
+    }
   }
 }
