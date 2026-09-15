@@ -428,11 +428,9 @@
       ]
     }
   },
-  "z-ai-glm-5.3-nv": {
+  "glm-5.3-nv": {
     "model": "z-ai/glm-5.3",
     "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
   }
