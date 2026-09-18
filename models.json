@@ -432,6 +432,6 @@
     "model": "z-ai/glm-5.3",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "unlimited"
   }
 }
