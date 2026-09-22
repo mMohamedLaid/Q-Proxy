@@ -441,5 +441,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "models-gemini-3.7-flash-g": {
+    "model": "models/gemini-3.7-flash",
+    "provider": "google",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
