@@ -430,12 +430,10 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-ai-deepseek-v4.1-flash-nv": {
+  "deepseek-v4.1-flash-nv": {
     "model": "deepseek-ai/deepseek-v4.1-flash",
     "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "unlimited"
   }
 }
