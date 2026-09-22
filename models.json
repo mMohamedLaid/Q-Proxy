@@ -432,7 +432,8 @@
     "model": "z-ai/glm-5.3",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "unlimited"
+    "limitType": "unlimited",
+    "timeoutMs": 1800000
   },
   "gemini-3.7-flash-g": {
     "model": "models/gemini-3.7-flash",
