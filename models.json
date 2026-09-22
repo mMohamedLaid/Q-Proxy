@@ -416,7 +416,8 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "unlimited",
-    "timeoutMs": 1800000
+    "timeoutMs": 1800000,
+    "retryAsUnlimited": true
   },
   "gemini-3.7-flash-g": {
     "model": "models/gemini-3.7-flash",
