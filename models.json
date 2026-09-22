@@ -434,16 +434,14 @@
     "status": "active",
     "limitType": "unlimited"
   },
-  "models-gemini-3.6-flash-g": {
-    "model": "models/gemini-3.6-flash",
+  "gemini-3.7-flash-g": {
+    "model": "models/gemini-3.7-flash",
     "provider": "google",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gemini-3.7-flash-g": {
-    "model": "models/gemini-3.7-flash",
+  "gemini-3.6-flash-g": {
+    "model": "models/gemini-3.6-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited"
