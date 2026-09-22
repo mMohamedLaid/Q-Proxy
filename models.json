@@ -433,5 +433,13 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "unlimited"
+  },
+  "models-gemini-3.6-flash-g": {
+    "model": "models/gemini-3.6-flash",
+    "provider": "google",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
