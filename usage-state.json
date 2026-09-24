@@ -1,10 +1,12 @@
 {
-  "savedAt": "2026-09-24T07:23:46.464Z",
+  "savedAt": "2026-09-24T22:17:51.309Z",
   "literouterKeyState": {},
+  "literouterPremiumKeyState": [],
   "literouterRotationIndex": 0,
+  "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 1,
+      "count": 2,
       "day": "2026-09-24"
     },
     {
