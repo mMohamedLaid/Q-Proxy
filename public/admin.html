@@ -247,8 +247,14 @@
   .sync-item-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
   .sync-result-note { color: var(--text-faint); font-size: 11.5px; }
 
-  .model-card { padding: 14px 16px; border-bottom: 1px solid var(--border); }
-  .model-card:last-child { border-bottom: none; }
+  .model-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+    align-items: start;
+    padding: 14px 16px;
+  }
+  .model-card { padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
   .model-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
   .model-id { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
   .model-combo { color: var(--text-faint); font-size: 11.5px; margin-bottom: 8px; font-family: var(--font-mono); }
@@ -449,7 +455,7 @@
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
   const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', deepseek: 'DeepSeek' };
-  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter']);
+  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
   let currentModels = {};
   let providerTab = '';
   let quickUsageTab = 'used';
@@ -961,7 +967,16 @@
       if (item.entry.custom) (groups.__custom__ = groups.__custom__ || []).push(item);
     });
 
-    const order = Object.keys(groups).filter(k => k !== '__custom__').sort((a, b) => groups[b].length - groups[a].length);
+    // Every known provider gets a tab, even at zero models — PROVIDER_LABELS
+    // is the canonical "providers Q-Proxy knows about" list, independent of
+    // what's currently configured in models.json. Anything in `groups` but
+    // NOT in PROVIDER_LABELS (a brand new provider string used in models.json
+    // before a label's been added for it) still shows too, using its raw
+    // name, rather than silently disappearing. Sort by current count first
+    // so busy providers stay near the front; alphabetical breaks ties,
+    // including the common case of several providers sitting at 0.
+    const allKnownProviders = Array.from(new Set([...Object.keys(PROVIDER_LABELS), ...Object.keys(groups)])).filter(k => k !== '__custom__');
+    const order = allKnownProviders.sort((a, b) => (groups[b]?.length || 0) - (groups[a]?.length || 0) || a.localeCompare(b));
     $('#model-count').textContent = Object.keys(models).length + ' total';
     $('#model-visible-count').textContent = filtered.length + ' shown';
 
@@ -976,7 +991,7 @@
     if (!tabOrder.includes(providerTab)) providerTab = '__all__';
     $('#provider-tabs').innerHTML = tabOrder.map(provider => {
       const label = provider === '__all__' ? 'All' : provider === '__custom__' ? '🗂 Custom bundles' : (PROVIDER_LABELS[provider] || provider);
-      const count = provider === '__all__' ? filtered.length : groups[provider].length;
+      const count = provider === '__all__' ? filtered.length : (groups[provider]?.length || 0);
       return `<button type="button" class="provider-tab-btn ${providerTab === provider ? 'active' : ''}" data-provider-tab="${provider}">
         ${escapeHtml(label)} (${count})
       </button>`;
@@ -1004,8 +1019,9 @@
     }
     const visibleProviders = providerTab === '__all__' ? order : [providerTab];
     $('#providers').innerHTML = visibleProviders.map(provider => {
-      const items = groups[provider].sort((a, b) => a.id.localeCompare(b.id));
-      const syncBtn = SYNCABLE.has(provider) ? `<button class="sync-btn" data-provider="${provider}">Check ${PROVIDER_LABELS[provider] || provider} for updates</button>` : '';
+      const items = (groups[provider] || []).sort((a, b) => a.id.localeCompare(b.id));
+      const syncOpen = syncState[provider] && !syncState[provider].loading;
+      const syncBtn = SYNCABLE.has(provider) ? `<button class="sync-btn" data-provider="${provider}">${syncOpen ? `Hide ${PROVIDER_LABELS[provider] || provider} updates` : `Check ${PROVIDER_LABELS[provider] || provider} for updates`}</button>` : '';
       const cards = items.map(item => renderModelCard(item)).join('');
       return `<div class="provider-group">
         <div class="provider-group-head">
@@ -1081,6 +1097,16 @@
   async function onSync(e) {
     const provider = e.target.getAttribute('data-provider');
     if (!provider) return;
+    if (syncState[provider]?.loading) return; // already fetching — ignore a double-click
+    // Toggle: a result (or error) is already showing for this provider,
+    // so a second click closes it instead of re-fetching and re-showing
+    // the same thing — matches how every other expand/collapse control
+    // in this dashboard behaves.
+    if (syncState[provider]) {
+      delete syncState[provider];
+      renderProviders(currentModels, buildUsageIndex(lastUsageList));
+      return;
+    }
     syncState[provider] = { loading: true };
     renderProviders(currentModels, buildUsageIndex(lastUsageList));
     try {
