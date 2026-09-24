@@ -44,15 +44,15 @@ function loadNumberedKeys(prefix) {
 }
 
 // Both OpenRouter's and Literouter's free-tier daily caps reset on some
-// wall-clock boundary that neither publishes anywhere we could find — we
-// just defaulted to UTC midnight for both, and that default has been
-// visibly wrong for Literouter (its tracker and this one drift apart,
-// "often," not just at the boundary). LITEROUTER_RESET_UTC_HOUR shifts
-// Literouter's boundary once you've watched its own dashboard reset and
-// back-calculated the real hour (0-23, UTC) — defaults to 0 (old
-// behavior, unchanged) until you set it. Do the same for OpenRouter's
-// boundary below if you ever pin its real reset hour down too; until
-// then it stays hardcoded at 0, since that wasn't reported as wrong.
+// wall-clock boundary. Confirmed for Literouter (docs.literouter.com/
+// credits, checked Sep 2026): premium credits reset at 00:00 GMT+7,
+// which is 17:00 UTC — so LITEROUTER_RESET_UTC_HOUR should be set to 17
+// in the environment, not left at the default. The default here stays 0
+// (plain UTC midnight) rather than being hardcoded to 17, since this is
+// meant to work for any provider's boundary, confirmed or not — set the
+// env var for the value that's actually been confirmed. OpenRouter's own
+// boundary isn't confirmed either way, so it stays hardcoded at offset 0
+// below until it is.
 const LITEROUTER_RESET_UTC_HOUR = Number(process.env.LITEROUTER_RESET_UTC_HOUR ?? 0);
 
 function dayKeyAtUtcHourOffset(hourOffset) {
@@ -97,6 +97,7 @@ function getNextOpenRouterKey() {
 // so it's never tracked, just round-robined for load spread.
 const literouterKeyState = {}; // `${keyIndex}|${model}` -> { count, day }
 let literouterRotationIndex = 0;
+let literouterPremiumRotationIndex = 0;
 
 function literouterUsage(keyIndex, model) {
   const k = `${keyIndex}|${model}`;
@@ -107,12 +108,66 @@ function literouterUsage(keyIndex, model) {
   return literouterKeyState[k];
 }
 
+// Literouter's "premium" ("basic premium") tier shares one 50/day budget
+// PER KEY across every premium model — the same shape as OpenRouter's
+// pool below, unlike the free tier's per-(key,model) buckets above. Mark
+// a hop with "literouterTier": "premium" in models.json to draw from
+// this pool instead of a per-model dailyCap. Reuses the same
+// LITEROUTER_RESET_UTC_HOUR-driven day boundary as the free tier — one
+// knob governs both instead of two that could drift apart. The actual
+// per-request cost of a premium model isn't modeled yet (each request
+// just counts as 1 against the 50, same as OpenRouter's counting) —
+// real per-model weighting is a follow-up once real cost data exists.
+// Literouter's own docs (docs.literouter.com/credits) confirm: a ":free"
+// suffixed model spends free credits (per-model daily cap, the existing
+// tracking above); literally everything else — plain names, ":metered",
+// ":full-context", ":metered:full-context" — spends the SAME shared
+// "premium credits" pool, one balance per key, sized by the account's
+// plan (their docs: "Your plan sets the daily allowance... with higher
+// plans getting more" — so 50 is what THIS account's plan grants, not a
+// universal number; override LITEROUTER_PREMIUM_DAILY_CAP if a key on a
+// different plan is added later). Because the split is entirely
+// determined by the ":free" suffix, tier is auto-detected from the model
+// slug — no manual tagging needed per hop, current or future. An
+// explicit "literouterTier" on a hop still overrides the guess, in case
+// Literouter ever ships something that doesn't follow this rule.
+const LITEROUTER_PREMIUM_DAILY_CAP = Number(process.env.LITEROUTER_PREMIUM_DAILY_CAP ?? 50);
+
+function isLiterouterPremium(providerConfig) {
+  if (providerConfig.literouterTier === 'premium') return true;
+  if (providerConfig.literouterTier === 'free') return false;
+  return !String(providerConfig.model || '').endsWith(':free');
+}
+const literouterPremiumKeyState = []; // index-aligned with LITEROUTER_KEYS: { count, day }
+
+function literouterPremiumUsage(keyIndex) {
+  const today = dayKeyAtUtcHourOffset(LITEROUTER_RESET_UTC_HOUR);
+  if (!literouterPremiumKeyState[keyIndex] || literouterPremiumKeyState[keyIndex].day !== today) {
+    literouterPremiumKeyState[keyIndex] = { count: 0, day: today };
+  }
+  return literouterPremiumKeyState[keyIndex];
+}
+
 // Returns { key, keyIndex } for the first Literouter key with daily headroom
-// left for this specific model, or null if every configured key is
-// exhausted for it today (caller should skip to the next hop, same as a
-// tpm-budget skip).
-function pickLiterouterKey(model, dailyCap) {
+// left, or null if every configured key is exhausted (caller should skip
+// to the next hop, same as a tpm-budget skip). "premium" tier draws from
+// the shared 50/day-per-key pool; otherwise it's the free tier's own
+// per-(key,model) dailyCap.
+function pickLiterouterKey(model, dailyCap, isPremium) {
   if (!LITEROUTER_KEYS.length) return null;
+  if (isPremium) {
+    for (let i = 0; i < LITEROUTER_KEYS.length; i++) {
+      const idx = (literouterPremiumRotationIndex + i) % LITEROUTER_KEYS.length;
+      const usage = literouterPremiumUsage(idx);
+      if (usage.count < LITEROUTER_PREMIUM_DAILY_CAP) {
+        usage.count++;
+        markUsageStateDirty();
+        literouterPremiumRotationIndex = idx;
+        return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
+      }
+    }
+    return null;
+  }
   if (dailyCap == null) {
     const idx = literouterRotationIndex % LITEROUTER_KEYS.length;
     literouterRotationIndex++;
@@ -158,6 +213,19 @@ function literouterCapSnapshot() {
     }
   }
   return Object.values(byModel);
+}
+
+// Same shape as above, but for the shared premium pool — one row per
+// key, not per model, since premium models all draw from the same
+// bucket. Weighting real per-model cost within that 50 is a follow-up;
+// for now every premium request just counts as 1, same as OpenRouter.
+function literouterPremiumSnapshot() {
+  const today = dayKeyAtUtcHourOffset(LITEROUTER_RESET_UTC_HOUR);
+  return LITEROUTER_KEYS.map((_, idx) => {
+    const state = literouterPremiumKeyState[idx];
+    const used = (state && state.day === today) ? state.count : 0;
+    return { envName: LITEROUTER_KEY_ENTRIES[idx].envName, used, cap: LITEROUTER_PREMIUM_DAILY_CAP };
+  });
 }
 
 // ============================================================
@@ -574,7 +642,9 @@ async function saveUsageState(commitMessage) {
   const snapshot = {
     savedAt: new Date().toISOString(),
     literouterKeyState,
+    literouterPremiumKeyState,
     literouterRotationIndex,
+    literouterPremiumRotationIndex,
     openrouterKeyState,
     openrouterKeyIndex,
   };
@@ -594,7 +664,11 @@ function hydrateUsageStateFromDisk() {
   const saved = loadUsageStateFromDisk();
   if (!saved) return;
   if (saved.literouterKeyState) Object.assign(literouterKeyState, saved.literouterKeyState);
+  if (Array.isArray(saved.literouterPremiumKeyState)) {
+    saved.literouterPremiumKeyState.forEach((s, i) => { if (s) literouterPremiumKeyState[i] = s; });
+  }
   if (typeof saved.literouterRotationIndex === 'number') literouterRotationIndex = saved.literouterRotationIndex;
+  if (typeof saved.literouterPremiumRotationIndex === 'number') literouterPremiumRotationIndex = saved.literouterPremiumRotationIndex;
   if (Array.isArray(saved.openrouterKeyState)) {
     saved.openrouterKeyState.forEach((s, i) => { if (openrouterKeyState[i] && s) Object.assign(openrouterKeyState[i], s); });
   }
@@ -944,6 +1018,7 @@ function isUnlimitedRetryHop(providerConfig) {
   if (typeof providerConfig.retryAsUnlimited === 'boolean') return providerConfig.retryAsUnlimited;
   if (providerConfig.limitType === 'unlimited') return true;
   if (providerConfig.provider === 'nvidia') return true;
+  if (providerConfig.provider === 'literouter' && isLiterouterPremium(providerConfig)) return false; // pooled cap, not actually unlimited
   if (providerConfig.provider === 'literouter' && providerConfig.dailyCap == null) return true;
   return false;
 }
@@ -1029,11 +1104,15 @@ async function makeAPICall(modelId, nimRequest, stream) {
       // retry budget. Cheap to redo each time (no network call).
       let pickedLiterouterKey = null;
       if (providerConfig.provider === 'literouter') {
-        pickedLiterouterKey = pickLiterouterKey(providerConfig.model, providerConfig.dailyCap);
+        pickedLiterouterKey = pickLiterouterKey(providerConfig.model, providerConfig.dailyCap, isLiterouterPremium(providerConfig));
         if (!pickedLiterouterKey) {
-          log('WARN', `Skipping literouter/${providerConfig.model} — every Literouter key is out of daily quota for this model`);
-          attempts.push({ provider: 'literouter', model: providerConfig.model, outcome: 'skipped', reason: 'literouter-daily-cap-exhausted' });
-          trackSkip('literouter', providerConfig.model, 'literouter-daily-cap-exhausted');
+          const premium = isLiterouterPremium(providerConfig);
+          const reason = premium ? 'literouter-premium-pool-exhausted' : 'literouter-daily-cap-exhausted';
+          log('WARN', premium
+            ? `Skipping literouter/${providerConfig.model} — every Literouter key's shared ${LITEROUTER_PREMIUM_DAILY_CAP}/day premium pool is exhausted`
+            : `Skipping literouter/${providerConfig.model} — every Literouter key is out of daily quota for this model`);
+          attempts.push({ provider: 'literouter', model: providerConfig.model, outcome: 'skipped', reason });
+          trackSkip('literouter', providerConfig.model, reason);
           skippedThisHop = true;
           break;
         }
@@ -1160,7 +1239,8 @@ app.get('/health', (req, res) => {
     // have a dailyCap configured — e.g. "12/30 (LITEROUTER_KEY_1), 0/30
     // (LITEROUTER_KEY_2)" for claude-haiku-4.5-cheap. Uncapped ("∞") models
     // aren't tracked per-key and won't appear here.
-    literouter_capped_models: literouterCapSnapshot()
+    literouter_capped_models: literouterCapSnapshot(),
+    literouter_premium_pool: literouterPremiumSnapshot()
   });
 });
 
@@ -1591,7 +1671,7 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
     resetsInSec: info.limit == null ? null : (usageTracker[key] ? Math.max(0, Math.ceil((usageTracker[key].resetAt - now) / 1000)) : null)
   }));
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKeyAtUtcHourOffset(0);
   const openrouterSelfTracked = OPENROUTER_KEYS.map((_, i) => ({
     key: OPENROUTER_KEY_ENTRIES[i].envName,
     usedToday: openrouterKeyState[i].day === today ? openrouterKeyState[i].count : 0,
@@ -1607,7 +1687,10 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
     // Per-model, per-key breakdown for Literouter models that have a
     // dailyCap set — this is what the Admin dashboard renders as
     // "12/30 (LITEROUTER_KEY_1)  0/30 (LITEROUTER_KEY_2)" rows.
-    literouterCappedModels: literouterCapSnapshot()
+    literouterCappedModels: literouterCapSnapshot(),
+    // One shared 50/day-per-key pool across every "premium" hop, separate
+    // from the per-model buckets above.
+    literouterPremiumPool: literouterPremiumSnapshot()
   });
 });
 
@@ -1710,6 +1793,15 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
 const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
+// Per-provider caveats about what a "check for updates" sync CAN'T tell
+// you, surfaced in the sync result UI rather than left implicit. This is
+// about known structural gaps in what a provider's /models list exposes
+// (not an error case — the request succeeds fine), so add an entry here
+// whenever a new provider turns out to have the same kind of gap, rather
+// than treating it as a one-off Literouter thing.
+const PARTIAL_SYNC_NOTES = {
+  literouter: 'Literouter\'s /models list is confirmed complete for what your key can reach (their docs: "every model available to your key") — but it never exposes any of the three credit balances (free, premium pool, permanent premium beta), so dailyCap/premium-pool tracking here is still Q-Proxy\'s own estimate, not Literouter\'s real number.'
+};
 const PROVIDER_SUFFIX = {
   nvidia: 'nv',
   zai: 'z',
@@ -2026,7 +2118,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     const newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
     const noLongerListed = [...configuredIds].filter(id => !liveIds.includes(id));
 
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed });
+    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
