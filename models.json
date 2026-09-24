@@ -302,12 +302,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-v4-flash-0731-thinking-lr": {
-    "model": "deepseek-v4-flash-0731-thinking:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "deepseek-v4-flash-thinking-lr": {
     "model": "deepseek-v4-flash-thinking:free",
     "provider": "literouter",
