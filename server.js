@@ -11,6 +11,11 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Render (and most PaaS) put one reverse proxy hop in front of this app.
+// Without this, req.ip is Render's edge IP for every single request —
+// which would make the per-IP admin lockout below just as global as the
+// bug it's fixing, since every visitor would collapse into one bucket.
+app.set('trust proxy', 1);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -38,6 +43,22 @@ function loadNumberedKeys(prefix) {
   return found.map(f => ({ key: f.key, envName: f.envName }));
 }
 
+// Both OpenRouter's and Literouter's free-tier daily caps reset on some
+// wall-clock boundary that neither publishes anywhere we could find — we
+// just defaulted to UTC midnight for both, and that default has been
+// visibly wrong for Literouter (its tracker and this one drift apart,
+// "often," not just at the boundary). LITEROUTER_RESET_UTC_HOUR shifts
+// Literouter's boundary once you've watched its own dashboard reset and
+// back-calculated the real hour (0-23, UTC) — defaults to 0 (old
+// behavior, unchanged) until you set it. Do the same for OpenRouter's
+// boundary below if you ever pin its real reset hour down too; until
+// then it stays hardcoded at 0, since that wasn't reported as wrong.
+const LITEROUTER_RESET_UTC_HOUR = Number(process.env.LITEROUTER_RESET_UTC_HOUR ?? 0);
+
+function dayKeyAtUtcHourOffset(hourOffset) {
+  return new Date(Date.now() - hourOffset * 3600000).toISOString().slice(0, 10);
+}
+
 const LITEROUTER_KEY_ENTRIES = loadNumberedKeys('LITEROUTER_KEY');
 const LITEROUTER_KEYS = LITEROUTER_KEY_ENTRIES.map(e => e.key);
 
@@ -52,7 +73,7 @@ const openrouterKeyState = OPENROUTER_KEYS.map(() => ({ count: 0, day: '' }));
 let openrouterKeyIndex = 0;
 
 function getNextOpenRouterKey() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKeyAtUtcHourOffset(0);
   openrouterKeyState.forEach(s => { if (s.day !== today) { s.day = today; s.count = 0; } });
 
   for (let i = 0; i < OPENROUTER_KEYS.length; i++) {
@@ -60,6 +81,7 @@ function getNextOpenRouterKey() {
     if (openrouterKeyState[idx].count < OPENROUTER_DAILY_CAP) {
       openrouterKeyIndex = idx;
       openrouterKeyState[idx].count++;
+      markUsageStateDirty();
       return OPENROUTER_KEYS[idx];
     }
   }
@@ -78,7 +100,7 @@ let literouterRotationIndex = 0;
 
 function literouterUsage(keyIndex, model) {
   const k = `${keyIndex}|${model}`;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKeyAtUtcHourOffset(LITEROUTER_RESET_UTC_HOUR);
   if (!literouterKeyState[k] || literouterKeyState[k].day !== today) {
     literouterKeyState[k] = { count: 0, day: today };
   }
@@ -101,6 +123,7 @@ function pickLiterouterKey(model, dailyCap) {
     const usage = literouterUsage(idx, model);
     if (usage.count < dailyCap) {
       usage.count++;
+      markUsageStateDirty();
       literouterRotationIndex = idx; // drain this key for this model before rotating, same spirit as OpenRouter
       return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
     }
@@ -112,7 +135,7 @@ function pickLiterouterKey(model, dailyCap) {
 // dailyCap, for Admin/health display — e.g. "12/30 (key 1), 0/30 (key 2)".
 // Models with no dailyCap aren't tracked per-key, so they're omitted here.
 function literouterCapSnapshot() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKeyAtUtcHourOffset(LITEROUTER_RESET_UTC_HOUR);
   const byModel = {};
   for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
     const hops = [];
@@ -324,6 +347,9 @@ function estimateTokens(messages) {
 const MODELS_PATH = path.join(__dirname, 'models.json');
 const REASONING_SCHEMAS_PATH = path.join(__dirname, 'reasoning-schemas.json');
 const MODEL_PRESETS_PATH = path.join(__dirname, 'model-presets.json');
+// OpenRouter/Literouter per-key usage counters — see "Persisting usage
+// state across restarts" further down for why this exists.
+const USAGE_STATE_PATH = path.join(__dirname, 'usage-state.json');
 
 function loadReasoningSchemasFromDisk() {
   try {
@@ -418,6 +444,7 @@ const GITHUB_BRANCH       = process.env.GITHUB_BRANCH || 'main';
 const GITHUB_MODELS_PATH  = process.env.GITHUB_MODELS_PATH || 'models.json';
 const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schemas.json';
 const GITHUB_PRESETS_PATH = process.env.GITHUB_PRESETS_PATH || 'model-presets.json';
+const GITHUB_USAGE_PATH   = process.env.GITHUB_USAGE_PATH || 'usage-state.json';
 const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
 function githubHeaders() {
@@ -467,7 +494,7 @@ async function syncConfigFromGitHubOnBoot() {
     log('WARN', 'GITHUB_TOKEN/GITHUB_REPO not set — admin panel edits will NOT survive a restart on Render Free. See README > Persistence.');
     return;
   }
-  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH], [GITHUB_PRESETS_PATH, MODEL_PRESETS_PATH]]) {
+  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH], [GITHUB_PRESETS_PATH, MODEL_PRESETS_PATH], [GITHUB_USAGE_PATH, USAGE_STATE_PATH]]) {
     try {
       const remote = await githubFetchFile(repoPath);
       if (remote) {
@@ -520,6 +547,82 @@ async function saveModelPresets(commitMessage) {
   const json = JSON.stringify(MODEL_PRESETS, null, 2);
   fs.writeFileSync(MODEL_PRESETS_PATH, json);
   return githubSyncFile(GITHUB_PRESETS_PATH, json, commitMessage || 'Q-Proxy admin: update model-presets.json');
+}
+
+// ── Persisting usage state across restarts ──────────────────────────
+// literouterKeyState / openrouterKeyState only ever lived in memory,
+// which is a big part of why Q-Proxy's counters drift from Literouter's
+// own tracker so often: Render recycles the container on every spin-
+// down/wake cycle and every redeploy, wiping these counters to zero,
+// while the providers' own server-side counts don't reset just because
+// your process restarted. This persists them the same way models.json
+// etc. already are — pulled from GitHub on boot, pushed back on a short
+// debounce rather than on every single request (writing on every
+// request would hammer the GitHub API and add latency to every
+// completion for no real benefit) — so a restart loses at most a few
+// seconds of counting instead of the whole day's.
+function loadUsageStateFromDisk() {
+  try {
+    return JSON.parse(fs.readFileSync(USAGE_STATE_PATH, 'utf8'));
+  } catch (e) {
+    log('WARN', `Could not load ${USAGE_STATE_PATH} (${e.message}) — starting usage counters fresh (expected on first boot).`);
+    return null;
+  }
+}
+
+async function saveUsageState(commitMessage) {
+  const snapshot = {
+    savedAt: new Date().toISOString(),
+    literouterKeyState,
+    literouterRotationIndex,
+    openrouterKeyState,
+    openrouterKeyIndex,
+  };
+  const json = JSON.stringify(snapshot, null, 2);
+  fs.writeFileSync(USAGE_STATE_PATH, json);
+  return githubSyncFile(GITHUB_USAGE_PATH, json, commitMessage || 'Q-Proxy: periodic usage-state snapshot');
+}
+
+// Called once at boot (see bootstrapConfigAndStart), after the GitHub
+// pull has had a chance to put a fresher usage-state.json on local disk
+// than whatever was baked into this deploy. literouterKeyState /
+// openrouterKeyState stay the same object/array references (mutated in
+// place) for the same reason REASONING_SCHEMAS/MODEL_PRESETS do —
+// everywhere else in the file that already reads/writes them keeps
+// working untouched.
+function hydrateUsageStateFromDisk() {
+  const saved = loadUsageStateFromDisk();
+  if (!saved) return;
+  if (saved.literouterKeyState) Object.assign(literouterKeyState, saved.literouterKeyState);
+  if (typeof saved.literouterRotationIndex === 'number') literouterRotationIndex = saved.literouterRotationIndex;
+  if (Array.isArray(saved.openrouterKeyState)) {
+    saved.openrouterKeyState.forEach((s, i) => { if (openrouterKeyState[i] && s) Object.assign(openrouterKeyState[i], s); });
+  }
+  if (typeof saved.openrouterKeyIndex === 'number') openrouterKeyIndex = saved.openrouterKeyIndex;
+  log('INFO', `[usage-state] restored from ${saved.savedAt || 'unknown time'} — Literouter/OpenRouter counters survive this restart instead of starting at zero.`);
+}
+
+// Mark-dirty + debounced flush: pickLiterouterKey/getNextOpenRouterKey
+// call markUsageStateDirty() on every real increment; this only writes
+// at most once per interval no matter how many requests land in
+// between. The flag clears BEFORE the write starts, not after, so an
+// increment landing mid-write sets it dirty again instead of being
+// silently dropped.
+let usageStateDirty = false;
+function markUsageStateDirty() { usageStateDirty = true; }
+setInterval(() => {
+  if (!usageStateDirty) return;
+  usageStateDirty = false;
+  saveUsageState().catch(e => log('WARN', `[usage-state] periodic save failed: ${e.message}`));
+}, 30000);
+
+// Best-effort on shutdown — Render can still kill the process before an
+// in-flight GitHub PUT finishes, so this narrows the loss window, it
+// doesn't fully close it.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    if (usageStateDirty) saveUsageState('Q-Proxy: shutdown flush').catch(() => {});
+  });
 }
 
 // ============================================================
@@ -750,13 +853,78 @@ function resolveModelChain(modelId, mapping = MODEL_MAPPING) {
 const TOKEN_LIMIT_PATTERNS = /context.?length|context_length_exceeded|maximum context|max(?:imum)? tokens?|too many tokens|token limit|reduce the length|input is too long|prompt is too long|exceeds? the (?:model|context)|maximum number of tokens/i;
 const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded your current quota|daily limit|requests per day\b|resource_exhausted|out of credits|no credits remaining|insufficient credits|billing/i;
 
-function errText(err) {
-  let body = '';
-  try { body = JSON.stringify(err.response?.data || ''); } catch (_) { /* circular/non-serializable */ }
-  return `${body} ${err.message || ''}`;
+// ── Why this isn't just `JSON.stringify(err.response?.data)` ──────────
+// When a request was made with responseType:'stream' (true for every
+// streaming completion), axios does NOT parse a non-2xx body either —
+// err.response.data is the raw (already-gunzipped) response STREAM,
+// unread. JSON.stringify-ing that stream object doesn't throw (streams
+// aren't circular in a way that trips it up), so it happily serializes
+// Node's internal buffer/socket state instead of the actual upstream
+// error message — which is how you get a multi-KB dump instead of one
+// sentence, and, worse, why isTokenLimitError/isQuotaExhaustedError were
+// silently blind on every streaming request: they were pattern-matching
+// against that same dump instead of real text, so those two error types
+// were almost never actually detected for streamed calls. This drains
+// the stream (bounded — 64KB / 3s, so a slow/huge body can't hang a
+// request or blow up a log line) and caches the result on the error
+// object itself, so the three call sites below (two classifiers + the
+// outer catch's log line) only ever read the stream once.
+async function getErrorBodyText(err) {
+  if (err._qproxyBodyText !== undefined) return err._qproxyBodyText;
+  const data = err.response?.data;
+  let text = '';
+  try {
+    if (data == null) {
+      text = '';
+    } else if (Buffer.isBuffer(data)) {
+      text = data.toString('utf8');
+    } else if (typeof data === 'string') {
+      text = data;
+    } else if (typeof data.pipe === 'function' || typeof data.on === 'function') {
+      text = await drainStreamToText(data);
+    } else {
+      text = JSON.stringify(data);
+    }
+  } catch (_) {
+    text = '[unreadable error body]';
+  }
+  err._qproxyBodyText = text;
+  return text;
 }
-function isTokenLimitError(err) { return TOKEN_LIMIT_PATTERNS.test(errText(err)); }
-function isQuotaExhaustedError(err) { return QUOTA_EXHAUSTED_PATTERNS.test(errText(err)); }
+
+function drainStreamToText(stream, maxBytes = 65536, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    let bytes = 0;
+    const chunks = [];
+    let settled = false;
+    const timer = setTimeout(() => settle(), timeoutMs);
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { stream.destroy(); } catch (_) { /* already closed */ }
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    };
+    stream.on('data', (chunk) => {
+      chunks.push(chunk);
+      bytes += chunk.length;
+      if (bytes >= maxBytes) settle();
+    });
+    stream.on('end', settle);
+    stream.on('error', settle);
+  });
+}
+
+// Truncated, not full — a legitimately large but real error body still
+// shouldn't get logged in full; this caps the LOG LINE, separate from
+// the 64KB drain cap above.
+function truncateForLog(text, max = 1000) {
+  if (!text) return 'unavailable';
+  return text.length > max ? `${text.slice(0, max)}…[+${text.length - max} chars truncated]` : text;
+}
+
+async function isTokenLimitError(err) { return TOKEN_LIMIT_PATTERNS.test(`${await getErrorBodyText(err)} ${err.message || ''}`); }
+async function isQuotaExhaustedError(err) { return QUOTA_EXHAUSTED_PATTERNS.test(`${await getErrorBodyText(err)} ${err.message || ''}`); }
 
 // A hop gets the "unlimited" retry treatment (many tries, since there's
 // no daily/hourly cap to actually run out of — just flakiness to wait
@@ -906,14 +1074,14 @@ async function makeAPICall(modelId, nimRequest, stream) {
         // hop instead of hard-stopping, even when the status is a 4xx
         // that would otherwise block fallback below. Checked first, on
         // purpose, before the generic hard-4xx check.
-        if (isTokenLimitError(err)) {
+        if (await isTokenLimitError(err)) {
           log('WARN', `${providerConfig.provider}/${providerConfig.model} — request exceeds this hop's context window, not retrying it: ${err.message}`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'token-limit-exceeded' });
           trackSkip(providerConfig.provider, providerConfig.model, 'token-limit-exceeded');
           hopFinalError = err;
           break;
         }
-        if (isQuotaExhaustedError(err)) {
+        if (await isQuotaExhaustedError(err)) {
           log('WARN', `${providerConfig.provider}/${providerConfig.model} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'quota-exhausted' });
           trackSkip(providerConfig.provider, providerConfig.model, 'quota-exhausted');
@@ -1205,8 +1373,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
   } catch (error) {
-    let errorBody = 'unavailable';
-    try { errorBody = JSON.stringify(error.response?.data); } catch (e) { errorBody = '[stream/circular error]'; }
+    const errorBody = truncateForLog(await getErrorBodyText(error));
     log('ERROR', `[${userName}] ${error.message} | status: ${error.response?.status} | body: ${errorBody}`);
     if (Array.isArray(error.attempts) && error.attempts.length) {
       const pathStr = error.attempts.map(a => `${a.provider}/${a.model}:${a.outcome}${a.reason ? `(${a.reason})` : ''}`).join(' -> ');
@@ -1242,7 +1409,14 @@ app.post('/v1/chat/completions', async (req, res) => {
 //    calls at all — CORS is a browser-enforced rule, not a server one.
 // ============================================================
 const ADMIN_KEY = process.env.ADMIN_KEY;
-const adminAuthFails = { count: 0, lockedUntil: 0 };
+// Keyed by client IP, not one shared counter — a single global
+// {count, lockedUntil} means ANY stranger (or bot scanning for open
+// admin panels) sending 5 wrong keys locks out the real admin for up
+// to an hour too. Per-IP means a stranger can only lock out themselves.
+// Unbounded growth in theory (an attacker cycling source IPs), but for
+// a single-operator proxy the realistic footprint is tiny; add an
+// eviction pass here if this ever gets exposed to real hostile traffic.
+const adminAuthFails = new Map(); // ip -> { count, lockedUntil }
 
 app.use('/admin', (req, res, next) => {
   res.removeHeader('Access-Control-Allow-Origin');
@@ -1255,22 +1429,32 @@ function requireAdmin(req, res, next) {
       error: { message: 'Admin panel disabled — set ADMIN_KEY in your environment to enable it.', type: 'admin_disabled', code: 503 }
     });
   }
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const state = adminAuthFails.get(ip) || { count: 0, lockedUntil: 0 };
   const now = Date.now();
-  if (now < adminAuthFails.lockedUntil) {
-    const waitSec = Math.ceil((adminAuthFails.lockedUntil - now) / 1000);
+  if (now < state.lockedUntil) {
+    const waitSec = Math.ceil((state.lockedUntil - now) / 1000);
     return res.status(429).json({ error: { message: `Too many failed admin key attempts. Try again in ${waitSec}s.`, type: 'rate_limit_error', code: 429 } });
   }
-  const provided = req.headers['x-admin-key'] || req.query.key || '';
+  // Header only — deliberately NOT falling back to req.query.key here.
+  // admin.html's own api() helper already sends X-Admin-Key as a header;
+  // a query-string fallback only exists for curl convenience, and query
+  // strings end up in Render's access logs, proxies, and browser
+  // history far more readily than headers do. The page's own "?key="
+  // bookmark convenience is a client-side-only convenience (see
+  // admin.html) and doesn't need this fallback to keep working.
+  const provided = req.headers['x-admin-key'] || '';
   if (provided !== ADMIN_KEY) {
-    adminAuthFails.count++;
-    if (adminAuthFails.count >= 5) {
-      const lockSec = Math.min(3600, 30 * Math.pow(2, adminAuthFails.count - 5));
-      adminAuthFails.lockedUntil = now + lockSec * 1000;
-      log('WARN', `[admin] locking out admin auth for ${lockSec}s after ${adminAuthFails.count} failed attempts`);
+    state.count++;
+    if (state.count >= 5) {
+      const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
+      state.lockedUntil = now + lockSec * 1000;
+      log('WARN', `[admin] locking out ${ip} for ${lockSec}s after ${state.count} failed attempts`);
     }
+    adminAuthFails.set(ip, state);
     return res.status(401).json({ error: { message: 'Invalid or missing admin key.', type: 'unauthorized', code: 401 } });
   }
-  adminAuthFails.count = 0;
+  adminAuthFails.delete(ip);
   next();
 }
 
@@ -1525,7 +1709,7 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
 // that would have caught the glm-5.2 deprecation, and the way to
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
-const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter']);
+const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
 const PROVIDER_SUFFIX = {
   nvidia: 'nv',
   zai: 'z',
@@ -1818,7 +2002,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) {
     return res.status(400).json({
-      error: { message: `No live catalog check available for "${provider}" (Literouter/MegaNova don't publish one that we could find) — track it manually.`, type: 'invalid_request_error', code: 400 }
+      error: { message: `No live catalog check available for "${provider}" — either it doesn't publish a /models list, or it isn't wired into SYNCABLE_PROVIDERS yet. Track it manually for now.`, type: 'invalid_request_error', code: 400 }
     });
   }
 
@@ -1966,6 +2150,7 @@ async function bootstrapConfigAndStart() {
   Object.assign(REASONING_SCHEMAS, loadReasoningSchemasFromDisk());
   Object.assign(MODEL_PRESETS, loadModelPresetsFromDisk());
   MODEL_MAPPING = loadModelsFromDisk();
+  hydrateUsageStateFromDisk();
 
   app.listen(PORT, () => {
     log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
