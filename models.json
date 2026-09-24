@@ -302,12 +302,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "deepseek-v4-flash-thinking-lr": {
-    "model": "deepseek-v4-flash-thinking:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gemma-4-26b-a4b-it-lr": {
     "model": "gemma-4-26b-a4b-it:free",
     "provider": "literouter",
