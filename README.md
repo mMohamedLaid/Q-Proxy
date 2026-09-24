@@ -1,4 +1,5 @@
 # Q-Proxy
+# Q-Proxy
 
 OpenAI-compatible fallback router across the configured providers.
 
@@ -30,8 +31,10 @@ Both are configured as `OPENROUTER_KEY_1`, `OPENROUTER_KEY_2`, ... and `LITEROUT
 
 The two providers' quotas work differently, so they're tracked differently:
 
-- **OpenRouter** gives one blanket 50-requests/day budget per key, covering every model. Q-Proxy drains key 1 fully before moving to key 2, resetting daily. This is a Q-Proxy-side counter, not synced with OpenRouter's own dashboard — a process restart resets it to 0 even if real usage wasn't.
-- **Literouter** gives each free model its *own* separate daily budget per key (e.g. `claude-haiku-4.5-cheap:free` might cap at 5/day while `qwen3.5:free` caps at 30/day on the exact same key). So Q-Proxy tracks usage per **(key, model)** pair, not per key alone — draining a key's `claude-haiku-4.5-cheap` allowance has no effect on that same key's `qwen3.5` allowance. Set `dailyCap` on a Literouter hop in `models.json` to the number Literouter's dashboard shows for that model; leave it unset if Literouter lists it as unlimited (then the hop just round-robins across keys with no cap tracking). When every configured key is out of quota for a given model today, that hop is skipped (not errored) and the chain falls through to its next hop, same as a TPM-budget skip. Usage shows up in `/health` (`literouter_capped_models`) and the Admin dashboard's Usage tab (per model, per key, e.g. "LITEROUTER_KEY_1: 3/5  LITEROUTER_KEY_2: 0/5").
+- **OpenRouter** gives one blanket 50-requests/day budget per key, covering every model. Q-Proxy drains key 1 fully before moving to key 2, resetting daily. This counter now survives a restart via GitHub sync (see Persistence, below) — it isn't synced with OpenRouter's own dashboard, so it can still drift if you burn quota some other way (testing a key directly, say), but a Render restart alone no longer resets it to 0.
+- **Literouter** gives each free model its *own* separate daily budget per key (e.g. `claude-haiku-4.5-cheap:free` might cap at 5/day while `qwen3.5:free` caps at 30/day on the exact same key). So Q-Proxy tracks usage per **(key, model)** pair, not per key alone — draining a key's `claude-haiku-4.5-cheap` allowance has no effect on that same key's `qwen3.5` allowance. Set `dailyCap` on a Literouter hop in `models.json` to the number Literouter's dashboard shows for that model; leave it unset if Literouter lists it as unlimited (then the hop just round-robins across keys with no cap tracking). When every configured key is out of quota for a given model today, that hop is skipped (not errored) and the chain falls through to its next hop, same as a TPM-budget skip. Usage shows up in `/health` (`literouter_capped_models`) and the Admin dashboard's Usage tab (per model, per key, e.g. "LITEROUTER_KEY_1: 3/5  LITEROUTER_KEY_2: 0/5"). This counter is also now persisted across restarts, same as OpenRouter's.
+  - Literouter's daily reset doesn't happen at UTC midnight — we don't know its real reset hour, and defaulting to UTC midnight was a guess that's been visibly wrong (this counter and Literouter's own dashboard disagreeing, not just briefly at rollover). Set `LITEROUTER_RESET_UTC_HOUR` (0–23) once you've watched Literouter's own dashboard reset and worked out the real hour in UTC; it defaults to `0` (the old behavior) until you set it.
+  - `GET /admin/api/sync/literouter` now works the same way it does for nvidia/zai/google/openrouter — it diffs Literouter's live `/v1/models` list against what's in `models.json` and reports what's new or gone. It still can't tell you per-key *limits* (unlimited vs. 100/day vs. drawing from the shared 50/day pool isn't exposed by that endpoint) — that part is still `dailyCap`, set by hand, same as before.
 
 Literouter has no request-time reasoning parameters at all (no `chat_template_kwargs`, no `extra_body`) — thinking on/off is picked via the model slug itself (e.g. a `-thinking` or `-non-reasoning` suffix on the model name), so Literouter hops should always leave `reasoningSchema` unset.
 
@@ -51,7 +54,7 @@ A hop chain can be flagged `"custom": true` to group it under its own "Custom bu
 
 Render's Free web services have **no persistent disk** — every restart (a crash, a `git push` redeploy, or Render just cycling an idle instance) boots a fresh container from the last *deployed* image. Anything the Admin panel wrote with `fs.writeFileSync` is gone at that point; the container never had it to begin with.
 
-**Free fix: GitHub sync.** Set these two environment variables in Render and every Admin-panel save (models, reasoning schemas) is committed straight to your GitHub repo, in addition to being written locally. On boot, the server pulls the latest committed copy from GitHub *before* loading local files, so a fresh container starts from your last saved state instead of whatever was baked into the last code deploy.
+**Free fix: GitHub sync.** Set these two environment variables in Render and every Admin-panel save (models, reasoning schemas, presets) — plus the OpenRouter/Literouter usage counters, saved automatically every ~30s when they've changed — is committed straight to your GitHub repo, in addition to being written locally. On boot, the server pulls the latest committed copy from GitHub *before* loading local files, so a fresh container starts from your last saved state instead of whatever was baked into the last code deploy.
 
 | Env var | Required | Notes |
 |---|---|---|
@@ -60,6 +63,8 @@ Render's Free web services have **no persistent disk** — every restart (a cras
 | `GITHUB_BRANCH` | no | Defaults to `main` |
 | `GITHUB_MODELS_PATH` | no | Defaults to `models.json` |
 | `GITHUB_SCHEMAS_PATH` | no | Defaults to `reasoning-schemas.json` |
+| `GITHUB_USAGE_PATH` | no | Defaults to `usage-state.json`. OpenRouter/Literouter usage counters — see "OpenRouter and Literouter keys," above. |
+| `LITEROUTER_RESET_UTC_HOUR` | no | Defaults to `0` (UTC midnight). Shifts when Literouter's daily caps are treated as resetting; see above. |
 
 If these aren't set, Q-Proxy runs exactly as before — local-disk-only, edits lost on restart — and logs a warning on boot so that's obvious rather than something you find out the hard way. The Admin panel also shows a banner at the top of the dashboard reflecting whether sync is on.
 
