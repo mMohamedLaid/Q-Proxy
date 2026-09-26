@@ -213,6 +213,11 @@
     cursor: pointer;
   }
   .provider-tab-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .provider-reset-banner {
+    display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 11.5px;
+    color: var(--text-dim); background: rgba(255,255,255,.02); border-bottom: 1px solid var(--border);
+  }
+  .provider-reset-banner .countdown { font-family: var(--font-mono); color: var(--text); }
 
   /* ---------- Provider group ---------- */
   .provider-group { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
@@ -228,7 +233,7 @@
   .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
   .sync-result { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: #0D1119; }
   .sync-result-head { color: var(--text-dim); margin-bottom: 8px; }
-  .sync-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; align-items: start; }
+  .sync-result-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .sync-result-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: rgba(255,255,255,.02); }
   .sync-result-title { color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; font-size: 10.5px; margin-bottom: 6px; }
   /* Many short chips wrapping onto the same line, instead of one
@@ -245,6 +250,10 @@
     background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
   }
   .sync-item-code { font-family: var(--font-mono); color: var(--text); font-size: 11.5px; white-space: nowrap; }
+  .sync-item-info {
+    font-size: 10px; color: var(--text-faint); background: rgba(255,255,255,.04);
+    border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+  }
   .sync-item-btn {
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -434,6 +443,7 @@
     </div>
     <div class="quick-usage" id="quick-usage"></div>
     <div class="provider-tabs" id="provider-tabs"></div>
+    <div id="provider-reset-timer"></div>
     <div id="providers"></div>
   </section>
 
@@ -875,8 +885,13 @@
       ? `<div class="sync-items">${r.newlyAvailable.map(m => {
           const st = syncDetectState[syncDetectKey(provider, m)] || {};
           const scanned = st.result && st.result.ok;
+          const info = (r.modelInfo && r.modelInfo[m]) || null;
+          const infoTags = info
+            ? `<span class="sync-item-info" title="${escapeHtml(info.tier)}">${escapeHtml(info.tier.split(' ')[0])}${info.cost != null ? ` · ${info.cost}x` : ''}${info.uncensored === true ? ' · uncensored' : info.uncensored === false ? ' · moderated' : ''}</span>`
+            : '';
           return `<div class="sync-item-wrap${st.open ? ' expanded' : ''}">
             <div class="sync-item">
+              ${infoTags}
               <span class="sync-item-code">${escapeHtml(m)}</span>
               <button type="button" class="sync-item-btn" data-sync-detect-act="toggle" data-provider="${provider}" data-model="${escapeHtml(m)}" title="Paste an example to detect this model's reasoning controls before adding it">🧪</button>
               <button class="sync-item-btn add" data-sync-act="add" data-provider="${provider}" data-model="${escapeHtml(m)}">${scanned ? 'Add with detected config' : 'Add to config'}</button>
@@ -905,6 +920,7 @@
   }
 
   let lastUsageList = [];
+  let lastProviderResets = {};
   function renderModelCard(item) {
     const id = item.id;
     const entry = item.entry;
@@ -969,6 +985,36 @@
 
   let lastRenderUsageIndex = {};
 
+  let resetCountdownInterval = null;
+
+  function formatCountdown(ms) {
+    if (ms <= 0) return '00:00:00';
+    const totalSec = Math.floor(ms / 1000);
+    const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  // Shows a live countdown to this provider's next quota reset, only for
+  // providers we actually know a reset time for (currently Literouter,
+  // Google) — silently shows nothing for any other tab, including '__all__'.
+  function renderProviderResetTimer(provider) {
+    if (resetCountdownInterval) { clearInterval(resetCountdownInterval); resetCountdownInterval = null; }
+    const info = lastProviderResets[provider];
+    const el = $('#provider-reset-timer');
+    if (!info || !info.resetsAt) { el.innerHTML = ''; return; }
+    const resetsAt = new Date(info.resetsAt).getTime();
+    const label = PROVIDER_LABELS[provider] || provider;
+    const tick = () => {
+      const remaining = resetsAt - Date.now();
+      $('#provider-reset-timer').innerHTML = `<div class="provider-reset-banner">${escapeHtml(label)} quota resets in <span class="countdown">${formatCountdown(remaining)}</span> (${escapeHtml(info.timezone)})</div>`;
+      if (remaining <= 0) { clearInterval(resetCountdownInterval); resetCountdownInterval = null; }
+    };
+    tick();
+    resetCountdownInterval = setInterval(tick, 1000);
+  }
+
   function renderProviders(models, usageIndex) {
     lastRenderUsageIndex = usageIndex;
     refreshFilterState();
@@ -1017,6 +1063,8 @@
       providerTab = e.currentTarget.getAttribute('data-provider-tab') || providerTab;
       renderProviders(currentModels, buildUsageIndex(lastUsageList));
     }));
+
+    renderProviderResetTimer(providerTab);
 
     // "All" reuses the normal per-provider sectioned rendering (one
     // section per real provider, each with its own sync button) — same
@@ -2152,6 +2200,7 @@
     modelPresets = presetsRes.presets || {};
     renderSchemaList();
     lastUsageList = usageRes.providerUsage || [];
+    lastProviderResets = usageRes.providerResets || {};
     renderFilterControls(modelsRes.models);
     const usageIndex = buildUsageIndex(usageRes.providerUsage);
     renderStats(modelsRes.models);
