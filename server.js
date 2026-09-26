@@ -61,6 +61,16 @@ function dayKeyAtUtcHourOffset(hourOffset) {
 
 const LITEROUTER_KEY_ENTRIES = loadNumberedKeys('LITEROUTER_KEY');
 const LITEROUTER_KEYS = LITEROUTER_KEY_ENTRIES.map(e => e.key);
+// GOOGLE_KEY_1, GOOGLE_KEY_2... — same numbered-key convention as
+// OpenRouter/Literouter, added so a model can keep using the SAME key
+// until IT specifically hits an RPM/TPM/RPD ceiling, then move only that
+// model to the next key. Falls back to the old singular GOOGLE_API_KEY
+// as key 1 if no numbered keys are set, so a single-key deployment needs
+// no changes at all.
+const GOOGLE_KEY_ENTRIES = loadNumberedKeys('GOOGLE_KEY').length
+  ? loadNumberedKeys('GOOGLE_KEY')
+  : (GOOGLE_API_KEY ? [{ n: 1, key: GOOGLE_API_KEY, envName: 'GOOGLE_API_KEY' }] : []);
+const GOOGLE_KEYS = GOOGLE_KEY_ENTRIES.map(e => e.key);
 
 const OPENROUTER_KEY_ENTRIES = loadNumberedKeys('OPENROUTER_KEY');
 const OPENROUTER_KEYS = OPENROUTER_KEY_ENTRIES.map(e => e.key);
@@ -96,8 +106,28 @@ function getNextOpenRouterKey() {
 // (models.json); undefined/null means Literouter lists it as unlimited,
 // so it's never tracked, just round-robined for load spread.
 const literouterKeyState = {}; // `${keyIndex}|${model}` -> { count, day }
-let literouterRotationIndex = 0;
-let literouterPremiumRotationIndex = 0;
+let literouterRotationIndex = 0; // only used for UNCAPPED free models — nothing to "run out of" per model, so plain round-robin is fine
+let literouterPremiumRotationIndex = 0; // shared on purpose — the premium pool is genuinely one bucket across models, not per-model
+// Capped free models each keep their OWN key until THEY specifically run
+// out, independent of what other models on the same provider are doing —
+// `model -> keyIndex`. This is the piece that was missing: the old code
+// shared literouterRotationIndex across every model, so draining key 1
+// for model A would shift where model B's search started too, even
+// though B's own quota was completely untouched.
+const literouterFreeModelCursor = {};
+let literouterLastResetDay = null;
+
+// Both cursor types revert to key 0 at Literouter's own daily boundary
+// ("at the end of a reset, they all revert to the first key") — called
+// lazily at the top of pickLiterouterKey rather than on a timer, so it
+// can't drift from whatever's actually calling it.
+function maybeResetLiterouterCursors() {
+  const today = dayKeyAtUtcHourOffset(LITEROUTER_RESET_UTC_HOUR);
+  if (literouterLastResetDay === today) return;
+  literouterLastResetDay = today;
+  for (const k of Object.keys(literouterFreeModelCursor)) delete literouterFreeModelCursor[k];
+  literouterPremiumRotationIndex = 0;
+}
 
 function literouterUsage(keyIndex, model) {
   const k = `${keyIndex}|${model}`;
@@ -155,6 +185,7 @@ function literouterPremiumUsage(keyIndex) {
 // per-(key,model) dailyCap.
 function pickLiterouterKey(model, dailyCap, isPremium) {
   if (!LITEROUTER_KEYS.length) return null;
+  maybeResetLiterouterCursors();
   if (isPremium) {
     for (let i = 0; i < LITEROUTER_KEYS.length; i++) {
       const idx = (literouterPremiumRotationIndex + i) % LITEROUTER_KEYS.length;
@@ -173,13 +204,14 @@ function pickLiterouterKey(model, dailyCap, isPremium) {
     literouterRotationIndex++;
     return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
   }
+  const startIdx = literouterFreeModelCursor[model] || 0;
   for (let i = 0; i < LITEROUTER_KEYS.length; i++) {
-    const idx = (literouterRotationIndex + i) % LITEROUTER_KEYS.length;
+    const idx = (startIdx + i) % LITEROUTER_KEYS.length;
     const usage = literouterUsage(idx, model);
     if (usage.count < dailyCap) {
       usage.count++;
       markUsageStateDirty();
-      literouterRotationIndex = idx; // drain this key for this model before rotating, same spirit as OpenRouter
+      literouterFreeModelCursor[model] = idx; // THIS model stays pinned to this key until it, specifically, runs out
       return { key: LITEROUTER_KEYS[idx], keyIndex: idx };
     }
   }
@@ -643,10 +675,15 @@ async function saveUsageState(commitMessage) {
     savedAt: new Date().toISOString(),
     literouterKeyState,
     literouterPremiumKeyState,
+    literouterFreeModelCursor,
+    literouterLastResetDay,
     literouterRotationIndex,
     literouterPremiumRotationIndex,
     openrouterKeyState,
     openrouterKeyIndex,
+    googleModelCursor,
+    googleUsageWindows,
+    googleLastResetDay,
   };
   const json = JSON.stringify(snapshot, null, 2);
   fs.writeFileSync(USAGE_STATE_PATH, json);
@@ -667,12 +704,17 @@ function hydrateUsageStateFromDisk() {
   if (Array.isArray(saved.literouterPremiumKeyState)) {
     saved.literouterPremiumKeyState.forEach((s, i) => { if (s) literouterPremiumKeyState[i] = s; });
   }
+  if (saved.literouterFreeModelCursor) Object.assign(literouterFreeModelCursor, saved.literouterFreeModelCursor);
+  if (typeof saved.literouterLastResetDay === 'string') literouterLastResetDay = saved.literouterLastResetDay;
   if (typeof saved.literouterRotationIndex === 'number') literouterRotationIndex = saved.literouterRotationIndex;
   if (typeof saved.literouterPremiumRotationIndex === 'number') literouterPremiumRotationIndex = saved.literouterPremiumRotationIndex;
   if (Array.isArray(saved.openrouterKeyState)) {
     saved.openrouterKeyState.forEach((s, i) => { if (openrouterKeyState[i] && s) Object.assign(openrouterKeyState[i], s); });
   }
   if (typeof saved.openrouterKeyIndex === 'number') openrouterKeyIndex = saved.openrouterKeyIndex;
+  if (saved.googleModelCursor) Object.assign(googleModelCursor, saved.googleModelCursor);
+  if (saved.googleUsageWindows) Object.assign(googleUsageWindows, saved.googleUsageWindows);
+  if (typeof saved.googleLastResetDay === 'string') googleLastResetDay = saved.googleLastResetDay;
   log('INFO', `[usage-state] restored from ${saved.savedAt || 'unknown time'} — Literouter/OpenRouter counters survive this restart instead of starting at zero.`);
 }
 
@@ -700,12 +742,169 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 }
 
 // ============================================================
+// GOOGLE AI STUDIO: per-model RPM/TPM/RPD tracking
+// ============================================================
+// Google publishes real RPM/TPM/RPD ceilings per model (unlike the
+// pre-request-size-only tpmLimit check above), and its free-tier reset
+// is midnight Pacific Time — which is NOT a fixed UTC-hour offset like
+// Literouter's, because Pacific Time itself shifts between UTC-8 (PST)
+// and UTC-7 (PDT) with US daylight saving. Intl's timezone-aware
+// formatting handles that automatically; a naive fixed-hour-offset trick
+// would quietly be an hour wrong for roughly half the year.
+function pacificDayKey() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // en-CA -> YYYY-MM-DD
+}
+
+// model -> keyIndex. Same "stays pinned until it specifically runs out"
+// behavior as literouterFreeModelCursor above, generalized to whichever
+// of rpm/tpm/rpd dimensions a hop actually configures.
+const googleModelCursor = {};
+// `${model}|${keyIndex}` -> { rpmWindowMinute, rpmCount, tpmWindowMinute, tpmTokens, rpdDay, rpdCount }
+const googleUsageWindows = {};
+let googleLastResetDay = null;
+
+function maybeResetGoogleCursors() {
+  const today = pacificDayKey();
+  if (googleLastResetDay === today) return;
+  googleLastResetDay = today;
+  for (const k of Object.keys(googleModelCursor)) delete googleModelCursor[k];
+}
+
+function googleWindowState(model, keyIndex) {
+  const k = `${model}|${keyIndex}`;
+  if (!googleUsageWindows[k]) googleUsageWindows[k] = {};
+  return googleUsageWindows[k];
+}
+
+// Checks (and, if it fits, consumes) this key's rpm/tpm/rpd budget for
+// this specific model — only the dimensions actually set on the hop are
+// checked at all, so a hop with none of these fields behaves exactly
+// like today (unlimited, no tracking).
+function checkGoogleWindow(model, keyIndex, hop, estimatedTokens) {
+  const state = googleWindowState(model, keyIndex);
+  const nowMinute = Math.floor(Date.now() / 60000);
+  if (hop.rpm) {
+    if (state.rpmWindowMinute !== nowMinute) { state.rpmWindowMinute = nowMinute; state.rpmCount = 0; }
+    if (state.rpmCount >= hop.rpm) return { ok: false, reason: `rpm:${state.rpmCount}/${hop.rpm}` };
+  }
+  if (hop.tpm) {
+    if (state.tpmWindowMinute !== nowMinute) { state.tpmWindowMinute = nowMinute; state.tpmTokens = 0; }
+    if ((state.tpmTokens || 0) + estimatedTokens > hop.tpm) return { ok: false, reason: `tpm:${state.tpmTokens || 0}+${estimatedTokens}>${hop.tpm}` };
+  }
+  if (hop.rpd) {
+    const today = pacificDayKey();
+    if (state.rpdDay !== today) { state.rpdDay = today; state.rpdCount = 0; }
+    if (state.rpdCount >= hop.rpd) return { ok: false, reason: `rpd:${state.rpdCount}/${hop.rpd}` };
+  }
+  if (hop.rpm) state.rpmCount = (state.rpmCount || 0) + 1;
+  if (hop.tpm) state.tpmTokens = (state.tpmTokens || 0) + estimatedTokens;
+  if (hop.rpd) {
+    const today = pacificDayKey();
+    if (state.rpdDay !== today) { state.rpdDay = today; state.rpdCount = 0; }
+    state.rpdCount = (state.rpdCount || 0) + 1;
+  }
+  markUsageStateDirty();
+  return { ok: true };
+}
+
+// Returns { key, keyIndex } for the first Google key with room left for
+// THIS model on every dimension the hop configures, or null if every key
+// is out of room for it right now. A hop with no rpm/tpm/rpd set at all
+// skips tracking entirely and just uses whichever key the model is
+// already pinned to (or key 0), same as today's behavior.
+function pickGoogleKey(model, hop, estimatedTokens) {
+  if (!GOOGLE_KEYS.length) return null;
+  if (!hop.rpm && !hop.tpm && !hop.rpd) {
+    const idx = googleModelCursor[model] || 0;
+    return { key: GOOGLE_KEYS[idx], keyIndex: idx };
+  }
+  maybeResetGoogleCursors();
+  const startIdx = googleModelCursor[model] || 0;
+  for (let i = 0; i < GOOGLE_KEYS.length; i++) {
+    const idx = (startIdx + i) % GOOGLE_KEYS.length;
+    if (checkGoogleWindow(model, idx, hop, estimatedTokens).ok) {
+      googleModelCursor[model] = idx; // pinned here until this key specifically runs out for this model
+      return { key: GOOGLE_KEYS[idx], keyIndex: idx };
+    }
+  }
+  return null;
+}
+
+function nextLiterouterResetAt() {
+  const now = new Date();
+  const target = new Date(now);
+  target.setUTCHours(LITEROUTER_RESET_UTC_HOUR, 0, 0, 0);
+  if (target <= now) target.setUTCDate(target.getUTCDate() + 1);
+  return target;
+}
+
+// DST-safe: works off actual elapsed wall-clock time within the current
+// Pacific day rather than assuming a fixed UTC offset, so it's correct
+// on both sides of the March/November transitions. (The one edge case
+// this doesn't special-case is the transition day itself, which is 23
+// or 25 hours long in Pacific time — this display could be off by an
+// hour specifically on those two days a year; the actual usage-tracking
+// reset above uses toLocaleDateString instead and isn't affected.)
+function nextGoogleResetAt() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(now);
+  const get = (t) => Number(parts.find(p => p.type === t).value);
+  const elapsedMs = (get('hour') % 24) * 3600000 + get('minute') * 60000 + get('second') * 1000;
+  return new Date(now.getTime() + (24 * 3600000 - elapsedMs));
+}
+
+// Used by the admin dashboard's countdown timers — ship one absolute
+// timestamp per provider so the client just ticks down to a fixed
+// instant instead of re-deriving timezone/DST math itself.
+function providerResetInfo() {
+  return {
+    literouter: { resetsAt: nextLiterouterResetAt().toISOString(), timezone: 'UTC', resetHour: LITEROUTER_RESET_UTC_HOUR },
+    google: { resetsAt: nextGoogleResetAt().toISOString(), timezone: 'America/Los_Angeles', resetHour: 0 }
+  };
+}
+
+// Per-model, per-key rpm/tpm/rpd usage for any Google hop that actually
+// configures at least one of those — mirrors literouterCapSnapshot's
+// shape so the admin dashboard can render both the same way.
+function googleUsageSnapshot() {
+  const nowMinute = Math.floor(Date.now() / 60000);
+  const today = pacificDayKey();
+  const byModel = {};
+  for (const entry of Object.values(MODEL_MAPPING || {})) {
+    let cur = entry;
+    while (cur) {
+      if (cur.provider === 'google' && (cur.rpm || cur.tpm || cur.rpd) && !byModel[cur.model]) {
+        byModel[cur.model] = {
+          model: cur.model, rpm: cur.rpm || null, tpm: cur.tpm || null, rpd: cur.rpd || null,
+          keys: GOOGLE_KEY_ENTRIES.map((entryK, idx) => {
+            const state = googleUsageWindows[`${cur.model}|${idx}`] || {};
+            return {
+              envName: entryK.envName,
+              rpmUsed: state.rpmWindowMinute === nowMinute ? (state.rpmCount || 0) : 0,
+              tpmUsed: state.tpmWindowMinute === nowMinute ? (state.tpmTokens || 0) : 0,
+              rpdUsed: state.rpdDay === today ? (state.rpdCount || 0) : 0,
+            };
+          })
+        };
+      }
+      cur = cur.fallback;
+    }
+  }
+  return Object.values(byModel);
+}
+
+// ============================================================
 // PROVIDER CONFIG
 // ============================================================
 function getProviderConfig(provider) {
   switch (provider) {
     case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                key: ZAI_API_KEY };
-    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_API_KEY };
+    // google is normally resolved by makeAPICall via pickGoogleKey()
+    // (needs the model + hop's rpm/tpm/rpd to pick the right key). This
+    // branch is only a fallback for callers without that context.
+    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_KEYS[0] };
     case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: getNextOpenRouterKey() };
     // literouter is normally resolved by makeAPICall via pickLiterouterKey()
@@ -725,7 +924,7 @@ function getProviderConfig(provider) {
 function getProviderConfigReadOnly(provider) {
   switch (provider) {
     case 'zai':        return { base: 'https://api.z.ai/api/paas/v4',                key: ZAI_API_KEY };
-    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_API_KEY };
+    case 'google':     return { base: GOOGLE_RELAY_BASE,                             key: GOOGLE_KEYS[0] };
     case 'deepseek':   return { base: 'https://api.deepseek.com',                    key: DEEPSEEK_API_KEY };
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: OPENROUTER_KEYS[0] };
     case 'literouter': return { base: 'https://api.literouter.com/v1',               key: LITEROUTER_KEYS[0] };
@@ -1117,9 +1316,28 @@ async function makeAPICall(modelId, nimRequest, stream) {
           break;
         }
       }
+      // Same idea as Literouter above: re-picked every attempt so a
+      // retry rotates to a different Google key instead of hammering the
+      // one that just hit its rpm/tpm/rpd ceiling. Only actually checks
+      // anything if the hop has rpm/tpm/rpd configured at all — a plain
+      // Google hop with none of those set behaves exactly as before.
+      let pickedGoogleKey = null;
+      if (providerConfig.provider === 'google') {
+        const estimatedTokens = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
+        pickedGoogleKey = pickGoogleKey(providerConfig.model, providerConfig, estimatedTokens);
+        if (!pickedGoogleKey) {
+          log('WARN', `Skipping google/${providerConfig.model} — every Google key is out of rpm/tpm/rpd room for this model`);
+          attempts.push({ provider: 'google', model: providerConfig.model, outcome: 'skipped', reason: 'google-rpm-tpm-rpd-exhausted' });
+          trackSkip('google', providerConfig.model, 'google-rpm-tpm-rpd-exhausted');
+          skippedThisHop = true;
+          break;
+        }
+      }
       const { base, key } = pickedLiterouterKey
         ? { base: 'https://api.literouter.com/v1', key: pickedLiterouterKey.key }
-        : getProviderConfig(providerConfig.provider);
+        : pickedGoogleKey
+          ? { base: GOOGLE_RELAY_BASE, key: pickedGoogleKey.key }
+          : getProviderConfig(providerConfig.provider);
 
       try {
         const response = await axios.post(
@@ -1240,7 +1458,9 @@ app.get('/health', (req, res) => {
     // (LITEROUTER_KEY_2)" for claude-haiku-4.5-cheap. Uncapped ("∞") models
     // aren't tracked per-key and won't appear here.
     literouter_capped_models: literouterCapSnapshot(),
-    literouter_premium_pool: literouterPremiumSnapshot()
+    literouter_premium_pool: literouterPremiumSnapshot(),
+    google_usage: googleUsageSnapshot(),
+    provider_resets: providerResetInfo()
   });
 });
 
@@ -1690,7 +1910,9 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
     literouterCappedModels: literouterCapSnapshot(),
     // One shared 50/day-per-key pool across every "premium" hop, separate
     // from the per-model buckets above.
-    literouterPremiumPool: literouterPremiumSnapshot()
+    literouterPremiumPool: literouterPremiumSnapshot(),
+    googleUsage: googleUsageSnapshot(),
+    providerResets: providerResetInfo()
   });
 });
 
@@ -1793,6 +2015,88 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
 const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
+
+// Snapshot of Literouter's account dashboard (Sep 2026) — the free-tier
+// list's own daily caps, and the Premium Basic list: specifically the
+// models reachable through the shared premium pool on a free/Basic plan
+// WITHOUT paying (higher tiers — Standard/Plus/Pro/Elite/Ultimate — need
+// an actual subscription and aren't in this table at all, so a hop for
+// a model that ISN'T in here might just be inaccessible on this plan
+// rather than "premium and poolable"). Keyed by the base model name (no
+// ":free" suffix). None of this is exposed by /v1/models, so it's
+// pasted data, not something a sync can re-derive — expect it to drift
+// and need refreshing by hand periodically. Not wired into actual cost
+// accounting (see the Credits research: real cost also depends on
+// token-weighted "optimization cost" and account-specific settings this
+// table can't capture) — this only powers the info shown in the
+// sync-result UI before you add a model.
+const LITEROUTER_KNOWN_MODELS = {
+  'deepseek-r1-0528': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
+  'deepseek-r1': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
+  'deepseek-reasoner': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
+  'deepseek-v3-0324': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v3.1-terminus': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v3.1': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v3.2': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v3': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v4-flash-0731': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v4-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'deepseek-v4.1-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'gemini-2.5-flash-lite': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.1, uncensored: false },
+  'gemini-2.5-flash': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.4, uncensored: false },
+  'gemini-2.5-flash-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: false },
+  'gemini-3-flash-preview': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
+  'gemini-3-flash-preview-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
+  'gemini-3.1-flash-lite': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
+  'gemini-3.1-flash-lite-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
+  'gemma-3-27b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'gemma-4-26b-a4b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'gemma-4-31b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'gemma-4-31b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'glm-4.6': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-4.7-flash': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'glm-4.7': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.1-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.1': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.2-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.2': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.3-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'glm-5.3-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 2, uncensored: true },
+  'glm-5.3-flash-cheap': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: true },
+  'glm-5': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'gpt-oss-120b': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'gpt-oss-20b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'kimi-k2.6-cheap': { freeDailyCap: 30, premiumBasic: false, premiumCost: null, uncensored: null },
+  'kimi-k2.7-code-cheap': { freeDailyCap: 30, premiumBasic: false, premiumCost: null, uncensored: null },
+  'l3-8b-lunaris': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'llama-3-8b-instruct': { freeDailyCap: null, premiumBasic: false, premiumCost: null, uncensored: true },
+  'llama-3.3-70b-instruct-turbo': { freeDailyCap: null, premiumBasic: false, premiumCost: null, uncensored: true },
+  'minimax-m2.7': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
+  'ministral-3b-2512': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'ministral-8b-2512': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'mistral-large-2512': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.8, uncensored: true },
+  'mistral-large-3': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.8, uncensored: true },
+  'mistral-medium-2508': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'mistral-small-2603': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'mythomax-l2-13b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'qwen3.6-27b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'qwen3.8-27b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
+  'command-a': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'command-a-reasoning': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'command-a-vision': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'command-r': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'command-r-7b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'command-r-plus': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'phi-4-mini-instruct': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'step-3.5-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+  'step-3.5-flash-non-reasoning': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
+};
+
+function literouterKnownInfo(model) {
+  const base = String(model || '').replace(/:free$/, '');
+  return LITEROUTER_KNOWN_MODELS[base] || null;
+}
+
 // Per-provider caveats about what a "check for updates" sync CAN'T tell
 // you, surfaced in the sync result UI rather than left implicit. This is
 // about known structural gaps in what a provider's /models list exposes
@@ -2038,6 +2342,11 @@ function flattenEntry(entry) {
       limitType: cur.limitType || 'rate-limited',
       notes: cur.notes,
       tpmLimit: cur.tpmLimit,
+      dailyCap: cur.dailyCap,
+      literouterTier: cur.literouterTier || null,
+      rpm: cur.rpm,
+      tpm: cur.tpm,
+      rpd: cur.rpd,
       timeoutMs: cur.timeoutMs,
       freeUntil: cur.freeUntil,
       deprecatedOn: cur.deprecatedOn,
@@ -2062,6 +2371,11 @@ function nestHops(hops) {
     };
     if (h.notes) item.notes = h.notes;
     if (h.tpmLimit !== undefined) item.tpmLimit = h.tpmLimit;
+    if (h.dailyCap !== undefined && h.dailyCap !== null) item.dailyCap = h.dailyCap;
+    if (h.literouterTier) item.literouterTier = h.literouterTier;
+    if (h.rpm !== undefined && h.rpm !== null) item.rpm = h.rpm;
+    if (h.tpm !== undefined && h.tpm !== null) item.tpm = h.tpm;
+    if (h.rpd !== undefined && h.rpd !== null) item.rpd = h.rpd;
     if (h.timeoutMs !== undefined) item.timeoutMs = h.timeoutMs;
     if (h.freeUntil) item.freeUntil = h.freeUntil;
     if (h.deprecatedOn) item.deprecatedOn = h.deprecatedOn;
@@ -2117,8 +2431,24 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
 
     const newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
     const noLongerListed = [...configuredIds].filter(id => !liveIds.includes(id));
+    // Best-effort info shown before you add a model — currently only
+    // populated for Literouter (see LITEROUTER_KNOWN_MODELS above); other
+    // providers just get modelInfo: {} for now.
+    const modelInfo = {};
+    if (provider === 'literouter') {
+      for (const id of newlyAvailable) {
+        const known = literouterKnownInfo(id);
+        if (known) {
+          modelInfo[id] = {
+            tier: id.endsWith(':free') ? 'free' : (known.premiumBasic ? 'premium (Basic plan, pooled)' : 'higher tier — likely not reachable on this plan'),
+            cost: id.endsWith(':free') ? null : known.premiumCost,
+            uncensored: known.uncensored
+          };
+        }
+      }
+    }
 
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
+    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
