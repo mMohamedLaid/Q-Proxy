@@ -398,7 +398,9 @@
     "status": "active",
     "limitType": "unlimited",
     "timeoutMs": 1800000,
-    "retryAsUnlimited": true
+    "retryAsUnlimited": true,
+    "maxTokens": 32000,
+    "notes": "Heavy reasoner shares one token pool between thinking and the actual reply. Clients sending max_tokens: 0 (Janitor, Marinara) to mean \"let the model choose\" were silently getting capped at Q-Proxy's generic 9024 fallback because 0 is falsy in JS \u2014 too small for this model on harder prompts, causing thinking to eat the whole budget. This field is the real floor used whenever the client didn't ask for a smaller number on purpose. See server.js request-building logic."
   },
   "gemini-3.7-flash-g": {
     "model": "models/gemini-3.7-flash",
