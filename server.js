@@ -383,8 +383,18 @@ function checkRateLimit(apiKey) {
 // ============================================================
 // LOGGING
 // ============================================================
+// Ring buffer feeding the admin dashboard's Logs section — this is the
+// direct answer to "I want errors somewhere I can actually check them"
+// from way back: Render's own log stream doesn't persist across
+// restarts and isn't always open at the right moment, this is. Capped
+// so it can't grow unbounded; newest first.
+const RECENT_LOGS_MAX = 500;
+const recentLogs = [];
 function log(level, msg) {
-  console.log(`[${new Date().toISOString()}] [${level}] ${msg}`);
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [${level}] ${msg}`);
+  recentLogs.unshift({ ts, level, msg });
+  if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
 }
 
 // ============================================================
@@ -732,12 +742,23 @@ setInterval(() => {
   saveUsageState().catch(e => log('WARN', `[usage-state] periodic save failed: ${e.message}`));
 }, 30000);
 
-// Best-effort on shutdown — Render can still kill the process before an
-// in-flight GitHub PUT finishes, so this narrows the loss window, it
-// doesn't fully close it.
+// Best-effort flush on shutdown, THEN actually exit. This bit me: adding
+// a signal handler in Node suppresses the default "terminate
+// immediately" behavior for that signal — so the original version of
+// this (which never called process.exit()) made the process silently
+// ignore SIGTERM altogether, hanging until Render's grace period expired
+// and it got SIGKILLed instead of shutting down cleanly. That's almost
+// certainly what broke normal restarts/redeploys. The flush itself is
+// still bounded (3s) so a slow/failed GitHub PUT can't extend the hang
+// either — exit happens no matter what the flush does.
 for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, () => {
-    if (usageStateDirty) saveUsageState('Q-Proxy: shutdown flush').catch(() => {});
+  process.on(sig, async () => {
+    if (usageStateDirty) {
+      try {
+        await Promise.race([saveUsageState('Q-Proxy: shutdown flush'), new Promise(r => setTimeout(r, 3000))]);
+      } catch (_) { /* exiting regardless */ }
+    }
+    process.exit(0);
   });
 }
 
@@ -1917,6 +1938,21 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 });
 
 // ============================================================
+// ADMIN: LOGS
+// ============================================================
+app.get('/admin/api/logs', requireAdmin, (req, res) => {
+  const level = (req.query.level || '').toUpperCase();
+  const limit = Math.min(Number(req.query.limit) || RECENT_LOGS_MAX, RECENT_LOGS_MAX);
+  const filtered = level ? recentLogs.filter(l => l.level === level) : recentLogs;
+  res.json({ logs: filtered.slice(0, limit), total: recentLogs.length, capacity: RECENT_LOGS_MAX });
+});
+
+app.post('/admin/api/logs/clear', requireAdmin, (req, res) => {
+  recentLogs.length = 0;
+  res.json({ ok: true });
+});
+
+// ============================================================
 // ADMIN: REASONING SCHEMAS
 // ============================================================
 app.get('/admin/api/reasoning-schemas', requireAdmin, (req, res) => {
@@ -2431,21 +2467,29 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
 
     const newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
     const noLongerListed = [...configuredIds].filter(id => !liveIds.includes(id));
-    // Best-effort info shown before you add a model — currently only
-    // populated for Literouter (see LITEROUTER_KNOWN_MODELS above); other
-    // providers just get modelInfo: {} for now.
+    // Three-way split, shown before you add a model: 'free' (no cost),
+    // 'premium' (usable, but from a tighter/shared pool than free),
+    // 'inaccessible' (listed by the provider but this plan/key can't
+    // actually reach it), or 'unknown' when there's no verified,
+    // provider-native signal to classify from. Only Literouter is
+    // actually populated right now — its /v1/models is bare OpenAI shape
+    // (id/object/created/owned_by only, confirmed via their own docs),
+    // so this still comes from the hand-maintained LITEROUTER_KNOWN_MODELS
+    // table, not a live provider signal; everything else is 'unknown'
+    // rather than a hardcoded guess about a provider's own model tiers.
     const modelInfo = {};
     if (provider === 'literouter') {
       for (const id of newlyAvailable) {
+        const isFree = id.endsWith(':free');
         const known = literouterKnownInfo(id);
-        if (known) {
-          modelInfo[id] = {
-            tier: id.endsWith(':free') ? 'free' : (known.premiumBasic ? 'premium (Basic plan, pooled)' : 'higher tier — likely not reachable on this plan'),
-            cost: id.endsWith(':free') ? null : known.premiumCost,
-            uncensored: known.uncensored
-          };
-        }
+        modelInfo[id] = isFree
+          ? { tier: 'free', cost: null, uncensored: known ? known.uncensored : null }
+          : known
+            ? { tier: known.premiumBasic ? 'premium' : 'inaccessible', cost: known.premiumCost, uncensored: known.uncensored }
+            : { tier: 'unknown', cost: null, uncensored: null };
       }
+    } else {
+      for (const id of newlyAvailable) modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null };
     }
 
     res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
@@ -2587,3 +2631,4 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
