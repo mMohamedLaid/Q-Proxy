@@ -1537,11 +1537,22 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
+    // Clients like Janitor/Marinara send max_tokens: 0 to mean "let the
+    // model choose the length" — but 0 is falsy in JS, so `max_tokens || X`
+    // would silently treat that as "not specified" and fall back anyway,
+    // which is actually fine EXCEPT the fallback used to be a flat 9024
+    // for every model regardless of how much a specific model's reasoning
+    // tends to need. Distinguish "client asked for a real positive number
+    // on purpose" (respect it) from "client said 0 / sent nothing" (use
+    // this hop's own configured floor, falling back to 9024 generically).
+    const clientRequestedTokens = (typeof max_tokens === 'number' && max_tokens > 0) ? max_tokens : null;
+    const hopDefaultTokens = (mapping && typeof mapping.maxTokens === 'number') ? mapping.maxTokens : 9024;
+
     const nimRequest = {
       model: mapping.model,
       messages,
       temperature: temperature || 0.6,
-      max_tokens: max_tokens || 9024,
+      max_tokens: clientRequestedTokens || hopDefaultTokens,
       stream: stream || false
     };
 
