@@ -92,3 +92,4 @@ A GitHub push failure (bad token, rate limit, network blip) never blocks the loc
 
 Costs nothing: GitHub API access is free for personal repos, and the write happens from the already-running Render Free service — no new infrastructure.
 
+
