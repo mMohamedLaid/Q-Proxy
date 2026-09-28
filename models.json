@@ -19,7 +19,8 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "14K RPD, 16K TPM — buffer kept under real cap"
+    "notes": "14K RPD, 16K TPM — buffer kept under real cap",
+    "rpd": 14000
   },
   "gemma-4-26b-g": {
     "model": "gemma-4-26b-a4b-it",
@@ -77,7 +78,8 @@
         "status": "active",
         "limitType": "rate-limited"
       }
-    }
+    },
+    "rpd": 14000
   },
   "gemma-4-26b": {
     "custom": true,
@@ -98,21 +100,24 @@
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "500/day — primary"
+    "notes": "500/day — primary",
+    "rpd": 500
   },
   "gemini-flash-g": {
     "model": "gemini-3-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day — use sparingly"
+    "notes": "20/day — use sparingly",
+    "rpd": 20
   },
   "gemini-2.5-flash-g": {
     "model": "gemini-2.5-flash",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
-    "notes": "20/day — use sparingly"
+    "notes": "20/day — use sparingly",
+    "rpd": 20
   },
   "deepseek-r1": {
     "model": "deepseek-r1:free",
@@ -325,13 +330,15 @@
     "model": "l3-8b-lunaris:free",
     "provider": "literouter",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "tools": false
   },
   "llama-3-8b-instruct-lr": {
     "model": "llama-3-8b-instruct:free",
     "provider": "literouter",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "tools": false
   },
   "llama-3.3-70b-instruct-turbo-lr": {
     "model": "llama-3.3-70b-instruct-turbo:free",
@@ -377,7 +384,8 @@
     "model": "mythomax-l2-13b:free",
     "provider": "literouter",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "tools": false
   },
   "glm-5.2:free-lr": {
     "model": "glm-5.2:free",
@@ -400,7 +408,7 @@
     "timeoutMs": 1800000,
     "retryAsUnlimited": true,
     "maxTokens": 32000,
-    "notes": "Heavy reasoner shares one token pool between thinking and the actual reply. Clients sending max_tokens: 0 (Janitor, Marinara) to mean \"let the model choose\" were silently getting capped at Q-Proxy's generic 9024 fallback because 0 is falsy in JS — too small for this model on harder prompts, causing thinking to eat the whole budget. This field is the real floor used whenever the client didn't ask for a smaller number on purpose. See server.js request-building logic."
+    "notes": "Heavy reasoner shares one token pool between thinking and the actual reply. Clients sending max_tokens: 0 (Janitor, Marinara) to mean \"let the model choose\" were silently getting capped at Q-Proxy's generic 9024 fallback because 0 is falsy in JS — too small for this model on harder prompts, causing thinking to eat the whole budget. This field is the real floor used whenever the client didn't ask for a smaller number on purpose. See server.js request-building logic. Tool calling confirmed working on NIM (direct curl with a tools array returned tool_calls, finish_reason tool_calls)."
   },
   "gemini-3.7-flash-g": {
     "model": "models/gemini-3.7-flash",
