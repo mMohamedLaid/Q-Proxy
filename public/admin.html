@@ -372,6 +372,12 @@
   .log-line.lvl-ERROR .lvl, .log-line.lvl-ERROR .msg { color: var(--broken); }
   .log-line.lvl-WARN .lvl, .log-line.lvl-WARN .msg { color: #E6A028; }
   .log-line.lvl-INFO .lvl { color: var(--text-faint); }
+  /* Stitched model text (reasoning / reply) — full-width block under the header line */
+  .log-line.lvl-THINK .lvl { color: #A78BFA; }
+  .log-line.lvl-REPLY .lvl { color: #4ADE80; }
+  .log-line.lvl-THINK .msg, .log-line.lvl-REPLY .msg { flex-basis: 100%; line-height: 1.5; }
+  .log-line.lvl-THINK .msg { color: #B9B3D6; }
+  .log-line.lvl-REPLY .msg { color: var(--text); }
   .logs-empty { padding: 24px; text-align: center; color: var(--text-faint); }
 
   /* ---------- Add model form ---------- */
@@ -483,6 +489,8 @@
         <option value="ERROR">ERROR only</option>
         <option value="WARN">WARN only</option>
         <option value="INFO">INFO only</option>
+        <option value="THINK">THINK only (reasoning)</option>
+        <option value="REPLY">REPLY only</option>
       </select>
       <button type="button" class="btn-secondary" id="log-refresh-btn">Refresh</button>
       <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh"> Auto-refresh (5s)</label>
