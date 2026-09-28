@@ -365,10 +365,10 @@
     background: #0A0D13; border: 1px solid var(--border); border-radius: 8px;
     max-height: 480px; overflow-y: auto; font-family: var(--font-mono); font-size: 11.5px;
   }
-  .log-line { display: flex; gap: 8px; padding: 4px 10px; border-bottom: 1px solid rgba(255,255,255,.03); white-space: pre-wrap; word-break: break-word; }
+  .log-line { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 4px 10px; border-bottom: 1px solid rgba(255,255,255,.03); word-break: break-word; }
   .log-line .ts { color: var(--text-faint); flex-shrink: 0; }
   .log-line .lvl { flex-shrink: 0; font-weight: 600; width: 46px; }
-  .log-line .msg { color: var(--text-dim); }
+  .log-line .msg { color: var(--text-dim); flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
   .log-line.lvl-ERROR .lvl, .log-line.lvl-ERROR .msg { color: var(--broken); }
   .log-line.lvl-WARN .lvl, .log-line.lvl-WARN .msg { color: #E6A028; }
   .log-line.lvl-INFO .lvl { color: var(--text-faint); }
@@ -1259,9 +1259,15 @@
       $('#logs-view').innerHTML = '<div class="logs-empty">No log lines yet — they\'ll show up here as requests come in.</div>';
       return;
     }
-    $('#logs-view').innerHTML = res.logs.map(l =>
+    const view = $('#logs-view');
+    // Only force-scroll if the viewer was already at (or near) the
+    // bottom — if someone's scrolled up to read older entries, an
+    // auto-refresh shouldn't yank them back down.
+    const wasNearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
+    view.innerHTML = res.logs.map(l =>
       `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts">${escapeHtml(l.ts)}</span><span class="lvl">${escapeHtml(l.level)}</span><span class="msg">${escapeHtml(l.msg)}</span></div>`
     ).join('');
+    if (wasNearBottom) view.scrollTop = view.scrollHeight;
   }
 
   $('#log-level-filter').addEventListener('change', e => { currentLogLevel = e.target.value; loadLogs(); });
@@ -2339,10 +2345,15 @@
     ADMIN_KEY = key;
     try {
       await api('/admin/api/models');
+      await loadAll();
+      // Only hide the login gate once everything has actually succeeded —
+      // if loadAll() throws, we stay on the login screen with the error
+      // visible instead of hiding it behind an already-dismissed gate.
       $('#login-gate').style.display = 'none';
       $('#dashboard').hidden = false;
-      await loadAll();
     } catch (err) {
+      $('#login-gate').style.display = '';
+      $('#dashboard').hidden = true;
       $('#login-error').textContent = err.message;
     }
   }
