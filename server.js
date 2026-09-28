@@ -27,9 +27,16 @@ const recentLogs = [];
 // target: 'both' (default) | 'console' (Render logs only) | 'admin' (Admin panel only).
 // Per-chunk stream lines go to 'console' only, so Render keeps the full
 // clutter you can dig back through, while the Admin panel stays readable.
+// Console (Render) line stamp: time first, then day-month-year. The server
+// only knows UTC — the Admin panel converts to your own time zone.
+function fmtServerTs(iso) {
+  const d = new Date(iso);
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)} ${p(d.getUTCDate())}-${p(d.getUTCMonth() + 1)}-${d.getUTCFullYear()} UTC`;
+}
 function log(level, msg, target = 'both') {
   const ts = new Date().toISOString();
-  if (target !== 'admin') console.log(`[${ts}] [${level}] ${msg}`);
+  if (target !== 'admin') console.log(`[${fmtServerTs(ts)}] [${level}] ${msg}`);
   if (target !== 'console') {
     recentLogs.unshift({ ts, level, msg });
     if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
@@ -107,18 +114,15 @@ function loadNumberedKeys(prefix) {
   return found.map(f => ({ key: f.key, envName: f.envName }));
 }
 
-// Both OpenRouter's and Literouter's free-tier daily caps reset on some
-// wall-clock boundary. Confirmed for Literouter (docs.literouter.com/
-// credits, checked Sep 2026): premium credits reset at 00:00 GMT+7,
-// which is 17:00 UTC — so LITEROUTER_RESET_UTC_HOUR should be set to 17
-// in the environment, not left at the default. The default here stays 0
-// (plain UTC midnight) rather than being hardcoded to 17, since this is
-// meant to work for any provider's boundary, confirmed or not — set the
-// env var for the value that's actually been confirmed. OpenRouter's own
-// boundary isn't confirmed either way, so it stays hardcoded at offset 0
-// below until it is.
-const LITEROUTER_RESET_UTC_HOUR = Number(process.env.LITEROUTER_RESET_UTC_HOUR ?? 0);
+// Daily-quota boundaries are baked in per provider — no env vars:
+//   Literouter        — 00:00 GMT+7 (docs.literouter.com/credits; their own
+//                       dashboard counts down to it) = 17:00 UTC.
+//   OpenRouter        — 00:00 UTC.
+//   Google AI Studio  — midnight Pacific Time, DST-aware (see pacificDayKey).
+const LITEROUTER_RESET_UTC_HOUR = 17;
+const OPENROUTER_RESET_UTC_HOUR = 0;
 
+// Date string that rolls over at `hourOffset`:00 UTC instead of 00:00 UTC.
 function dayKeyAtUtcHourOffset(hourOffset) {
   return new Date(Date.now() - hourOffset * 3600000).toISOString().slice(0, 10);
 }
@@ -147,7 +151,7 @@ const openrouterKeyState = OPENROUTER_KEYS.map(() => ({ count: 0, day: '' }));
 let openrouterKeyIndex = 0;
 
 function getNextOpenRouterKey() {
-  const today = dayKeyAtUtcHourOffset(0);
+  const today = dayKeyAtUtcHourOffset(OPENROUTER_RESET_UTC_HOUR);
   openrouterKeyState.forEach(s => { if (s.day !== today) { s.day = today; s.count = 0; } });
 
   for (let i = 0; i < OPENROUTER_KEYS.length; i++) {
@@ -455,6 +459,20 @@ function messageText(m) {
   else if (Array.isArray(m?.content)) t = m.content.map(p => (typeof p === 'string' ? p : (p?.text || ''))).join(' ');
   if (Array.isArray(m?.tool_calls) && m.tool_calls.length) t += ' ' + JSON.stringify(m.tool_calls);
   return t;
+}
+// ~4 chars per token — rough, but it matched a real NIM run for GLM-5.3.
+function sizeStr(chars) {
+  return `${chars} chars ≈ ${Math.round(chars / 4)} tokens`;
+}
+// 12345ms -> "12.345s"; 635694ms -> "10m 35s"; 3725000ms -> "1h 2m 5s".
+// Hours only show up once it has actually been an hour; minutes once a minute.
+function humanDuration(ms) {
+  if (ms < 60000) return `${(ms / 1000).toFixed(3)}s`;
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const sec = totalSec % 60;
+  return h > 0 ? `${h}h ${m}m ${sec}s` : `${m}m ${sec}s`;
 }
 function estimateTokens(messages) {
   const text = (messages || []).map(messageText).join(' ');
@@ -907,13 +925,15 @@ function pickGoogleKey(model, hop, estimatedTokens) {
   return null;
 }
 
-function nextLiterouterResetAt() {
+function nextUtcHourResetAt(utcHour) {
   const now = new Date();
   const target = new Date(now);
-  target.setUTCHours(LITEROUTER_RESET_UTC_HOUR, 0, 0, 0);
+  target.setUTCHours(utcHour, 0, 0, 0);
   if (target <= now) target.setUTCDate(target.getUTCDate() + 1);
   return target;
 }
+function nextLiterouterResetAt() { return nextUtcHourResetAt(LITEROUTER_RESET_UTC_HOUR); }
+function nextOpenRouterResetAt() { return nextUtcHourResetAt(OPENROUTER_RESET_UTC_HOUR); }
 
 // DST-safe: works off actual elapsed wall-clock time within the current
 // Pacific day rather than assuming a fixed UTC offset, so it's correct
@@ -937,8 +957,9 @@ function nextGoogleResetAt() {
 // instant instead of re-deriving timezone/DST math itself.
 function providerResetInfo() {
   return {
-    literouter: { resetsAt: nextLiterouterResetAt().toISOString(), timezone: 'UTC', resetHour: LITEROUTER_RESET_UTC_HOUR },
-    google: { resetsAt: nextGoogleResetAt().toISOString(), timezone: 'America/Los_Angeles', resetHour: 0 }
+    literouter: { resetsAt: nextLiterouterResetAt().toISOString(), boundary: '00:00 GMT+7', resetUtcHour: LITEROUTER_RESET_UTC_HOUR },
+    openrouter: { resetsAt: nextOpenRouterResetAt().toISOString(), boundary: '00:00 UTC', resetUtcHour: OPENROUTER_RESET_UTC_HOUR },
+    google: { resetsAt: nextGoogleResetAt().toISOString(), boundary: 'midnight Pacific Time (RPD only; RPM/TPM reset every minute)', timezone: 'America/Los_Angeles' }
   };
 }
 
@@ -1203,6 +1224,50 @@ function resolveModelChain(modelId, mapping = MODEL_MAPPING) {
 const TOKEN_LIMIT_PATTERNS = /context.?length|context_length_exceeded|maximum context|max(?:imum)? tokens?|too many tokens|token limit|reduce the length|input is too long|prompt is too long|exceeds? the (?:model|context)|maximum number of tokens/i;
 const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded your current quota|daily limit|requests per day\b|resource_exhausted|out of credits|no credits remaining|insufficient credits|billing/i;
 
+// Bodies that say "try again later" even though the status is a 4xx. NIM
+// is believed to report a degraded / cold endpoint this way, so on hops
+// that retry (nvidia, "unlimited") these are treated as transient instead
+// of a hard client error.
+const TRANSIENT_4XX_PATTERNS = /degraded|overloaded|temporarily|try again|capacity|service unavailable|\bbusy\b|cold.?start|warming|queue/i;
+const MODERATION_PATTERNS = /content.?(?:policy|filter)|safety|moderat|flagged/i;
+
+const TAG_HINTS = {
+  NO_HOP: 'every hop in this chain was inactive, skipped, or out of its rate/token budget',
+  CLIENT_GONE: 'the client disconnected before the model answered'
+};
+
+// One tag per failure, so a log line / client error says WHAT went wrong,
+// not just "failed". Order matters (most specific first).
+//   detail = the HTTP status or Node error code that produced the tag.
+function classifyError(err, bodyText = '') {
+  if (err?.tagInfo) return err.tagInfo; // already classified once (makeAPICall) — keep its hint/status
+  if (err?.tag) return { tag: err.tag, detail: '', hint: TAG_HINTS[err.tag] || '', httpStatus: err.response?.status || 500, type: 'api_error' };
+  const status = err?.response?.status;
+  const code = err?.code || '';
+  const msg = err?.message || '';
+  const text = `${bodyText} ${msg}`;
+  const mk = (tag, hint, httpStatus, type = 'api_error') => ({ tag, detail: status ? `HTTP ${status}` : code, hint, httpStatus: status || httpStatus, type });
+
+  if (TOKEN_LIMIT_PATTERNS.test(text))    return mk('CONTEXT_TOO_LONG', 'the request is bigger than this model\'s context window — trim the chat history or lower max tokens', 400, 'invalid_request_error');
+  if (QUOTA_EXHAUSTED_PATTERNS.test(text)) return mk('QUOTA', 'the provider says the quota/credits are used up', 429, 'rate_limit_error');
+  if (status === 429)                      return mk('RATE_LIMIT', 'too many requests to this provider — retry shortly', 429, 'rate_limit_error');
+  if (status === 401 || status === 403)    return mk('AUTH', 'the provider rejected the API key (missing, wrong, or revoked)', status, 'authentication_error');
+  if (status === 404)                      return mk('NOT_FOUND', 'the provider does not have this model (renamed, deprecated or pulled)', 404, 'invalid_request_error');
+  if (status === 504 || status === 522 || status === 524) return mk('GATEWAY_TIMEOUT', 'the provider\'s gateway gave up waiting for the model', 504);
+  if (status === 408 || /timeout|timed out/i.test(msg) || ['ECONNABORTED', 'ETIMEDOUT', 'ESOCKETTIMEDOUT'].includes(code)) return mk('TIMEOUT', 'no answer from the provider within the hop\'s timeout', 504);
+  if (status >= 500)                       return TRANSIENT_4XX_PATTERNS.test(text) ? mk('UPSTREAM_DEGRADED', 'the provider reports the model as degraded/overloaded', 503) : mk('UPSTREAM_5XX', 'the provider had a server-side error', 502);
+  if (status === 400 || status === 422 || status === 409) {
+    if (TRANSIENT_4XX_PATTERNS.test(text)) return mk('UPSTREAM_DEGRADED', 'the provider reports the model as degraded/overloaded', 503);
+    if (MODERATION_PATTERNS.test(text))    return mk('MODERATED', 'the provider blocked this request/response on content grounds', 400, 'invalid_request_error');
+    return mk('BAD_REQUEST', 'the provider rejected the request itself (a parameter or message shape it does not accept)', 400, 'invalid_request_error');
+  }
+  if (['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(code) || /socket hang up|aborted|premature close/i.test(msg)) return mk('NET_RESET', 'the connection to the provider was dropped', 502);
+  if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) return mk('NET_DNS', 'could not resolve the provider\'s hostname', 502);
+  if (code === 'ECONNREFUSED')             return mk('NET_REFUSED', 'the provider refused the connection', 502);
+  if (status)                              return mk(`HTTP_${status}`, '', status);
+  return mk('NET_ERROR', 'network-level failure talking to the provider', 502);
+}
+
 // ── Why this isn't just `JSON.stringify(err.response?.data)` ──────────
 // When a request was made with responseType:'stream' (true for every
 // streaming completion), axios does NOT parse a non-2xx body either —
@@ -1300,7 +1365,15 @@ function isUnlimitedRetryHop(providerConfig) {
 }
 
 const UNLIMITED_MAX_RETRIES = 100;
-const UNLIMITED_RETRY_BUDGET_MS = 45000; // don't let one flaky hop eat more than ~45s before falling back
+// Retry window = time spent RETRYING after a hop's first failure — the first
+// (possibly very slow) attempt is free, otherwise a NIM request that thinks
+// for 5 minutes and then dies has already "used up" the window and gets no
+// retries at all. Two sizes: a hop that has a fallback behind it only gets a
+// short window (so the chain moves on), while the LAST hop in a chain has
+// nothing to fall back to, so it keeps retrying much longer (up to
+// UNLIMITED_MAX_RETRIES attempts). Override per hop with "retryBudgetMs".
+const UNLIMITED_RETRY_BUDGET_MS = 45000;
+const UNLIMITED_LAST_HOP_BUDGET_MS = 10 * 60 * 1000;
 function backoffDelayMs(attemptNum) { return Math.min(250 * Math.pow(2, attemptNum - 1), 4000); }
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -1330,7 +1403,7 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 //    to the client (response header) and to the admin dashboard
 //    (trackUsage/trackSkip), instead of only living in server logs.
 // ============================================================
-async function makeAPICall(modelId, nimRequest, stream) {
+async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
   let providers;
   try {
     providers = resolveModelChain(modelId);
@@ -1347,7 +1420,9 @@ async function makeAPICall(modelId, nimRequest, stream) {
 
   const attempts = [];
   let lastError;
-  for (const providerConfig of providers) {
+  for (let hopIdx = 0; hopIdx < providers.length; hopIdx++) {
+    const providerConfig = providers[hopIdx];
+    const isLastHop = hopIdx === providers.length - 1;
     if (providerConfig.status && providerConfig.status !== 'active') {
       log('WARN', `Skipping ${providerConfig.provider}/${providerConfig.model} — status is "${providerConfig.status}", not "active"`);
       attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `status:${providerConfig.status}` });
@@ -1386,8 +1461,8 @@ async function makeAPICall(modelId, nimRequest, stream) {
     const sentMaxTokens = body.max_tokens;
     const unlimited = isUnlimitedRetryHop(providerConfig);
     const maxAttempts = unlimited ? (providerConfig.maxRetries || UNLIMITED_MAX_RETRIES) : 1;
-    const retryBudgetMs = providerConfig.retryBudgetMs || UNLIMITED_RETRY_BUDGET_MS;
     const hopStartedAt = Date.now();
+    let retryClockStart = null; // set at the hop's FIRST failure
     let hopFinalError = null;
     let skippedThisHop = false;
 
@@ -1458,56 +1533,75 @@ async function makeAPICall(modelId, nimRequest, stream) {
         const status = err.response?.status;
         trackUsage(providerConfig.provider, providerConfig.model, false, status);
         hopFinalError = err;
+        const bodyText = await getErrorBodyText(err);
+        const cls = classifyError(err, bodyText);
+        err.tag = err.tag || cls.tag;
+        err.tagInfo = cls;
+        const reasonStr = cls.detail ? `${cls.tag} · ${cls.detail}` : cls.tag;
+        const who = `${providerConfig.provider}/${providerConfig.model}`;
+
+        // The client already left (closed the tab / hit stop / its own
+        // timeout fired) — retrying would just burn provider calls nobody
+        // is waiting for.
+        if (opts.clientGone && opts.clientGone()) {
+          log('WARN', `[CLIENT_GONE] ${who} failed [${reasonStr}] but the client already disconnected — not retrying`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CLIENT_GONE' });
+          const gone = new Error('Client disconnected before the model answered — stopped retrying');
+          gone.tag = 'CLIENT_GONE';
+          gone.response = { status: 499 };
+          gone.attempts = attempts;
+          throw gone;
+        }
 
         // Token-limit and quota-exhausted errors are NEVER worth retrying
-        // on THIS hop — but unlike a truly malformed request, a DIFFERENT
-        // hop might still handle it fine (bigger context window, or
-        // actual quota left). So these always fall through to the next
-        // hop instead of hard-stopping, even when the status is a 4xx
-        // that would otherwise block fallback below. Checked first, on
-        // purpose, before the generic hard-4xx check.
-        if (await isTokenLimitError(err)) {
-          log('WARN', `${providerConfig.provider}/${providerConfig.model} — request exceeds this hop's context window, not retrying it: ${err.message}`);
-          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'token-limit-exceeded' });
-          trackSkip(providerConfig.provider, providerConfig.model, 'token-limit-exceeded');
-          hopFinalError = err;
+        // on THIS hop — but a DIFFERENT hop might still handle it fine
+        // (bigger context window, or actual quota left), so these fall
+        // through to the next hop even when the status is a 4xx.
+        if (cls.tag === 'CONTEXT_TOO_LONG') {
+          log('WARN', `[CONTEXT_TOO_LONG] ${who} — request exceeds this hop's context window, not retrying it: ${err.message}`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CONTEXT_TOO_LONG' });
+          trackSkip(providerConfig.provider, providerConfig.model, 'CONTEXT_TOO_LONG');
           break;
         }
-        if (await isQuotaExhaustedError(err)) {
-          log('WARN', `${providerConfig.provider}/${providerConfig.model} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
-          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'quota-exhausted' });
-          trackSkip(providerConfig.provider, providerConfig.model, 'quota-exhausted');
-          hopFinalError = err;
+        if (cls.tag === 'QUOTA') {
+          log('WARN', `[QUOTA] ${who} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'QUOTA' });
+          trackSkip(providerConfig.provider, providerConfig.model, 'QUOTA');
           break;
         }
 
-        // Genuine hard client errors (malformed request, auth failure,
-        // etc.) — never retry this hop, never fall back to the next one
-        // either, since the exact same broken request would just fail
-        // there too.
-        if (status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404) {
-          log('WARN', `Provider ${providerConfig.provider} returned ${status} (client error) — not falling back`);
-          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `http-${status}` });
+        // Genuine hard client errors (malformed request, bad key, ...) —
+        // never retry, never fall back: the same broken request would just
+        // fail on the next hop too. Exception: a 4xx whose body says the
+        // endpoint is degraded/busy, on a hop that retries anyway.
+        const hardClientError = status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404
+          && !(unlimited && cls.tag === 'UPSTREAM_DEGRADED');
+        if (hardClientError) {
+          log('WARN', `[${cls.tag}] ${who} returned ${status} (client error) — not falling back`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: reasonStr });
           err.attempts = attempts;
           throw err;
         }
 
-        const elapsed = Date.now() - hopStartedAt;
-        const reason = status === 429 ? 'rate-limited (429)' : status ? `http-${status}` : (err.code || 'network/timeout');
-        const budgetLeft = elapsed < retryBudgetMs;
+        if (retryClockStart === null) retryClockStart = Date.now();
+        const retryElapsed = Date.now() - retryClockStart;
+        const budgetMs = providerConfig.retryBudgetMs || (isLastHop ? UNLIMITED_LAST_HOP_BUDGET_MS : UNLIMITED_RETRY_BUDGET_MS);
+        const budgetLeft = retryElapsed < budgetMs;
         const attemptsLeft = attemptNum < maxAttempts;
 
         if (unlimited && budgetLeft && attemptsLeft) {
           const delay = backoffDelayMs(attemptNum);
-          log('WARN', `${providerConfig.provider}/${providerConfig.model} attempt ${attemptNum}/${maxAttempts} failed [${reason}] — "unlimited" hop, retrying in ${delay}ms (${elapsed}ms into a ${retryBudgetMs}ms budget)...`);
+          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonStr}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop ? ', last hop: nothing to fall back to' : ''})...`);
           await sleep(delay);
           continue;
         }
 
+        const elapsed = Date.now() - hopStartedAt;
         const triedNote = attemptNum > 1 ? ` after ${attemptNum} attempts over ${elapsed}ms` : '';
-        log('WARN', `${providerConfig.provider}/${providerConfig.model} failed [${reason}]${triedNote} — trying fallback...`);
-        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `${reason}${triedNote}` });
-        trackSkip(providerConfig.provider, providerConfig.model, reason);
+        const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached' : ` — retry window (${budgetMs}ms) used up`);
+        log('WARN', `[${cls.tag}] ${who} failed (${reasonStr})${triedNote}${whyStopped} — ${isLastHop ? 'giving up, no more hops in this chain' : 'trying fallback...'}`);
+        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `${reasonStr}${triedNote}` });
+        trackSkip(providerConfig.provider, providerConfig.model, reasonStr);
         break;
       }
     }
@@ -1516,6 +1610,7 @@ async function makeAPICall(modelId, nimRequest, stream) {
   if (!lastError) {
     lastError = new Error('No active hop available for this model (all hops are inactive, skipped, or over their TPM budget).');
     lastError.response = { status: 503 };
+    lastError.tag = 'NO_HOP';
   }
   lastError.attempts = attempts;
   throw lastError;
@@ -1646,7 +1741,9 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (response_format) nimRequest.response_format = response_format;
     if (stop) nimRequest.stop = stop;
 
-    const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false);
+    let clientGone = false;
+    res.on('close', () => { if (!res.writableEnded) clientGone = true; });
+    const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false, { clientGone: () => clientGone });
     log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel} | max_tokens: client sent ${max_tokens === undefined ? 'nothing' : max_tokens} → upstream got ${sentMaxTokens}`);
 
     // Surface the fallback path back to the client, not just server logs —
@@ -1899,17 +1996,18 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (reasoningLog) reasoningLog.close(`${reasoningChars} chars ≈ ${Math.round(reasoningChars / 4)} tokens${note}`);
         if (contentLog) contentLog.close(`${contentDelivered} chars ≈ ${Math.round(contentDelivered / 4)} tokens${note}`);
 
+        const totalChars = reasoningChars + contentDelivered;
+        const statsStr = `${chunkCount} chunks | reply ${sizeStr(contentDelivered)} | reasoning ${sizeStr(reasoningChars)} | total ${sizeStr(totalChars)} | ${ms}ms (${humanDuration(ms)})`;
         const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
         if (how === 'error') {
-          log('ERROR', `[${userName}] stream error after ${chunkCount} chunks: ${err?.message}`);
+          log('ERROR', `[${userName}] [${classifyError(err).tag}] stream error after ${chunkCount} chunks: ${err?.message}`);
         }
         if (truncated) {
-          log('WARN', `[${userName}] ⚠ stream ended without a finish_reason (${how}) — ${chunkCount} chunks, ${contentChars} content chars, ${reasoningChars} reasoning chars, ${ms}ms. Closed it out with finish_reason + [DONE] so the client keeps what streamed.${errSuffix}`);
+          log('WARN', `[${userName}] [STREAM_CUT] stream ended without a finish_reason (${how}) — ${statsStr}. Closed it out with finish_reason + [DONE] so the client keeps what streamed.${errSuffix}`);
         } else if (upstreamFinishReason === 'length') {
-          const estTok = Math.round((reasoningChars + contentChars) / 4);
-          log('WARN', `[${userName}] ⚠ HIT THE TOKEN CAP (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}, stopped after ≈${estTok} tokens (${reasoningChars} reasoning chars + ${contentChars} content chars)${contentChars === 0 ? ' — all thinking, no reply written' : ' — reply cut off mid-way'}, ${ms}ms${errSuffix}`);
+          log('WARN', `[${userName}] [TOKEN_CAP] hit the token cap (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}${contentDelivered === 0 ? ' — all thinking, no reply written' : ' — reply cut off mid-way'} — ${statsStr}${errSuffix}`);
         } else {
-          log('INFO', `[${userName}] ✓ stream complete (finish_reason=${upstreamFinishReason || 'none'}) — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars (≈${Math.round(reasoningChars / 4)} tokens)` : ''}, ${ms}ms${errSuffix}`);
+          log('INFO', `[${userName}] ✓ stream complete (finish_reason=${upstreamFinishReason || 'none'}) — ${statsStr}${errSuffix}`);
         }
         res.end();
       };
@@ -1927,7 +2025,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       const { reasoning, content } = parseThinkTags(rawText);
       const finalReasoning = nativeReasoning || reasoning;
       if (response.data.choices[0]?.finish_reason === 'length') {
-        log('WARN', `[${userName}] ⚠ HIT THE TOKEN CAP (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}${content ? ' — reply cut off mid-way' : ' — all thinking, no reply written'}`);
+        log('WARN', `[${userName}] [TOKEN_CAP] hit the token cap (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}${content ? ' — reply cut off mid-way' : ' — all thinking, no reply written'}`);
       }
       const toolCalls = response.data.choices[0]?.message?.tool_calls;
       const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
@@ -1957,17 +2055,27 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
   } catch (error) {
-    const errorBody = truncateForLog(await getErrorBodyText(error));
-    log('ERROR', `[${userName}] ${error.message} | status: ${error.response?.status} | body: ${errorBody}`);
+    const rawBody = await getErrorBodyText(error);
+    const errorBody = truncateForLog(rawBody);
+    const cls = classifyError(error, rawBody);
+    const lastAttempt = Array.isArray(error.attempts) && error.attempts.length ? error.attempts[error.attempts.length - 1] : null;
+    const where = lastAttempt ? `${lastAttempt.provider}/${lastAttempt.model}` : 'proxy';
+    log('ERROR', `[${userName}] [${cls.tag}] ${where} — ${error.message} | status: ${error.response?.status} | body: ${errorBody}`);
+    if (res.headersSent) { try { res.end(); } catch (_) { /* already closed */ } return; }
     if (Array.isArray(error.attempts) && error.attempts.length) {
       const pathStr = error.attempts.map(a => `${a.provider}/${a.model}:${a.outcome}${a.reason ? `(${a.reason})` : ''}`).join(' -> ');
       res.setHeader('X-QProxy-Fallback-Path', pathStr);
     }
-    res.status(error.response?.status || 500).json({
+    res.setHeader('X-QProxy-Error-Tag', cls.tag);
+    const httpStatus = error.response?.status || cls.httpStatus || 500;
+    res.status(httpStatus).json({
       error: {
-        message: error.message || 'Internal server error',
-        type: 'invalid_request_error',
-        code: error.response?.status || 500
+        // Shows up as-is in Janitor/Marinara error popups, so it says what
+        // failed and where, not just "failed".
+        message: `[Q-Proxy · ${cls.tag}] ${where}: ${error.message || 'Internal server error'}${cls.hint ? ` — ${cls.hint}` : ''}`,
+        type: cls.type,
+        tag: cls.tag,
+        code: httpStatus
       },
       ...(Array.isArray(error.attempts) && error.attempts.length ? { attempts: error.attempts } : {})
     });
@@ -2901,4 +3009,5 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
 
