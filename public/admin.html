@@ -373,6 +373,13 @@
   .log-line.lvl-WARN .lvl, .log-line.lvl-WARN .msg { color: #E6A028; }
   .log-line.lvl-INFO .lvl { color: var(--text-faint); }
   /* Stitched model text (reasoning / reply) — full-width block under the header line */
+  .etag { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600; font-size: 10.5px; letter-spacing: .02em; }
+  .etag-net   { background: rgba(251,146,60,.18);  color: #FDBA74; }
+  .etag-limit { background: rgba(250,204,21,.16);  color: #FDE047; }
+  .etag-bad   { background: rgba(248,113,113,.18); color: #FCA5A5; }
+  .etag-up    { background: rgba(244,114,182,.16); color: #F9A8D4; }
+  .etag-cut   { background: rgba(167,139,250,.18); color: #C4B5FD; }
+  .etag-gone  { background: rgba(148,163,184,.18); color: #CBD5E1; }
   .log-line.lvl-THINK .lvl { color: #A78BFA; }
   .log-line.lvl-REPLY .lvl { color: #4ADE80; }
   .log-line.lvl-THINK .msg, .log-line.lvl-REPLY .msg { flex-basis: 100%; line-height: 1.5; }
@@ -546,6 +553,30 @@
       throw new Error(msg);
     }
     return data;
+  }
+
+  // The server logs UTC ISO timestamps (Render runs in UTC and can't know
+  // your time zone). The browser can — so convert here, keep the raw UTC
+  // value in the tooltip.
+  function fmtLogTs(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return String(iso);
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}  ${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
+  }
+
+  // Error tags emitted by the server (classifyError in server.js) — coloured
+  // by family so a wall of logs can be scanned at a glance.
+  const ETAG_GROUP = {
+    TIMEOUT: 'net', GATEWAY_TIMEOUT: 'net', NET_RESET: 'net', NET_DNS: 'net', NET_REFUSED: 'net', NET_ERROR: 'net',
+    RATE_LIMIT: 'limit', QUOTA: 'limit', CONTEXT_TOO_LONG: 'limit', TOKEN_CAP: 'limit',
+    AUTH: 'bad', BAD_REQUEST: 'bad', NOT_FOUND: 'bad', MODERATED: 'bad',
+    UPSTREAM_5XX: 'up', UPSTREAM_DEGRADED: 'up', NO_HOP: 'up',
+    STREAM_CUT: 'cut', CLIENT_GONE: 'gone'
+  };
+  const ETAG_RE = new RegExp('\\[(' + Object.keys(ETAG_GROUP).join('|') + '|HTTP_\\d+)((?: · [^\\]]*)?)\\]', 'g');
+  function tagifyLogMsg(escapedMsg) {
+    return escapedMsg.replace(ETAG_RE, (m, tag, detail) => `<span class="etag etag-${ETAG_GROUP[tag] || 'up'}">${tag}${detail}</span>`);
   }
 
   function fmtDate(iso) {
@@ -742,6 +773,31 @@
   // card — this is the data that used to live only in the Usage &
   // credits section at the bottom, disconnected from the model it's
   // actually about.
+  // One-line, human summary of a hop's own limits, shown on the model card
+  // right under Provider (and per hop inside bundles).
+  function limitsSummary(hop) {
+    const n = (v) => Number(v).toLocaleString();
+    const bits = [];
+    if (hop.provider === 'literouter') {
+      if (isLiterouterPremiumClientSide(hop)) bits.push('shared premium pool per key (not per model)');
+      else if (hop.dailyCap != null && hop.dailyCap !== '') bits.push(`${n(hop.dailyCap)} requests/day per key · resets 00:00 GMT+7`);
+      else bits.push('no per-model daily cap set (treated as unlimited)');
+    } else if (hop.provider === 'google') {
+      if (hop.rpm) bits.push(`${n(hop.rpm)} RPM`);
+      if (hop.tpm) bits.push(`${n(hop.tpm)} TPM`);
+      if (hop.rpd) bits.push(`${n(hop.rpd)} RPD (resets midnight Pacific)`);
+      if (!bits.length) bits.push('none set — not tracked (Edit to add RPM / TPM / RPD)');
+      if (hop.tpmLimit) bits.push(`${n(hop.tpmLimit)} tokens/min request-size budget`);
+    } else if (hop.provider === 'openrouter') {
+      bits.push('50 requests/day per key, shared by every model · resets 00:00 UTC');
+    } else if (hop.tpmLimit) {
+      bits.push(`${n(hop.tpmLimit)} tokens/min budget`);
+    }
+    if (hop.maxTokens) bits.push(`max_tokens floor ${n(hop.maxTokens)}`);
+    if (hop.tools === false) bits.push('no tool calling');
+    return bits.join(' · ');
+  }
+
   function renderHopKeyBreakdown(hop) {
     if (hop.provider === 'literouter') {
       if (isLiterouterPremiumClientSide(hop)) {
@@ -797,6 +853,7 @@
         <span class="hop-usage">${usageStr}</span>
         ${skipBadge}
         ${renderHopKeyBreakdown(hop)}
+        ${showOrder && limitsSummary(hop) ? `<div class="hop-keys">limits: ${escapeHtml(limitsSummary(hop))}</div>` : ''}
       </div>`;
     }).join('');
   }
@@ -1034,6 +1091,7 @@
       <div class="model-meta">
         <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
         <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
+        ${limitsSummary(entry) ? `<div class="model-meta-row"><span class="model-meta-k">Limits</span><span class="model-meta-v">${escapeHtml(limitsSummary(entry))}</span></div>` : ''}
         <div class="model-meta-row"><span class="model-meta-k">Model group</span><span class="model-meta-v">${escapeHtml(item.family)}</span></div>
         ${fallbackCountRow}
         ${fallbackRow}
@@ -1101,7 +1159,7 @@
     const tick = () => {
       const remaining = resetsAt - Date.now();
       $('#provider-reset-timer').innerHTML = remaining > 0
-        ? `<div class="provider-reset-banner">${escapeHtml(label)} quota resets in <span class="countdown">${formatCountdown(remaining)}</span> — at ${escapeHtml(endTimeLocal)} (your local time)</div>`
+        ? `<div class="provider-reset-banner">${escapeHtml(label)} quota resets in <span class="countdown">${formatCountdown(remaining)}</span> — at ${escapeHtml(endTimeLocal)} (your local time)${info.boundary ? ` · provider boundary: ${escapeHtml(info.boundary)}` : ''}</div>`
         : `<div class="provider-reset-banner">${escapeHtml(label)} quota should have reset — refresh to confirm</div>`;
       if (remaining <= 0) { clearInterval(resetCountdownInterval); resetCountdownInterval = null; }
     };
@@ -1273,7 +1331,7 @@
     // auto-refresh shouldn't yank them back down.
     const wasNearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
     view.innerHTML = res.logs.map(l =>
-      `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts">${escapeHtml(l.ts)}</span><span class="lvl">${escapeHtml(l.level)}</span><span class="msg">${escapeHtml(l.msg)}</span></div>`
+      `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span><span class="lvl">${escapeHtml(l.level)}</span><span class="msg">${tagifyLogMsg(escapeHtml(l.msg))}</span></div>`
     ).join('');
     if (wasNearBottom) view.scrollTop = view.scrollHeight;
   }
@@ -1434,7 +1492,7 @@
   let editingCustomFlag = false; // top-level "custom bundle" flag for the entry being edited
 
   function emptyHop() {
-    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '' };
+    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', rpm: '', tpm: '', rpd: '', maxTokens: '', tools: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '' };
   }
 
   function normalizeReasoningForSchema(h) {
@@ -1790,7 +1848,7 @@
         reasoningFieldEnabled: cur.reasoningFieldEnabled && typeof cur.reasoningFieldEnabled === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldEnabled)) : {},
         reasoningFieldTransport: cur.reasoningFieldTransport && typeof cur.reasoningFieldTransport === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldTransport)) : {},
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
-        tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
+        tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', rpm: cur.rpm ?? '', tpm: cur.tpm ?? '', rpd: cur.rpd ?? '', maxTokens: cur.maxTokens ?? '', tools: cur.tools === false ? 'false' : '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
         retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : ''
       });
       cur = cur.fallback || null;
@@ -1823,6 +1881,11 @@
       if (h.notes && h.notes.trim()) entry.notes = h.notes.trim();
       if (h.tpmLimit !== '' && h.tpmLimit != null) entry.tpmLimit = parseInt(h.tpmLimit, 10);
       if (h.dailyCap !== '' && h.dailyCap != null) entry.dailyCap = parseInt(h.dailyCap, 10);
+      if (h.rpm !== '' && h.rpm != null) entry.rpm = parseInt(h.rpm, 10);
+      if (h.tpm !== '' && h.tpm != null) entry.tpm = parseInt(h.tpm, 10);
+      if (h.rpd !== '' && h.rpd != null) entry.rpd = parseInt(h.rpd, 10);
+      if (h.maxTokens !== '' && h.maxTokens != null) entry.maxTokens = parseInt(h.maxTokens, 10);
+      if (h.tools === 'false') entry.tools = false;
       if (h.timeoutMs !== '' && h.timeoutMs != null) entry.timeoutMs = parseInt(h.timeoutMs, 10);
       if (h.freeUntil) entry.freeUntil = h.freeUntil;
       if (h.deprecatedOn) entry.deprecatedOn = h.deprecatedOn;
@@ -2023,6 +2086,11 @@
           <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(st => `<option value="${st}" ${h.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(st => `<option value="${st}" ${h.limitType === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>TPM limit (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
+          ${h.provider === 'google' ? `<div class="field"><label>RPM (Google, opt.)</label><input type="number" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="blank = not tracked"></div>
+          <div class="field"><label>TPM (Google, opt.)</label><input type="number" data-f="tpm" data-idx="${i}" value="${h.tpm}" placeholder="blank = not tracked"></div>
+          <div class="field"><label>RPD (Google, opt.)</label><input type="number" data-f="rpd" data-idx="${i}" value="${h.rpd}" placeholder="blank = not tracked"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Google's published per-model limits. Only the ones you fill in are enforced: when one is used up the hop is skipped (next key, then next hop). RPM/TPM reset every minute; RPD resets at midnight Pacific Time.</div></div>` : ''}
+          <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div></div>
+          <div class="field"><label>Tool calling</label><select data-f="tools" data-idx="${i}"><option value="" ${h.tools === '' ? 'selected' : ''}>Allowed (default)</option><option value="false" ${h.tools === 'false' ? 'selected' : ''}>Not supported — skip this hop for tool requests</option></select></div>
           ${h.provider === 'literouter' ? `<div class="field"><label>Daily cap (opt., Literouter)</label><input type="number" data-f="dailyCap" data-idx="${i}" value="${h.dailyCap}" placeholder="blank = unlimited"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Literouter's own per-model daily free-request cap (e.g. 5 or 30). Leave blank if Literouter lists it as unlimited — this drives the per-key rotation and the usage bars below, not the request itself.</div></div>` : ''}
           <div class="field"><label>Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}"></div>
           <div class="field"><label>Free until (opt.)</label><input type="date" data-f="freeUntil" data-idx="${i}" value="${h.freeUntil}"></div>
@@ -2062,7 +2130,7 @@
           reasoningFieldEnabled: src.reasoningFieldEnabled ? JSON.parse(JSON.stringify(src.reasoningFieldEnabled)) : {},
           reasoningFieldTransport: src.reasoningFieldTransport ? JSON.parse(JSON.stringify(src.reasoningFieldTransport)) : {},
           status: src.status || 'active', limitType: src.limitType || 'rate-limited',
-          tpmLimit: src.tpmLimit ?? '', dailyCap: src.dailyCap ?? '', timeoutMs: src.timeoutMs ?? '',
+          tpmLimit: src.tpmLimit ?? '', dailyCap: src.dailyCap ?? '', rpm: src.rpm ?? '', tpm: src.tpm ?? '', rpd: src.rpd ?? '', maxTokens: src.maxTokens ?? '', tools: src.tools === false ? 'false' : '', timeoutMs: src.timeoutMs ?? '',
           freeUntil: src.freeUntil || '', deprecatedOn: src.deprecatedOn || '',
           retryAsUnlimited: typeof src.retryAsUnlimited === 'boolean' ? String(src.retryAsUnlimited) : '',
           notes
@@ -2377,4 +2445,6 @@
 </script>
 </body>
 </html>
+
+
 
