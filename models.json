@@ -416,12 +416,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gemini-3.6-flash-g": {
-    "model": "models/gemini-3.6-flash",
-    "provider": "google",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "deepseek-v4.1-flash-nv": {
     "model": "deepseek-ai/deepseek-v4.1-flash",
     "provider": "nvidia",
