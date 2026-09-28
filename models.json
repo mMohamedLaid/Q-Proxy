@@ -419,5 +419,13 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "unlimited"
+  },
+  "glm-5.3-cheap-free-lr": {
+    "model": "glm-5.3-cheap:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
