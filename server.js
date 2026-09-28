@@ -24,11 +24,53 @@ const path = require('path');
 // so it can't grow unbounded, newest first.
 const RECENT_LOGS_MAX = 500;
 const recentLogs = [];
-function log(level, msg) {
+// target: 'both' (default) | 'console' (Render logs only) | 'admin' (Admin panel only).
+// Per-chunk stream lines go to 'console' only, so Render keeps the full
+// clutter you can dig back through, while the Admin panel stays readable.
+function log(level, msg, target = 'both') {
   const ts = new Date().toISOString();
-  console.log(`[${ts}] [${level}] ${msg}`);
-  recentLogs.unshift({ ts, level, msg });
+  if (target !== 'admin') console.log(`[${ts}] [${level}] ${msg}`);
+  if (target !== 'console') {
+    recentLogs.unshift({ ts, level, msg });
+    if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
+  }
+}
+
+// Admin-panel-only entry for streamed model text (reasoning or reply).
+// Tokens are appended as they arrive and stitched into one readable block
+// (the model's own line breaks are kept), instead of one log line per
+// chunk. `msg` is a getter so the entry updates live in place — with
+// Auto-refresh on you can watch a long think grow — without rebuilding a
+// big string on every token. Capped so one huge reply can't eat memory.
+const ADMIN_STREAM_LOG_MAX_CHARS = Number(process.env.ADMIN_STREAM_LOG_MAX_CHARS) || 150000;
+function openLiveLog(level, label) {
+  let body = '';
+  let status = 'streaming…';
+  let capped = false;
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    get msg() {
+      const text = body.replace(/\n{3,}/g, '\n\n').trim();
+      return `${label} — ${status}\n${text}${capped ? '\n… [cut off here in the Admin log only — Render logs and the client still got everything]' : ''}`;
+    }
+  };
+  recentLogs.unshift(entry);
   if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
+  return {
+    append(text) {
+      if (!text || capped) return;
+      body += text;
+      if (body.length > ADMIN_STREAM_LOG_MAX_CHARS) { body = body.slice(0, ADMIN_STREAM_LOG_MAX_CHARS); capped = true; }
+    },
+    close(note) { status = note; }
+  };
+}
+function logStitchedText(level, label, text) {
+  if (!text) return;
+  const l = openLiveLog(level, label);
+  l.append(text);
+  l.close(`${text.length} chars`);
 }
 
 const app = express();
@@ -1594,16 +1636,100 @@ app.post('/v1/chat/completions', async (req, res) => {
       let inThink = false;
       let thinkSent = false;
       let accumRaw = '';
-      // Aggregated instead of logged per-chunk (see below) — a normal
-      // stream is hundreds of chunks, and logging every single one was
-      // flooding the log view badly enough to bury everything else.
       const streamStartedAt = Date.now();
       let chunkCount = 0;
-      let contentChars = 0;
+      let contentChars = 0;      // every content delta seen (incl. text later re-labelled as reasoning)
+      let contentDelivered = 0;  // content actually written to the client as reply text
       let reasoningChars = 0;
       let parseErrorCount = 0;
       let lastParseError = null;
-      const DEBUG_STREAM_CHUNKS = process.env.DEBUG_STREAM_CHUNKS === 'true';
+
+      // Per-chunk lines go to Render's console ONLY (never the Admin panel),
+      // so Render keeps the full clutter you can dig back through while the
+      // Admin log shows the stitched, readable text instead. Set
+      // DEBUG_STREAM_CHUNKS=false to silence them.
+      const DEBUG_STREAM_CHUNKS = process.env.DEBUG_STREAM_CHUNKS !== 'false';
+
+      // Shown as the reply when the upstream connection dies before the
+      // model wrote ANY reply text (i.e. it died mid-thinking), so the
+      // client gets a visible message instead of an empty/"no response"
+      // turn. Set STREAM_TRUNCATION_NOTICE to an empty string to disable.
+      const TRUNCATION_NOTICE = process.env.STREAM_TRUNCATION_NOTICE !== undefined
+        ? process.env.STREAM_TRUNCATION_NOTICE
+        : '*[Connection to the model closed before it finished replying — regenerate to retry.]*';
+
+      // How the upstream stream ended, tracked so a stream that dies
+      // mid-thought can still be closed out properly for the client.
+      let sawDone = false;
+      let upstreamFinishReason = null;
+      let finishForwarded = false;
+      let lastMeta = null;
+      let finalized = false;
+
+      // Admin-panel-only stitched text (see openLiveLog).
+      let reasoningLog = null;
+      let contentLog = null;
+      let thinkLogged = 0;
+      const logReasoning = (t) => {
+        if (!t) return;
+        if (!reasoningLog) reasoningLog = openLiveLog('THINK', `[${userName}] reasoning`);
+        reasoningLog.append(t);
+      };
+      const logContent = (t) => {
+        if (!t) return;
+        if (!contentLog) contentLog = openLiveLog('REPLY', `[${userName}] reply`);
+        contentLog.append(t);
+      };
+      // Think-tag models: mirror the buffered thinking text into the Admin
+      // log as it arrives, holding back the last few chars in case a
+      // "</think>" tag is split across two chunks.
+      const flushThinkLog = (final) => {
+        const closeIdx = thinkBuffer.indexOf('</think>');
+        const upto = closeIdx !== -1
+          ? closeIdx
+          : (final ? thinkBuffer.length : Math.max(thinkLogged, thinkBuffer.length - 8));
+        if (upto > thinkLogged) {
+          logReasoning(thinkBuffer.slice(thinkLogged, upto));
+          thinkLogged = upto;
+        }
+      };
+
+      const writeChunk = (obj) => {
+        if (obj?.choices?.[0]?.finish_reason) finishForwarded = true;
+        res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      };
+      const chunkMeta = () => ({
+        id: lastMeta?.id || `chatcmpl-${Date.now()}`,
+        object: 'chat.completion.chunk',
+        created: lastMeta?.created || Math.floor(Date.now() / 1000),
+        model: lastMeta?.model || usedModel
+      });
+
+      // Close the stream out properly: flush any think-tag text that was
+      // still buffered (it would otherwise be lost), make sure the client
+      // sees a finish_reason, then a real [DONE]. Without this, a stream
+      // that dies mid-thought just goes quiet and the client treats it
+      // as a dead connection and throws away what it had.
+      const emitTail = (defaultReason, allowNotice) => {
+        if (inThink && thinkBuffer.trim()) {
+          flushThinkLog(true);
+          const text = thinkBuffer.replace('</think>', '').trim();
+          reasoningChars += text.length;
+          writeChunk({ ...chunkMeta(), choices: [{ index: 0, delta: { role: 'assistant', content: '', reasoning_content: text }, finish_reason: null }] });
+        }
+        inThink = false;
+        thinkBuffer = '';
+        if (allowNotice && TRUNCATION_NOTICE && contentDelivered === 0) {
+          writeChunk({ ...chunkMeta(), choices: [{ index: 0, delta: { role: 'assistant', content: TRUNCATION_NOTICE }, finish_reason: null }] });
+        }
+        if (!finishForwarded) {
+          writeChunk({ ...chunkMeta(), choices: [{ index: 0, delta: {}, finish_reason: upstreamFinishReason || defaultReason }] });
+        }
+        if (!sawDone) {
+          res.write('data: [DONE]\n\n');
+          sawDone = true;
+        }
+      };
 
       response.data.on('data', (chunk) => {
         buffer += chunk.toString();
@@ -1612,12 +1738,16 @@ app.post('/v1/chat/completions', async (req, res) => {
 
         lines.forEach(line => {
           if (!line.startsWith('data: ')) return;
-          if (line.includes('[DONE]')) { res.write(line + '\n\n'); return; }
+          if (line.includes('[DONE]')) { emitTail('stop', false); return; }
 
           try {
             const data = JSON.parse(line.slice(6));
+            lastMeta = { id: data.id, created: data.created, model: data.model };
+            const fr = data.choices?.[0]?.finish_reason;
+            if (fr) upstreamFinishReason = fr;
+
             const delta = data.choices?.[0]?.delta;
-            if (!delta) { res.write(`data: ${JSON.stringify(data)}\n\n`); return; }
+            if (!delta) { writeChunk(data); return; }
 
             const nativeReasoning = delta.reasoning_content || null;
             const rawContent = delta.content || '';
@@ -1625,15 +1755,14 @@ app.post('/v1/chat/completions', async (req, res) => {
             contentChars += rawContent.length;
             if (nativeReasoning) reasoningChars += nativeReasoning.length;
 
-            // Opt-in only (DEBUG_STREAM_CHUNKS=true) — full per-chunk
-            // detail for when you're actually debugging the think-tag
-            // splitting logic below, not something that runs by default.
             if (DEBUG_STREAM_CHUNKS) {
-              log('DEBUG', `[CHUNK] native_reasoning: ${JSON.stringify(nativeReasoning?.slice(0, 80))} | content: ${JSON.stringify(rawContent?.slice(0, 80))}`);
+              log('DEBUG', `[CHUNK] native_reasoning: ${JSON.stringify(nativeReasoning?.slice(0, 80))} | content: ${JSON.stringify(rawContent?.slice(0, 80))}`, 'console');
             }
 
             if (nativeReasoning) {
-              res.write(`data: ${JSON.stringify(data)}\n\n`);
+              logReasoning(nativeReasoning);
+              if (rawContent) { logContent(rawContent); contentDelivered += rawContent.length; }
+              writeChunk(data);
               return;
             }
 
@@ -1645,6 +1774,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                 const start = accumRaw.indexOf('<think>') + 7;
                 thinkBuffer += accumRaw.slice(start);
                 accumRaw = '';
+                flushThinkLog(false);
                 return;
               } else if (accumRaw.length > 10 && !accumRaw.startsWith('<')) {
                 thinkSent = true;
@@ -1653,6 +1783,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
             if (inThink) {
               thinkBuffer += rawContent;
+              flushThinkLog(false);
               if (thinkBuffer.includes('</think>')) {
                 const end = thinkBuffer.indexOf('</think>');
                 const reasoningText = thinkBuffer.slice(0, end).trim();
@@ -1668,12 +1799,14 @@ app.post('/v1/chat/completions', async (req, res) => {
                     delta: { role: 'assistant', content: '', reasoning_content: reasoningText }
                   }]
                 };
-                res.write(`data: ${JSON.stringify(reasoningChunk)}\n\n`);
+                writeChunk(reasoningChunk);
 
                 if (afterThink) {
                   delta.content = afterThink;
                   delete delta.reasoning_content;
-                  res.write(`data: ${JSON.stringify(data)}\n\n`);
+                  logContent(afterThink);
+                  contentDelivered += afterThink.length;
+                  writeChunk(data);
                 }
               }
               return;
@@ -1681,13 +1814,13 @@ app.post('/v1/chat/completions', async (req, res) => {
 
             delta.content = rawContent;
             delete delta.reasoning_content;
-            res.write(`data: ${JSON.stringify(data)}\n\n`);
+            if (rawContent) { logContent(rawContent); contentDelivered += rawContent.length; }
+            writeChunk(data);
 
           } catch (e) {
-            // Same aggregation logic — a single malformed/split chunk
-            // boundary used to log its own ERROR line; now it's counted
-            // and reported once in the summary line at 'end', with just
-            // the last error's message kept as a sample.
+            // A single malformed/split chunk boundary is counted and
+            // reported once in the summary line, with just the last
+            // error's message kept as a sample.
             parseErrorCount++;
             lastParseError = e.message;
             res.write(line + '\n');
@@ -1695,16 +1828,33 @@ app.post('/v1/chat/completions', async (req, res) => {
         });
       });
 
-      response.data.on('end', () => {
+      const finalizeStream = (how, err) => {
+        if (finalized) return;
+        finalized = true;
         const ms = Date.now() - streamStartedAt;
+        const endedPrematurely = !sawDone;
+        const truncated = endedPrematurely && !upstreamFinishReason;
+
+        if (endedPrematurely) emitTail('length', truncated);
+
+        const note = truncated ? ' — CUT OFF: upstream closed before the model finished' : '';
+        if (reasoningLog) reasoningLog.close(`${reasoningChars} chars${note}`);
+        if (contentLog) contentLog.close(`${contentDelivered} chars${note}`);
+
         const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
-        log('INFO', `[${userName}] ✓ stream complete — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars` : ''}, ${ms}ms${errSuffix}`);
+        if (how === 'error') {
+          log('ERROR', `[${userName}] stream error after ${chunkCount} chunks: ${err?.message}`);
+        }
+        if (truncated) {
+          log('WARN', `[${userName}] ⚠ stream ended without a finish_reason (${how}) — ${chunkCount} chunks, ${contentChars} content chars, ${reasoningChars} reasoning chars, ${ms}ms. Closed it out with finish_reason + [DONE] so the client keeps what streamed.${errSuffix}`);
+        } else {
+          log('INFO', `[${userName}] ✓ stream complete — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars` : ''}, ${ms}ms${errSuffix}`);
+        }
         res.end();
-      });
-      response.data.on('error', (err) => {
-        log('ERROR', `[${userName}] stream error after ${chunkCount} chunks: ${err.message}`);
-        res.end();
-      });
+      };
+
+      response.data.on('end', () => finalizeStream('end'));
+      response.data.on('error', (err) => finalizeStream('error', err));
 
 
     } else {
@@ -1715,6 +1865,8 @@ app.post('/v1/chat/completions', async (req, res) => {
 
       const { reasoning, content } = parseThinkTags(rawText);
       const finalReasoning = nativeReasoning || reasoning;
+      logStitchedText('THINK', `[${userName}] reasoning`, finalReasoning);
+      logStitchedText('REPLY', `[${userName}] reply`, content);
 
       const openaiResponse = {
         id: `chatcmpl-${Date.now()}`,
