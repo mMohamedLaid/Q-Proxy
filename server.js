@@ -447,8 +447,17 @@ function checkRateLimit(apiKey) {
 // ============================================================
 // TOKEN ESTIMATE (rough heuristic — chars/4 — good enough for a threshold check)
 // ============================================================
+// Text-ish size of a message, including the shapes coding agents send:
+// array content parts ([{type:'text', text}, ...]) and assistant tool_calls.
+function messageText(m) {
+  let t = '';
+  if (typeof m?.content === 'string') t = m.content;
+  else if (Array.isArray(m?.content)) t = m.content.map(p => (typeof p === 'string' ? p : (p?.text || ''))).join(' ');
+  if (Array.isArray(m?.tool_calls) && m.tool_calls.length) t += ' ' + JSON.stringify(m.tool_calls);
+  return t;
+}
 function estimateTokens(messages) {
-  const text = (messages || []).map(m => String(m.content || '')).join(' ');
+  const text = (messages || []).map(messageText).join(' ');
   return Math.ceil(text.length / 4);
 }
 
@@ -1345,6 +1354,15 @@ async function makeAPICall(modelId, nimRequest, stream) {
       trackSkip(providerConfig.provider, providerConfig.model, `status:${providerConfig.status}`);
       continue;
     }
+    // Tool/function-calling request but this hop is marked "tools": false
+    // in models.json (tiny models, roleplay finetunes, endpoints that ignore
+    // tools) — skip it so the chain moves on instead of the agent getting a
+    // plain-text answer where it expected a tool call.
+    if (Array.isArray(nimRequest.tools) && nimRequest.tools.length && providerConfig.tools === false) {
+      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: 'no-tool-support' });
+      trackSkip(providerConfig.provider, providerConfig.model, 'no-tool-support');
+      continue;
+    }
     if (providerConfig.tpmLimit) {
       const estimated = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
       if (estimated > providerConfig.tpmLimit) {
@@ -1357,6 +1375,15 @@ async function makeAPICall(modelId, nimRequest, stream) {
 
     const extraBody = getReasoningBody(providerConfig);
     const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
+    // "maxTokens" on a hop is a FLOOR, not just a default: reasoning models
+    // spend max_tokens on thinking AND the reply from one pool, so a client
+    // asking for a normal reply length (e.g. 4096) starves the reply. The
+    // client's number is only honored when it is already >= the floor.
+    if (typeof providerConfig.maxTokens === 'number' && (body.max_tokens || 0) < providerConfig.maxTokens) {
+      log('INFO', `max_tokens raised ${body.max_tokens || 'unset'} → ${providerConfig.maxTokens} for ${providerConfig.provider}/${providerConfig.model} (hop floor)`);
+      body.max_tokens = providerConfig.maxTokens;
+    }
+    const sentMaxTokens = body.max_tokens;
     const unlimited = isUnlimitedRetryHop(providerConfig);
     const maxAttempts = unlimited ? (providerConfig.maxRetries || UNLIMITED_MAX_RETRIES) : 1;
     const retryBudgetMs = providerConfig.retryBudgetMs || UNLIMITED_RETRY_BUDGET_MS;
@@ -1425,7 +1452,7 @@ async function makeAPICall(modelId, nimRequest, stream) {
           provider: providerConfig.provider, model: providerConfig.model, outcome: 'used',
           ...(attemptNum > 1 ? { retries: attemptNum - 1 } : {})
         });
-        return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model, attempts };
+        return { response, usedProvider: providerConfig.provider, usedModel: providerConfig.model, sentMaxTokens, attempts };
 
       } catch (err) {
         const status = err.response?.status;
@@ -1570,11 +1597,17 @@ app.post('/v1/chat/completions', async (req, res) => {
   }
 
   try {
-    const { model, messages, temperature, max_tokens, stream } = req.body;
+    const { model, messages, temperature, max_tokens, stream,
+            tools, tool_choice, parallel_tool_calls, response_format, stop } = req.body;
 
-    log('INFO', `[${userName}] REQUEST → model: ${model} | stream: ${stream || false}`);
+    const toolNote = Array.isArray(tools) && tools.length ? ` | tools: ${tools.length}` : '';
+    log('INFO', `[${userName}] REQUEST → model: ${model} | stream: ${stream || false} | ${messages.length} msgs${toolNote}`);
+    // Per-message previews go to Render's console only — an agent loop
+    // can send dozens of (huge) messages per request and would bury the
+    // Admin log.
     messages.forEach((m, i) => {
-      log('DEBUG', `  [msg ${i}] ${m.role}: ${String(m.content).slice(0, 300)}`);
+      const extra = Array.isArray(m.tool_calls) && m.tool_calls.length ? ` [+${m.tool_calls.length} tool_calls]` : '';
+      log('DEBUG', `  [msg ${i}] ${m.role}: ${messageText(m).slice(0, 300)}${extra}`, 'console');
     });
 
     const mapping = MODEL_MAPPING[model];
@@ -1598,13 +1631,23 @@ app.post('/v1/chat/completions', async (req, res) => {
     const nimRequest = {
       model: mapping.model,
       messages,
-      temperature: temperature || 0.6,
+      // typeof check, not `||`: a coding agent sending temperature: 0 must
+      // get 0, not the 0.6 fallback (0 is falsy in JS).
+      temperature: typeof temperature === 'number' ? temperature : 0.6,
       max_tokens: clientRequestedTokens || hopDefaultTokens,
       stream: stream || false
     };
+    // Tool calling / structured output / stop sequences: passed through
+    // only when the client actually sent them, so existing roleplay
+    // traffic (which sends none of these) is byte-for-byte unchanged.
+    if (Array.isArray(tools) && tools.length) nimRequest.tools = tools;
+    if (tool_choice !== undefined && nimRequest.tools) nimRequest.tool_choice = tool_choice;
+    if (parallel_tool_calls !== undefined && nimRequest.tools) nimRequest.parallel_tool_calls = parallel_tool_calls;
+    if (response_format) nimRequest.response_format = response_format;
+    if (stop) nimRequest.stop = stop;
 
-    const { response, usedProvider, usedModel, attempts } = await makeAPICall(model, nimRequest, stream || false);
-    log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel}`);
+    const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false);
+    log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel} | max_tokens: client sent ${max_tokens === undefined ? 'nothing' : max_tokens} → upstream got ${sentMaxTokens}`);
 
     // Surface the fallback path back to the client, not just server logs —
     // every hop that was tried, in order, with what happened to it.
@@ -1640,6 +1683,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       let chunkCount = 0;
       let contentChars = 0;      // every content delta seen (incl. text later re-labelled as reasoning)
       let contentDelivered = 0;  // content actually written to the client as reply text
+      let sawToolCalls = false;
+      let noticeSent = false;
       let reasoningChars = 0;
       let parseErrorCount = 0;
       let lastParseError = null;
@@ -1694,8 +1739,19 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
       };
 
+      const LENGTH_NOTICE = process.env.STREAM_LENGTH_NOTICE !== undefined
+        ? process.env.STREAM_LENGTH_NOTICE
+        : '*[The model used its entire token budget on thinking and never wrote a reply — regenerate, or raise the max tokens.]*';
       const writeChunk = (obj) => {
-        if (obj?.choices?.[0]?.finish_reason) finishForwarded = true;
+        const fr = obj?.choices?.[0]?.finish_reason;
+        // Upstream ended with finish_reason "length" and not one character
+        // of reply: to the client that is an empty message ("no response").
+        // Give it something visible, ahead of the finish chunk.
+        if (fr === 'length' && LENGTH_NOTICE && !noticeSent && contentDelivered === 0 && !sawToolCalls) {
+          noticeSent = true;
+          res.write(`data: ${JSON.stringify({ ...chunkMeta(), choices: [{ index: 0, delta: { role: 'assistant', content: LENGTH_NOTICE }, finish_reason: null }] })}\n\n`);
+        }
+        if (fr) finishForwarded = true;
         res.write(`data: ${JSON.stringify(obj)}\n\n`);
       };
       const chunkMeta = () => ({
@@ -1719,7 +1775,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
         inThink = false;
         thinkBuffer = '';
-        if (allowNotice && TRUNCATION_NOTICE && contentDelivered === 0) {
+        if (allowNotice && TRUNCATION_NOTICE && contentDelivered === 0 && !sawToolCalls && !noticeSent) {
+          noticeSent = true;
           writeChunk({ ...chunkMeta(), choices: [{ index: 0, delta: { role: 'assistant', content: TRUNCATION_NOTICE }, finish_reason: null }] });
         }
         if (!finishForwarded) {
@@ -1748,6 +1805,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
             const delta = data.choices?.[0]?.delta;
             if (!delta) { writeChunk(data); return; }
+            if (delta.tool_calls) sawToolCalls = true;
 
             const nativeReasoning = delta.reasoning_content || null;
             const rawContent = delta.content || '';
@@ -1838,8 +1896,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (endedPrematurely) emitTail('length', truncated);
 
         const note = truncated ? ' — CUT OFF: upstream closed before the model finished' : '';
-        if (reasoningLog) reasoningLog.close(`${reasoningChars} chars${note}`);
-        if (contentLog) contentLog.close(`${contentDelivered} chars${note}`);
+        if (reasoningLog) reasoningLog.close(`${reasoningChars} chars ≈ ${Math.round(reasoningChars / 4)} tokens${note}`);
+        if (contentLog) contentLog.close(`${contentDelivered} chars ≈ ${Math.round(contentDelivered / 4)} tokens${note}`);
 
         const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
         if (how === 'error') {
@@ -1847,8 +1905,11 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
         if (truncated) {
           log('WARN', `[${userName}] ⚠ stream ended without a finish_reason (${how}) — ${chunkCount} chunks, ${contentChars} content chars, ${reasoningChars} reasoning chars, ${ms}ms. Closed it out with finish_reason + [DONE] so the client keeps what streamed.${errSuffix}`);
+        } else if (upstreamFinishReason === 'length') {
+          const estTok = Math.round((reasoningChars + contentChars) / 4);
+          log('WARN', `[${userName}] ⚠ HIT THE TOKEN CAP (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}, stopped after ≈${estTok} tokens (${reasoningChars} reasoning chars + ${contentChars} content chars)${contentChars === 0 ? ' — all thinking, no reply written' : ' — reply cut off mid-way'}, ${ms}ms${errSuffix}`);
         } else {
-          log('INFO', `[${userName}] ✓ stream complete — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars` : ''}, ${ms}ms${errSuffix}`);
+          log('INFO', `[${userName}] ✓ stream complete (finish_reason=${upstreamFinishReason || 'none'}) — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars (≈${Math.round(reasoningChars / 4)} tokens)` : ''}, ${ms}ms${errSuffix}`);
         }
         res.end();
       };
@@ -1865,6 +1926,12 @@ app.post('/v1/chat/completions', async (req, res) => {
 
       const { reasoning, content } = parseThinkTags(rawText);
       const finalReasoning = nativeReasoning || reasoning;
+      if (response.data.choices[0]?.finish_reason === 'length') {
+        log('WARN', `[${userName}] ⚠ HIT THE TOKEN CAP (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}${content ? ' — reply cut off mid-way' : ' — all thinking, no reply written'}`);
+      }
+      const toolCalls = response.data.choices[0]?.message?.tool_calls;
+      const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+      if (hasToolCalls) log('INFO', `[${userName}] tool_calls: ${toolCalls.map(t => t.function?.name).join(', ')}`);
       logStitchedText('THINK', `[${userName}] reasoning`, finalReasoning);
       logStitchedText('REPLY', `[${userName}] reply`, content);
 
@@ -1877,7 +1944,8 @@ app.post('/v1/chat/completions', async (req, res) => {
           index: 0,
           message: {
             role: response.data.choices[0].message.role,
-            content: content,
+            content: hasToolCalls && !content ? null : content,
+            ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
             ...(finalReasoning ? { reasoning_content: finalReasoning } : {})
           },
           finish_reason: response.data.choices[0].finish_reason
