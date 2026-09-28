@@ -9,6 +9,28 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
+// ============================================================
+// LOGGING
+// ============================================================
+// Declared FIRST, deliberately — before anything else in this file runs.
+// This used to sit much further down, after the PROVIDER_QUOTAS_JSON
+// parsing block, whose catch handler calls log() to report a malformed
+// env var. Since log()'s body reads the const recentLogs below, and
+// consts live in the temporal dead zone until their own declaration line
+// actually executes, calling log() from code that runs BEFORE this
+// point would throw "Cannot access 'recentLogs' before initialization" —
+// turning a bad env var into a startup crash instead of a logged
+// warning. Ring buffer feeds the admin dashboard's Logs section; capped
+// so it can't grow unbounded, newest first.
+const RECENT_LOGS_MAX = 500;
+const recentLogs = [];
+function log(level, msg) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [${level}] ${msg}`);
+  recentLogs.unshift({ ts, level, msg });
+  if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Render (and most PaaS) put one reverse proxy hop in front of this app.
@@ -381,23 +403,6 @@ function checkRateLimit(apiKey) {
 }
 
 // ============================================================
-// LOGGING
-// ============================================================
-// Ring buffer feeding the admin dashboard's Logs section — this is the
-// direct answer to "I want errors somewhere I can actually check them"
-// from way back: Render's own log stream doesn't persist across
-// restarts and isn't always open at the right moment, this is. Capped
-// so it can't grow unbounded; newest first.
-const RECENT_LOGS_MAX = 500;
-const recentLogs = [];
-function log(level, msg) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [${level}] ${msg}`);
-  recentLogs.unshift({ ts, level, msg });
-  if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
-}
-
-// ============================================================
 // TOKEN ESTIMATE (rough heuristic — chars/4 — good enough for a threshold check)
 // ============================================================
 function estimateTokens(messages) {
@@ -567,7 +572,7 @@ function githubHeaders() {
 
 async function githubFetchFile(repoPath) {
   const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${encodeURIComponent(repoPath)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
-  const res = await axios.get(url, { headers: githubHeaders(), validateStatus: () => true });
+  const res = await axios.get(url, { headers: githubHeaders(), validateStatus: () => true, timeout: 10000 });
   if (res.status === 404) return null;
   if (res.status !== 200) throw new Error(`GitHub GET ${repoPath} failed: ${res.status} ${JSON.stringify(res.data)}`);
   return { sha: res.data.sha, content: Buffer.from(res.data.content, 'base64').toString('utf8') };
@@ -589,7 +594,7 @@ async function githubPutFile(repoPath, contentString, message) {
     content: Buffer.from(contentString, 'utf8').toString('base64'),
     branch: GITHUB_BRANCH,
     ...(sha ? { sha } : {}),
-  }, { headers: githubHeaders(), validateStatus: () => true });
+  }, { headers: githubHeaders(), validateStatus: () => true, timeout: 15000 });
   if (res.status !== 200 && res.status !== 201) {
     throw new Error(`GitHub PUT ${repoPath} failed: ${res.status} ${JSON.stringify(res.data)}`);
   }
@@ -1537,11 +1542,22 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     }
 
+    // Clients like Janitor/Marinara send max_tokens: 0 to mean "let the
+    // model choose the length" — but 0 is falsy in JS, so `max_tokens || X`
+    // would silently treat that as "not specified" and fall back anyway,
+    // which is actually fine EXCEPT the fallback used to be a flat 9024
+    // for every model regardless of how much a specific model's reasoning
+    // tends to need. Distinguish "client asked for a real positive number
+    // on purpose" (respect it) from "client said 0 / sent nothing" (use
+    // this hop's own configured floor, falling back to 9024 generically).
+    const clientRequestedTokens = (typeof max_tokens === 'number' && max_tokens > 0) ? max_tokens : null;
+    const hopDefaultTokens = (mapping && typeof mapping.maxTokens === 'number') ? mapping.maxTokens : 9024;
+
     const nimRequest = {
       model: mapping.model,
       messages,
       temperature: temperature || 0.6,
-      max_tokens: max_tokens || 9024,
+      max_tokens: clientRequestedTokens || hopDefaultTokens,
       stream: stream || false
     };
 
@@ -1578,6 +1594,16 @@ app.post('/v1/chat/completions', async (req, res) => {
       let inThink = false;
       let thinkSent = false;
       let accumRaw = '';
+      // Aggregated instead of logged per-chunk (see below) — a normal
+      // stream is hundreds of chunks, and logging every single one was
+      // flooding the log view badly enough to bury everything else.
+      const streamStartedAt = Date.now();
+      let chunkCount = 0;
+      let contentChars = 0;
+      let reasoningChars = 0;
+      let parseErrorCount = 0;
+      let lastParseError = null;
+      const DEBUG_STREAM_CHUNKS = process.env.DEBUG_STREAM_CHUNKS === 'true';
 
       response.data.on('data', (chunk) => {
         buffer += chunk.toString();
@@ -1595,8 +1621,16 @@ app.post('/v1/chat/completions', async (req, res) => {
 
             const nativeReasoning = delta.reasoning_content || null;
             const rawContent = delta.content || '';
+            chunkCount++;
+            contentChars += rawContent.length;
+            if (nativeReasoning) reasoningChars += nativeReasoning.length;
 
-            log('DEBUG', `[CHUNK] native_reasoning: ${JSON.stringify(nativeReasoning?.slice(0, 80))} | content: ${JSON.stringify(rawContent?.slice(0, 80))}`);
+            // Opt-in only (DEBUG_STREAM_CHUNKS=true) — full per-chunk
+            // detail for when you're actually debugging the think-tag
+            // splitting logic below, not something that runs by default.
+            if (DEBUG_STREAM_CHUNKS) {
+              log('DEBUG', `[CHUNK] native_reasoning: ${JSON.stringify(nativeReasoning?.slice(0, 80))} | content: ${JSON.stringify(rawContent?.slice(0, 80))}`);
+            }
 
             if (nativeReasoning) {
               res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -1625,6 +1659,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                 const afterThink = thinkBuffer.slice(end + 8).trim();
                 inThink = false;
                 thinkSent = true;
+                reasoningChars += reasoningText.length;
 
                 const reasoningChunk = {
                   ...data,
@@ -1649,20 +1684,28 @@ app.post('/v1/chat/completions', async (req, res) => {
             res.write(`data: ${JSON.stringify(data)}\n\n`);
 
           } catch (e) {
-            log('ERROR', `chunk parse error: ${e.message}`);
+            // Same aggregation logic — a single malformed/split chunk
+            // boundary used to log its own ERROR line; now it's counted
+            // and reported once in the summary line at 'end', with just
+            // the last error's message kept as a sample.
+            parseErrorCount++;
+            lastParseError = e.message;
             res.write(line + '\n');
           }
         });
       });
 
       response.data.on('end', () => {
-        log('INFO', `[${userName}] ✓ stream complete`);
+        const ms = Date.now() - streamStartedAt;
+        const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
+        log('INFO', `[${userName}] ✓ stream complete — ${chunkCount} chunks, ${contentChars} content chars${reasoningChars ? `, ${reasoningChars} reasoning chars` : ''}, ${ms}ms${errSuffix}`);
         res.end();
       });
       response.data.on('error', (err) => {
-        log('ERROR', `[${userName}] stream error: ${err.message}`);
+        log('ERROR', `[${userName}] stream error after ${chunkCount} chunks: ${err.message}`);
         res.end();
       });
+
 
     } else {
       const rawText = response.data.choices[0]?.message?.content || '';
@@ -1944,7 +1987,14 @@ app.get('/admin/api/logs', requireAdmin, (req, res) => {
   const level = (req.query.level || '').toUpperCase();
   const limit = Math.min(Number(req.query.limit) || RECENT_LOGS_MAX, RECENT_LOGS_MAX);
   const filtered = level ? recentLogs.filter(l => l.level === level) : recentLogs;
-  res.json({ logs: filtered.slice(0, limit), total: recentLogs.length, capacity: RECENT_LOGS_MAX });
+  // recentLogs is newest-first internally (that's what makes capping via
+  // recentLogs.length = MAX correctly drop the OLDEST entries) — but
+  // that's an implementation detail. Take the most recent `limit`
+  // entries, then flip to oldest-first before sending, so the client can
+  // just render top-to-bottom like every other log viewer/terminal,
+  // instead of newest-on-top which reads backwards.
+  const mostRecent = filtered.slice(0, limit);
+  res.json({ logs: mostRecent.reverse(), total: recentLogs.length, capacity: RECENT_LOGS_MAX });
 });
 
 app.post('/admin/api/logs/clear', requireAdmin, (req, res) => {
@@ -2448,7 +2498,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     });
   }
 
-  const { base, key } = getProviderConfig(provider);
+  const { base, key } = getProviderConfigReadOnly(provider);
   try {
     const r = await axios.get(`${base}/models`, {
       headers: { Authorization: `Bearer ${key}` },
