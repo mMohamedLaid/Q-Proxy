@@ -1231,6 +1231,20 @@ const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded you
 const TRANSIENT_4XX_PATTERNS = /degraded|overloaded|temporarily|try again|capacity|service unavailable|\bbusy\b|cold.?start|warming|queue/i;
 const MODERATION_PATTERNS = /content.?(?:policy|filter)|safety|moderat|flagged/i;
 
+// Providers shape error bodies differently (OpenAI-style {error:{message}},
+// {detail}, {message}, sometimes a bare string) — try the common shapes,
+// fall back to the raw text so nothing provider-specific is ever silently
+// dropped just because it doesn't match a known field name.
+function extractProviderMessage(bodyText) {
+  if (!bodyText) return '';
+  try {
+    const j = JSON.parse(bodyText);
+    const m = (typeof j.error === 'string' ? j.error : j.error?.message) || j.detail || j.message || j.msg || j.error?.detail;
+    if (m) return String(m);
+  } catch (_) { /* not JSON — fall through to raw text below */ }
+  return bodyText.trim().slice(0, 500);
+}
+
 const TAG_HINTS = {
   NO_HOP: 'every hop in this chain was inactive, skipped, or out of its rate/token budget',
   CLIENT_GONE: 'the client disconnected before the model answered'
@@ -1246,7 +1260,8 @@ function classifyError(err, bodyText = '') {
   const code = err?.code || '';
   const msg = err?.message || '';
   const text = `${bodyText} ${msg}`;
-  const mk = (tag, hint, httpStatus, type = 'api_error') => ({ tag, detail: status ? `HTTP ${status}` : code, hint, httpStatus: status || httpStatus, type });
+  const providerMessage = extractProviderMessage(bodyText);
+  const mk = (tag, hint, httpStatus, type = 'api_error') => ({ tag, detail: status ? `HTTP ${status}` : code, hint, httpStatus: status || httpStatus, type, providerMessage });
 
   if (TOKEN_LIMIT_PATTERNS.test(text))    return mk('CONTEXT_TOO_LONG', 'the request is bigger than this model\'s context window — trim the chat history or lower max tokens', 400, 'invalid_request_error');
   if (QUOTA_EXHAUSTED_PATTERNS.test(text)) return mk('QUOTA', 'the provider says the quota/credits are used up', 429, 'rate_limit_error');
@@ -1538,6 +1553,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         err.tag = err.tag || cls.tag;
         err.tagInfo = cls;
         const reasonStr = cls.detail ? `${cls.tag} · ${cls.detail}` : cls.tag;
+        const reasonWithMsg = cls.providerMessage ? `${reasonStr} — "${cls.providerMessage}"` : reasonStr;
         const who = `${providerConfig.provider}/${providerConfig.model}`;
 
         // The client already left (closed the tab / hit stop / its own
@@ -1591,7 +1607,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
 
         if (unlimited && budgetLeft && attemptsLeft) {
           const delay = backoffDelayMs(attemptNum);
-          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonStr}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop ? ', last hop: nothing to fall back to' : ''})...`);
+          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonWithMsg}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop ? ', last hop: nothing to fall back to' : ''})...`);
           await sleep(delay);
           continue;
         }
@@ -1599,7 +1615,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const elapsed = Date.now() - hopStartedAt;
         const triedNote = attemptNum > 1 ? ` after ${attemptNum} attempts over ${elapsed}ms` : '';
         const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached' : ` — retry window (${budgetMs}ms) used up`);
-        log('WARN', `[${cls.tag}] ${who} failed (${reasonStr})${triedNote}${whyStopped} — ${isLastHop ? 'giving up, no more hops in this chain' : 'trying fallback...'}`);
+        log('WARN', `[${cls.tag}] ${who} failed (${reasonWithMsg})${triedNote}${whyStopped} — ${isLastHop ? 'giving up, no more hops in this chain' : 'trying fallback...'}`);
         attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `${reasonStr}${triedNote}` });
         trackSkip(providerConfig.provider, providerConfig.model, reasonStr);
         break;
@@ -2072,10 +2088,14 @@ app.post('/v1/chat/completions', async (req, res) => {
       error: {
         // Shows up as-is in Janitor/Marinara error popups, so it says what
         // failed and where, not just "failed".
-        message: `[Q-Proxy · ${cls.tag}] ${where}: ${error.message || 'Internal server error'}${cls.hint ? ` — ${cls.hint}` : ''}`,
+        message: `[Q-Proxy · ${cls.tag}] ${where}: ${cls.providerMessage || error.message || 'Internal server error'}${cls.hint ? ` — ${cls.hint}` : ''}`,
         type: cls.type,
         tag: cls.tag,
-        code: httpStatus
+        code: httpStatus,
+        // Raw text so a coding agent (or you) can read exactly what the
+        // provider said, separate from Q-Proxy's own wrapper message above.
+        provider_message: cls.providerMessage || null,
+        provider: where.split('/')[0] || null
       },
       ...(Array.isArray(error.attempts) && error.attempts.length ? { attempts: error.attempts } : {})
     });
@@ -2101,6 +2121,16 @@ app.post('/v1/chat/completions', async (req, res) => {
 //    calls at all — CORS is a browser-enforced rule, not a server one.
 // ============================================================
 const ADMIN_KEY = process.env.ADMIN_KEY;
+
+// ⚠️⚠️ TEMPORARY — DELETE THIS WHOLE BLOCK (and the two places that read
+// TEMP_ADMIN_KEY in requireAdmin below) AS SOON AS YOU'RE DONE TESTING. ⚠️⚠️
+// "123" is a second admin key that works alongside ADMIN_KEY. Anyone who
+// finds your Render URL can guess it, and the admin panel can rewrite
+// models.json and push commits to your GitHub repo. To remove it: delete
+// the next line, and delete `&& !TEMP_ADMIN_KEY` / `&& provided !== TEMP_ADMIN_KEY`
+// in requireAdmin (search this file for TEMP_ADMIN_KEY).
+const TEMP_ADMIN_KEY = '123'; // TODO(DELETE AFTER TESTING)
+if (TEMP_ADMIN_KEY) log('WARN', '[admin] ⚠ TEMP_ADMIN_KEY is active — the admin panel accepts the throwaway key "123". Delete it from server.js after testing.');
 // Keyed by client IP, not one shared counter — a single global
 // {count, lockedUntil} means ANY stranger (or bot scanning for open
 // admin panels) sending 5 wrong keys locks out the real admin for up
@@ -2116,7 +2146,7 @@ app.use('/admin', (req, res, next) => {
 });
 
 function requireAdmin(req, res, next) {
-  if (!ADMIN_KEY) {
+  if (!ADMIN_KEY && !TEMP_ADMIN_KEY) { // TEMP_ADMIN_KEY: delete with the temp-key block above
     return res.status(503).json({
       error: { message: 'Admin panel disabled — set ADMIN_KEY in your environment to enable it.', type: 'admin_disabled', code: 503 }
     });
@@ -2136,7 +2166,7 @@ function requireAdmin(req, res, next) {
   // bookmark convenience is a client-side-only convenience (see
   // admin.html) and doesn't need this fallback to keep working.
   const provided = req.headers['x-admin-key'] || '';
-  if (provided !== ADMIN_KEY) {
+  if (provided !== ADMIN_KEY && provided !== TEMP_ADMIN_KEY) { // TEMP_ADMIN_KEY: delete with the temp-key block above
     state.count++;
     if (state.count >= 5) {
       const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
@@ -2506,6 +2536,39 @@ const LITEROUTER_KNOWN_MODELS = {
   'step-3.5-flash-non-reasoning': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
 };
 
+// Literouter model ids can carry stacked variant suffixes (:free, :metered,
+// :full-context, :metered:full-context). Peel them off to find the base model
+// the Premium Basic table is keyed on.
+function literouterBaseAndVariants(id) {
+  let base = String(id || '');
+  const variants = [];
+  for (;;) {
+    const m = base.match(/:(free|metered|full-context)$/);
+    if (!m) break;
+    variants.unshift(m[1]);
+    base = base.slice(0, -m[0].length);
+  }
+  return { base, variants };
+}
+
+// Sync tiers:
+//   free         — :free ids (own per-model daily budget)
+//   premium      — reachable through the free plan's shared premium pool
+//                  (base model is on the Premium Basic list; a :metered /
+//                  :full-context variant is assumed to draw from the same
+//                  pool, per Literouter's credits docs — shown as a tag)
+//   inaccessible — base model is known NOT to be on Premium Basic
+//                  (a higher paid plan is needed) — hidden from the sync
+//   unknown      — base model isn't in the hand-transcribed table at all
+function classifyLiterouterModel(id) {
+  const { base, variants } = literouterBaseAndVariants(id);
+  const known = LITEROUTER_KNOWN_MODELS[base] || null;
+  const extra = variants.filter(v => v !== 'free').join(':') || null;
+  if (variants.includes('free')) return { tier: 'free', cost: null, uncensored: known ? known.uncensored : null, variant: extra };
+  if (known) return { tier: known.premiumBasic ? 'premium' : 'inaccessible', cost: known.premiumCost, uncensored: known.uncensored, variant: extra };
+  return { tier: 'unknown', cost: null, uncensored: null, variant: extra };
+}
+
 function literouterKnownInfo(model) {
   const base = String(model || '').replace(/:free$/, '');
   return LITEROUTER_KNOWN_MODELS[base] || null;
@@ -2843,7 +2906,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
       }
     }
 
-    const newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
+    let newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
     const noLongerListed = [...configuredIds].filter(id => !liveIds.includes(id));
     // Three-way split, shown before you add a model: 'free' (no cost),
     // 'premium' (usable, but from a tighter/shared pool than free),
@@ -2856,21 +2919,20 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     // table, not a live provider signal; everything else is 'unknown'
     // rather than a hardcoded guess about a provider's own model tiers.
     const modelInfo = {};
+    let hiddenInaccessible = 0;
     if (provider === 'literouter') {
-      for (const id of newlyAvailable) {
-        const isFree = id.endsWith(':free');
-        const known = literouterKnownInfo(id);
-        modelInfo[id] = isFree
-          ? { tier: 'free', cost: null, uncensored: known ? known.uncensored : null }
-          : known
-            ? { tier: known.premiumBasic ? 'premium' : 'inaccessible', cost: known.premiumCost, uncensored: known.uncensored }
-            : { tier: 'unknown', cost: null, uncensored: null };
-      }
+      for (const id of newlyAvailable) modelInfo[id] = classifyLiterouterModel(id);
+      // Models this plan can't reach are worthless to list — drop them
+      // (only the count is kept, so the panel can say something was hidden).
+      const usable = newlyAvailable.filter(id => modelInfo[id].tier !== 'inaccessible');
+      hiddenInaccessible = newlyAvailable.length - usable.length;
+      for (const id of newlyAvailable) if (modelInfo[id].tier === 'inaccessible') delete modelInfo[id];
+      newlyAvailable = usable.sort((a, b) => a.localeCompare(b));
     } else {
       for (const id of newlyAvailable) modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null };
     }
 
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
+    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, hiddenInaccessible, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
