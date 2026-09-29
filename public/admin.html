@@ -243,6 +243,18 @@
      it breaks onto its own full-width line for room to work in, while
      everything else around it keeps wrapping normally. */
   .sync-items { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Collapsible tier groups (Literouter sync) */
+  .sync-tier { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: rgba(255,255,255,.015); }
+  .sync-tier > summary {
+    cursor: pointer; padding: 6px 10px; font-size: 11px; color: var(--text-dim); list-style: none;
+    display: flex; align-items: center; gap: 8px; user-select: none;
+  }
+  .sync-tier > summary::-webkit-details-marker { display: none; }
+  .sync-tier > summary::before { content: '▸'; color: var(--text-faint); font-size: 10px; transition: transform .12s; }
+  .sync-tier[open] > summary::before { transform: rotate(90deg); }
+  .sync-tier-count { font-size: 10px; background: rgba(255,255,255,.07); border-radius: 999px; padding: 0 7px; color: var(--text); }
+  .sync-tier-hint { color: var(--text-faint); font-size: 10px; }
+  .sync-tier > .sync-items { padding: 4px 10px 10px; }
   .sync-item-wrap { flex: 0 1 auto; }
   .sync-item-wrap.expanded { flex: 1 0 100%; }
   .sync-item {
@@ -537,6 +549,18 @@
   let quickUsageTab = 'used';
   let reasoningSchemas = {};
   const syncState = {};
+  // Which Literouter tier groups are expanded, remembered across re-renders
+  // (the sync panel is rebuilt on every click/scan). Keys: "provider:tier".
+  const syncTierOpen = {};
+  const SYNC_TIER_META = {
+    free:    { title: 'Free', hint: ':free models — each has its own daily budget', open: true },
+    premium: { title: 'Premium Basic', hint: 'spend the shared premium-credits pool', open: true },
+    unknown: { title: 'Unverified', hint: 'not in the Premium Basic table — may or may not be reachable', open: false }
+  };
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d && d.matches && d.matches('details[data-sync-tier]')) syncTierOpen[d.getAttribute('data-sync-tier')] = d.open;
+  }, true);
   const filterState = { search: '', provider: 'all', status: 'all', limitType: 'all', family: 'all', includeTokens: [], excludeTokens: [], tags: new Set() };
   const FAMILY_HINTS = ['deepseek', 'gemini', 'gemma', 'glm', 'kimi', 'gpt-oss', 'qwen', 'minimax', 'nemotron', 'llama', 'mistral', 'grok', 'devstral', 'mimo'];
   const DIRECT_SUFFIX_RE = /-(nv|z|g|or|lr|mn|ds)$/;
@@ -1019,16 +1043,22 @@
     if (state.error) return `<div class="sync-result" data-sync-result="${provider}">Sync failed: ${escapeHtml(state.error)}</div>`;
     const r = state.data;
     if (!r) return '';
-    const addRows = r.newlyAvailable.length
-      ? `<div class="sync-items">${r.newlyAvailable.map(m => {
-          const st = syncDetectState[syncDetectKey(provider, m)] || {};
-          const scanned = st.result && st.result.ok;
-          const info = (r.modelInfo && r.modelInfo[m]) || null;
-          const tierLabels = { free: 'free', premium: 'premium', inaccessible: 'not reachable on this plan' };
-          const infoTags = (info && info.tier !== 'unknown')
-            ? `<span class="sync-item-info${info.tier === 'inaccessible' ? ' warn' : ''}">${escapeHtml(tierLabels[info.tier] || info.tier)}${info.cost != null ? ` · ${info.cost}x` : ''}${info.uncensored === true ? ' · uncensored' : info.uncensored === false ? ' · moderated' : ''}</span>`
-            : '';
-          return `<div class="sync-item-wrap${st.open ? ' expanded' : ''}">
+    const grouped = provider === 'literouter';
+    const renderItem = (m) => {
+      const st = syncDetectState[syncDetectKey(provider, m)] || {};
+      const scanned = st.result && st.result.ok;
+      const info = (r.modelInfo && r.modelInfo[m]) || null;
+      const tierLabels = { free: 'free', premium: 'premium', inaccessible: 'not reachable on this plan' };
+      // Inside a tier group the tier word is redundant — show only what differs per model.
+      const bits = [];
+      if (info) {
+        if (!grouped && info.tier !== 'unknown') bits.push(tierLabels[info.tier] || info.tier);
+        if (info.cost != null) bits.push(`${info.cost}x`);
+        if (info.variant) bits.push(`:${info.variant}`);
+        if (info.uncensored === true) bits.push('uncensored'); else if (info.uncensored === false) bits.push('moderated');
+      }
+      const infoTags = bits.length ? `<span class="sync-item-info">${escapeHtml(bits.join(' · '))}</span>` : '';
+      return `<div class="sync-item-wrap${st.open ? ' expanded' : ''}">
             <div class="sync-item">
               ${infoTags}
               <span class="sync-item-code">${escapeHtml(m)}</span>
@@ -1037,8 +1067,30 @@
             </div>
             ${renderSyncDetectPanel(provider, m)}
           </div>`;
-        }).join('')}</div>`
-      : '<div class="sync-result-note">None found.</div>';
+    };
+    let addRows;
+    if (!r.newlyAvailable.length) {
+      addRows = '<div class="sync-result-note">None found.</div>';
+    } else if (grouped) {
+      const groups = { free: [], premium: [], unknown: [] };
+      r.newlyAvailable.forEach(m => {
+        const t = (r.modelInfo && r.modelInfo[m] && r.modelInfo[m].tier) || 'unknown';
+        (groups[t] || groups.unknown).push(m);
+      });
+      addRows = Object.keys(SYNC_TIER_META).filter(t => groups[t].length).map(t => {
+        const meta = SYNC_TIER_META[t];
+        const key = `${provider}:${t}`;
+        const isOpen = syncTierOpen[key] !== undefined ? syncTierOpen[key] : meta.open;
+        return `<details class="sync-tier" data-sync-tier="${key}"${isOpen ? ' open' : ''}>
+          <summary>${escapeHtml(meta.title)} <span class="sync-tier-count">${groups[t].length}</span><span class="sync-tier-hint">${escapeHtml(meta.hint)}</span></summary>
+          <div class="sync-items">${groups[t].map(renderItem).join('')}</div>
+        </details>`;
+      }).join('');
+    } else {
+      addRows = `<div class="sync-items">${r.newlyAvailable.map(renderItem).join('')}</div>`;
+    }
+    const hiddenNote = r.hiddenInaccessible
+      ? `<div class="sync-result-note" style="margin-top:6px;">${r.hiddenInaccessible} more hidden — not reachable on your plan.</div>` : '';
     const removeRows = r.noLongerListed.length
       ? `<div class="sync-items">${r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')}</div>`
       : '<div class="sync-result-note">None found.</div>';
@@ -1049,6 +1101,7 @@
         <div class="sync-result-box">
           <div class="sync-result-title">Newly available (${r.newlyAvailable.length})</div>
           ${addRows}
+          ${hiddenNote}
         </div>
         <div class="sync-result-box">
           <div class="sync-result-title">Configured here but not found live (${r.noLongerListed.length})</div>
