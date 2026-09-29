@@ -20,7 +20,9 @@
     "limitType": "rate-limited",
     "tpmLimit": 14000,
     "notes": "14K RPD, 16K TPM — buffer kept under real cap",
-    "rpd": 14000
+    "rpd": 14400,
+    "rpm": 30,
+    "tpm": 16000
   },
   "gemma-4-26b-g": {
     "model": "gemma-4-26b-a4b-it",
@@ -28,7 +30,10 @@
     "status": "active",
     "limitType": "rate-limited",
     "tpmLimit": 14000,
-    "notes": "faster (MoE)"
+    "notes": "faster (MoE)",
+    "rpm": 30,
+    "tpm": 16000,
+    "rpd": 14400
   },
   "gemma-4-31b-nv": {
     "model": "google/gemma-4-31b-it",
@@ -79,7 +84,9 @@
         "limitType": "rate-limited"
       }
     },
-    "rpd": 14000
+    "rpd": 14400,
+    "rpm": 30,
+    "tpm": 16000
   },
   "gemma-4-26b": {
     "custom": true,
@@ -93,7 +100,10 @@
       "provider": "openrouter",
       "status": "active",
       "limitType": "rate-limited"
-    }
+    },
+    "rpm": 30,
+    "tpm": 16000,
+    "rpd": 14400
   },
   "gemini-flash-lite-g": {
     "model": "gemini-3.1-flash-lite-preview",
@@ -101,7 +111,9 @@
     "status": "active",
     "limitType": "rate-limited",
     "notes": "500/day — primary",
-    "rpd": 500
+    "rpd": 500,
+    "rpm": 15,
+    "tpm": 250000
   },
   "gemini-flash-g": {
     "model": "gemini-3-flash",
@@ -109,7 +121,9 @@
     "status": "active",
     "limitType": "rate-limited",
     "notes": "20/day — use sparingly",
-    "rpd": 20
+    "rpd": 20,
+    "rpm": 5,
+    "tpm": 250000
   },
   "gemini-2.5-flash-g": {
     "model": "gemini-2.5-flash",
@@ -117,7 +131,9 @@
     "status": "active",
     "limitType": "rate-limited",
     "notes": "20/day — use sparingly",
-    "rpd": 20
+    "rpd": 20,
+    "rpm": 5,
+    "tpm": 250000
   },
   "deepseek-r1": {
     "model": "deepseek-r1:free",
@@ -398,7 +414,10 @@
     "model": "models/gemini-3.8-flash",
     "provider": "google",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "rpm": 5,
+    "tpm": 250000,
+    "rpd": 20
   },
   "glm-5.3-nv": {
     "model": "z-ai/glm-5.3",
@@ -414,7 +433,10 @@
     "model": "models/gemini-3.7-flash",
     "provider": "google",
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "rpm": 5,
+    "tpm": 250000,
+    "rpd": 20
   },
   "deepseek-v4.1-flash-nv": {
     "model": "deepseek-ai/deepseek-v4.1-flash",
@@ -436,6 +458,9 @@
     "reasoningSchema": null,
     "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "rpm": 5,
+    "tpm": 250000,
+    "rpd": 20
   }
 }
