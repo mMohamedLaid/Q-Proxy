@@ -1,9 +1,16 @@
 {
-  "savedAt": "2026-09-30T20:46:30.758Z",
-  "literouterKeyState": {},
+  "savedAt": "2026-09-30T20:54:00.775Z",
+  "literouterKeyState": {
+    "0|glm-5.2:free": {
+      "count": 1,
+      "day": "2026-09-30"
+    }
+  },
   "literouterPremiumKeyState": [],
-  "literouterFreeModelCursor": {},
-  "literouterLastResetDay": null,
+  "literouterFreeModelCursor": {
+    "glm-5.2:free": 0
+  },
+  "literouterLastResetDay": "2026-09-30",
   "literouterRotationIndex": 0,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
