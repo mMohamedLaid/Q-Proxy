@@ -397,6 +397,13 @@
   .log-line.lvl-THINK .msg, .log-line.lvl-REPLY .msg { flex-basis: 100%; line-height: 1.5; }
   .log-line.lvl-THINK .msg { color: #B9B3D6; }
   .log-line.lvl-REPLY .msg { color: var(--text); }
+  /* What was actually sent (one entry per request, not one line per message) */
+  .log-line.lvl-PROMPT .lvl { color: #5EEAD4; }
+  .log-line.lvl-PROMPT .msg { flex-basis: 100%; line-height: 1.5; color: #9FB8B3; }
+  /* Request id — click to show only that request (parallel requests interleave) */
+  .log-line .rid { flex-shrink: 0; font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; cursor: pointer; }
+  .log-line .rid:hover { color: var(--text); border-color: var(--text-faint); }
+  .log-tz-note { font-size: 11px; color: var(--text-faint); }
   .logs-empty { padding: 24px; text-align: center; color: var(--text-faint); }
 
   /* ---------- Add model form ---------- */
@@ -510,9 +517,12 @@
         <option value="INFO">INFO only</option>
         <option value="THINK">THINK only (reasoning)</option>
         <option value="REPLY">REPLY only</option>
+        <option value="PROMPT">PROMPT only (what was sent)</option>
       </select>
+      <input type="text" id="log-rid-filter" placeholder="request #id" title="Show only one request's lines. Click any #id in the log to fill this in." style="width:96px;">
       <button type="button" class="btn-secondary" id="log-refresh-btn">Refresh</button>
-      <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh"> Auto-refresh (5s)</label>
+      <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh" checked> Auto-refresh (5s)</label>
+      <span class="log-tz-note" id="log-tz-note"></span>
       <button type="button" class="btn-secondary" id="log-clear-btn" style="border-color: rgba(248,113,113,.3); color: var(--broken);">Clear</button>
     </div>
     <div class="logs-view" id="logs-view"></div>
@@ -555,6 +565,11 @@
   const SYNC_TIER_META = {
     free:    { title: 'Free', hint: ':free models — each has its own daily budget', open: true },
     premium: { title: 'Premium Basic', hint: 'spend the shared premium-credits pool', open: true },
+    // Everything that is neither Free nor Premium Basic lives in one collapsed
+    // group with two nested collapsibles inside it (replaces the old
+    // "N more hidden" note — nothing is hidden any more).
+    other:   { title: 'Not Free / Premium Basic', hint: 'not usable on your plan, or not in the tables', open: false },
+    inaccessible: { title: 'Not reachable on your plan', hint: 'needs a higher paid tier', open: false },
     unknown: { title: 'Unverified', hint: 'not in the Premium Basic table — may or may not be reachable', open: false }
   };
   document.addEventListener('toggle', (e) => {
@@ -807,15 +822,15 @@
       else if (hop.dailyCap != null && hop.dailyCap !== '') bits.push(`${n(hop.dailyCap)} requests/day per key · resets 00:00 GMT+7`);
       else bits.push('no per-model daily cap set (treated as unlimited)');
     } else if (hop.provider === 'google') {
-      if (hop.rpm) bits.push(`${n(hop.rpm)} RPM`);
-      if (hop.tpm) bits.push(`${n(hop.tpm)} TPM`);
-      if (hop.rpd) bits.push(`${n(hop.rpd)} RPD (resets midnight Pacific)`);
+      if (hop.rpm) bits.push(`${n(hop.rpm)} requests/min`);
+      if (hop.tpm) bits.push(`${n(hop.tpm)} input tokens/min`);
+      if (hop.rpd) bits.push(`${n(hop.rpd)} requests/day (resets midnight Pacific)`);
       if (!bits.length) bits.push('none set — not tracked (Edit to add RPM / TPM / RPD)');
-      if (hop.tpmLimit) bits.push(`${n(hop.tpmLimit)} tokens/min request-size budget`);
+      if (hop.tpmLimit) bits.push(`max request size ~${n(hop.tpmLimit)} input tokens (hop skipped if one request is bigger)`);
     } else if (hop.provider === 'openrouter') {
       bits.push('50 requests/day per key, shared by every model · resets 00:00 UTC');
     } else if (hop.tpmLimit) {
-      bits.push(`${n(hop.tpmLimit)} tokens/min budget`);
+      bits.push(`max request size ~${n(hop.tpmLimit)} input tokens (hop skipped if one request is bigger)`);
     }
     if (hop.maxTokens) bits.push(`max_tokens floor ${n(hop.maxTokens)}`);
     if (hop.tools === false) bits.push('no tool calling');
@@ -872,7 +887,7 @@
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
         ${showOrder ? `<span class="hop-order">#${i + 1}</span>` : ''}
-        <span class="hop-provider">${PROVIDER_LABELS[hop.provider] || hop.provider}</span>
+        <span class="hop-provider">${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span>
         <span class="hop-model">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
         ${skipBadge}
@@ -1053,6 +1068,11 @@
       const bits = [];
       if (info) {
         if (!grouped && info.tier !== 'unknown') bits.push(tierLabels[info.tier] || info.tier);
+        if (info.limits) {
+          const L = info.limits, nn = (v) => Number(v).toLocaleString();
+          if (L.noFreeAccess) bits.push('0 / 0 / 0 on free tier');
+          else bits.push([L.rpm != null ? nn(L.rpm) + ' RPM' : null, L.tpm != null ? nn(L.tpm) + ' TPM' : null, L.rpd != null ? nn(L.rpd) + ' RPD' : null].filter(Boolean).join(' · '));
+        }
         if (info.cost != null) bits.push(`${info.cost}x`);
         if (info.variant) bits.push(`:${info.variant}`);
         if (info.uncensored === true) bits.push('uncensored'); else if (info.uncensored === false) bits.push('moderated');
@@ -1072,36 +1092,43 @@
     if (!r.newlyAvailable.length) {
       addRows = '<div class="sync-result-note">None found.</div>';
     } else if (grouped) {
-      const groups = { free: [], premium: [], unknown: [] };
+      const groups = { free: [], premium: [], inaccessible: [], unknown: [] };
       r.newlyAvailable.forEach(m => {
         const t = (r.modelInfo && r.modelInfo[m] && r.modelInfo[m].tier) || 'unknown';
         (groups[t] || groups.unknown).push(m);
       });
-      addRows = Object.keys(SYNC_TIER_META).filter(t => groups[t].length).map(t => {
+      const tierBlock = (t, inner) => {
         const meta = SYNC_TIER_META[t];
         const key = `${provider}:${t}`;
         const isOpen = syncTierOpen[key] !== undefined ? syncTierOpen[key] : meta.open;
+        const count = t === 'other' ? groups.inaccessible.length + groups.unknown.length : groups[t].length;
         return `<details class="sync-tier" data-sync-tier="${key}"${isOpen ? ' open' : ''}>
-          <summary>${escapeHtml(meta.title)} <span class="sync-tier-count">${groups[t].length}</span><span class="sync-tier-hint">${escapeHtml(meta.hint)}</span></summary>
-          <div class="sync-items">${groups[t].map(renderItem).join('')}</div>
+          <summary>${escapeHtml(meta.title)} <span class="sync-tier-count">${count}</span><span class="sync-tier-hint">${escapeHtml(meta.hint)}</span></summary>
+          ${inner}
         </details>`;
-      }).join('');
+      };
+      const itemsBlock = (t) => `<div class="sync-items">${groups[t].map(renderItem).join('')}</div>`;
+      const up = ['free', 'premium'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+      const nested = ['inaccessible', 'unknown'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+      addRows = up + (nested ? tierBlock('other', `<div style="margin-left:10px;">${nested}</div>`) : '');
     } else {
       addRows = `<div class="sync-items">${r.newlyAvailable.map(renderItem).join('')}</div>`;
     }
-    const hiddenNote = r.hiddenInaccessible
-      ? `<div class="sync-result-note" style="margin-top:6px;">${r.hiddenInaccessible} more hidden — not reachable on your plan.</div>` : '';
+    // Age of the saved limits snapshot (provider-limits.json) that sync-add pre-fills from.
+    const lm = r.limitsMeta;
+    const limitsNote = lm
+      ? `<div class="${lm.stale ? 'sync-partial-note' : 'sync-result-note'}">${lm.stale ? '⚠ ' : ''}Limits pre-filled on add come from a saved snapshot captured ${escapeHtml(lm.capturedAt)} (${lm.ageDays} day${lm.ageDays === 1 ? '' : 's'} ago)${lm.stale ? ` — older than ${lm.staleAfterDays} days, re-check the provider's dashboard and refresh provider-limits.json` : ''}.</div>` : '';
     const removeRows = r.noLongerListed.length
       ? `<div class="sync-items">${r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')}</div>`
       : '<div class="sync-result-note">None found.</div>';
     return `<div class="sync-result" data-sync-result="${provider}">
       <div class="sync-result-head">Live models at ${escapeHtml(PROVIDER_LABELS[provider] || provider)}: ${r.liveCount}</div>
       ${r.partialNote ? `<div class="sync-partial-note">⚠ Partial data: ${escapeHtml(r.partialNote)}</div>` : ''}
+      ${limitsNote}
       <div class="sync-result-grid">
         <div class="sync-result-box">
           <div class="sync-result-title">Newly available (${r.newlyAvailable.length})</div>
           ${addRows}
-          ${hiddenNote}
         </div>
         <div class="sync-result-box">
           <div class="sync-result-title">Configured here but not found live (${r.noLongerListed.length})</div>
@@ -1193,7 +1220,7 @@
   }
 
   // Shows a live countdown to this provider's next quota reset, only for
-  // providers we actually know a reset time for (currently Literouter,
+  // providers we actually know a reset time for (Literouter, OpenRouter,
   // Google) — silently shows nothing for any other tab, including '__all__'.
   function renderProviderResetTimer(provider) {
     if (resetCountdownInterval) { clearInterval(resetCountdownInterval); resetCountdownInterval = null; }
@@ -1362,18 +1389,43 @@
   // ---------- logs ----------
   let logAutoRefreshTimer = null;
   let currentLogLevel = '';
+  let currentLogRid = '';
+  let lastLogSig = '';
 
-  async function loadLogs() {
+  // Times in this panel are YOUR local time; Render's console (and the server)
+  // stamp in UTC. Shown so the two are never confused while debugging.
+  (function () {
+    const off = -new Date().getTimezoneOffset();
+    const sign = off >= 0 ? '+' : '−';
+    const h = Math.floor(Math.abs(off) / 60), m = Math.abs(off) % 60;
+    const el = document.getElementById('log-tz-note');
+    if (el) el.textContent = `times: your local time (UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}) · Render console: UTC`;
+  })();
+
+  function startLogAutoRefresh() {
+    if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(loadLogs, 5000);
+  }
+
+  async function loadLogs(force) {
     try {
-      const res = await api('/admin/api/logs' + (currentLogLevel ? `?level=${encodeURIComponent(currentLogLevel)}` : ''));
-      renderLogs(res);
+      const qs = [];
+      if (currentLogLevel) qs.push(`level=${encodeURIComponent(currentLogLevel)}`);
+      if (currentLogRid) qs.push(`rid=${encodeURIComponent(currentLogRid)}`);
+      const res = await api('/admin/api/logs' + (qs.length ? '?' + qs.join('&') : ''));
+      renderLogs(res, force === true);
     } catch (err) {
       $('#logs-view').innerHTML = `<div class="logs-empty">Couldn't load logs: ${escapeHtml(err.message)}</div>`;
     }
   }
 
-  function renderLogs(res) {
+  function renderLogs(res, force) {
     $('#log-count').textContent = `${res.logs.length} of ${res.total} (cap ${res.capacity})`;
+    // With auto-refresh on by default, don't rebuild the list (and lose a text
+    // selection / scroll position) when nothing has changed. Live THINK/REPLY
+    // entries grow in place, so the total text length is part of the signature.
+    const sig = `${res.logs.length}|${res.total}|${res.logs.length ? res.logs[res.logs.length - 1].ts : ''}|${res.logs.reduce((n, l) => n + (l.msg ? l.msg.length : 0), 0)}`;
+    if (!force && sig === lastLogSig) return;
+    lastLogSig = sig;
     if (!res.logs.length) {
       $('#logs-view').innerHTML = '<div class="logs-empty">No log lines yet — they\'ll show up here as requests come in.</div>';
       return;
@@ -1384,21 +1436,29 @@
     // auto-refresh shouldn't yank them back down.
     const wasNearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
     view.innerHTML = res.logs.map(l =>
-      `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span><span class="lvl">${escapeHtml(l.level)}</span><span class="msg">${tagifyLogMsg(escapeHtml(l.msg))}</span></div>`
+      `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span><span class="lvl">${escapeHtml(l.level)}</span>${l.rid ? `<span class="rid" data-rid="${escapeHtml(l.rid)}" title="Show only this request">#${escapeHtml(l.rid)}</span>` : ''}<span class="msg">${tagifyLogMsg(escapeHtml(l.msg))}</span></div>`
     ).join('');
     if (wasNearBottom) view.scrollTop = view.scrollHeight;
   }
 
-  $('#log-level-filter').addEventListener('change', e => { currentLogLevel = e.target.value; loadLogs(); });
-  $('#log-refresh-btn').addEventListener('click', loadLogs);
+  $('#log-level-filter').addEventListener('change', e => { currentLogLevel = e.target.value; loadLogs(true); });
+  $('#log-rid-filter').addEventListener('input', e => { currentLogRid = e.target.value.replace(/^#/, '').trim(); loadLogs(true); });
+  $('#logs-view').addEventListener('click', e => {
+    const chip = e.target.closest && e.target.closest('.rid');
+    if (!chip) return;
+    const input = $('#log-rid-filter');
+    input.value = input.value === chip.dataset.rid ? '' : chip.dataset.rid;   // click again to clear
+    currentLogRid = input.value; loadLogs(true);
+  });
+  $('#log-refresh-btn').addEventListener('click', () => loadLogs(true));
   $('#log-clear-btn').addEventListener('click', async () => {
     if (!confirm('Clear the log buffer? This only clears what Q-Proxy is holding in memory for this view — it has no effect on Render\'s own log history.')) return;
-    try { await api('/admin/api/logs/clear', { method: 'POST' }); await loadLogs(); }
+    try { await api('/admin/api/logs/clear', { method: 'POST' }); await loadLogs(true); }
     catch (err) { alert('Could not clear: ' + err.message); }
   });
   $('#log-auto-refresh').addEventListener('change', e => {
     if (logAutoRefreshTimer) { clearInterval(logAutoRefreshTimer); logAutoRefreshTimer = null; }
-    if (e.target.checked) logAutoRefreshTimer = setInterval(loadLogs, 5000);
+    if (e.target.checked) startLogAutoRefresh();
   });
 
   // ---------- actions ----------
@@ -2138,10 +2198,10 @@
           ${renderReasoningControls(h, i)}
           <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(st => `<option value="${st}" ${h.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(st => `<option value="${st}" ${h.limitType === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
-          <div class="field"><label>TPM limit (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
-          ${h.provider === 'google' ? `<div class="field"><label>RPM (Google, opt.)</label><input type="number" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="blank = not tracked"></div>
-          <div class="field"><label>TPM (Google, opt.)</label><input type="number" data-f="tpm" data-idx="${i}" value="${h.tpm}" placeholder="blank = not tracked"></div>
-          <div class="field"><label>RPD (Google, opt.)</label><input type="number" data-f="rpd" data-idx="${i}" value="${h.rpd}" placeholder="blank = not tracked"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Google's published per-model limits. Only the ones you fill in are enforced: when one is used up the hop is skipped (next key, then next hop). RPM/TPM reset every minute; RPD resets at midnight Pacific Time.</div></div>` : ''}
+          <div class="field"> <label title="Skip this hop when a single request's estimated INPUT size is bigger than this. Not a per-minute budget — that is TPM (Google) below.">Max request size, tokens (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
+          ${h.provider === 'google' ? `<div class="field"><label>RPM — requests/min (Google, opt.)</label><input type="number" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="blank = not tracked"></div>
+          <div class="field"><label>TPM — input tokens/min (Google, opt.)</label><input type="number" data-f="tpm" data-idx="${i}" value="${h.tpm}" placeholder="blank = not tracked"></div>
+          <div class="field"><label>RPD — requests/day (Google, opt.)</label><input type="number" data-f="rpd" data-idx="${i}" value="${h.rpd}" placeholder="blank = not tracked"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Google's published per-model limits. Only the ones you fill in are enforced; when one is used up the hop is skipped (next key, then next hop). RPM = requests per minute. TPM = INPUT tokens per minute (max_tokens/output isn't counted; one request bigger than the TPM can never pass). Both reset every minute. RPD = requests per day: once it's used up the model is out until midnight Pacific Time, whatever RPM/TPM say.</div></div>` : ''}
           <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div></div>
           <div class="field"><label>Tool calling</label><select data-f="tools" data-idx="${i}"><option value="" ${h.tools === '' ? 'selected' : ''}>Allowed (default)</option><option value="false" ${h.tools === 'false' ? 'selected' : ''}>Not supported — skip this hop for tool requests</option></select></div>
           ${h.provider === 'literouter' ? `<div class="field"><label>Daily cap (opt., Literouter)</label><input type="number" data-f="dailyCap" data-idx="${i}" value="${h.dailyCap}" placeholder="blank = unlimited"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Literouter's own per-model daily free-request cap (e.g. 5 or 30). Leave blank if Literouter lists it as unlimited — this drives the per-key rotation and the usage bars below, not the request itself.</div></div>` : ''}
@@ -2382,7 +2442,12 @@
     }));
 
     $$('#hop-list .save-preset-btn').forEach(btn => btn.addEventListener('click', async e => {
-      const idx = +e.currentTarget.dataset.idx;
+      // Use the captured `btn`, not e.currentTarget — currentTarget is reset
+      // to null the moment the click event finishes dispatching, which is
+      // before the await below resumes. Reading/writing it after the API
+      // call used to throw "Cannot set properties of null", so every
+      // SUCCESSFUL preset save surfaced as "Could not save preset".
+      const idx = +btn.dataset.idx;
       const h = hopState[idx];
       const config = {
         reasoningSchema: h.reasoningSchema,
@@ -2392,15 +2457,15 @@
         reasoningFieldTransport: h.reasoningFieldTransport || {},
         reasoningFieldOptions: h.reasoningFieldOptions || {}
       };
-      const btnLabel = e.currentTarget.textContent;
-      e.currentTarget.textContent = '…';
+      const btnLabel = btn.textContent;
+      btn.textContent = '…';
       try {
         await api('/admin/api/presets', { method: 'POST', body: { provider: h.provider, model: h.model.trim(), config } });
-        e.currentTarget.textContent = '✓';
-        setTimeout(() => { e.currentTarget.textContent = btnLabel; }, 1200);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = btnLabel; }, 1200);
       } catch (err) {
         alert('Could not save preset: ' + err.message);
-        e.currentTarget.textContent = btnLabel;
+        btn.textContent = btnLabel;
       }
     }));
   }
@@ -2466,7 +2531,8 @@
     renderWarnings(modelsRes.models, githubRes);
     renderProviders(modelsRes.models, usageIndex);
     renderUsage(usageRes);
-    await loadLogs();
+    await loadLogs(true);
+    if ($('#log-auto-refresh').checked) startLogAutoRefresh();
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
 
