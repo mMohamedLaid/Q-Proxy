@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-09-30T12:47:25.133Z",
+  "savedAt": "2026-09-30T20:46:30.758Z",
   "literouterKeyState": {},
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
@@ -30,7 +30,8 @@
   ],
   "openrouterKeyIndex": 0,
   "googleModelCursor": {
-    "models/gemini-3.8-flash": 0
+    "models/gemini-3.8-flash": 0,
+    "gemma-4-31b-it": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -38,6 +39,14 @@
       "rpmCount": 1,
       "tpmWindowMinute": 29846207,
       "tpmTokens": 15004,
+      "rpdDay": "2026-09-30",
+      "rpdCount": 1
+    },
+    "gemma-4-31b-it|0": {
+      "rpmWindowMinute": 29846686,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29846686,
+      "tpmTokens": 3266,
       "rpdDay": "2026-09-30",
       "rpdCount": 1
     }
