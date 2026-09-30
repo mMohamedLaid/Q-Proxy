@@ -1,0 +1,852 @@
+{
+  "_readme": "Static provider limit snapshots pasted by hand from each provider's own dashboard (no API returns them). Used by Admin sync-add to pre-fill limits on new hops. Refresh by re-pasting; bump capturedAt. Loaded once at boot by server.js.",
+  "tpmCountsInputOnly": [
+    "google"
+  ],
+  "_tpmNote": "Providers whose TPM (tokens per minute) limit counts INPUT tokens only — max_tokens/output is NOT added when checking it. Confirmed for Google AI Studio. For any provider not listed, how the limit is counted is unknown, so Q-Proxy stays conservative and counts input + max_tokens. Add a provider here only once its dashboard confirms it counts input only.",
+  "google": {
+    "capturedAt": "2026-09-30",
+    "staleAfterDays": 30,
+    "source": "Google AI Studio rate-limit page (free tier). Columns are RPM / TPM (input tokens per minute) / RPD.",
+    "slugNote": "\"slugs\" are the API model ids matched against; derived by naming convention from the display name (AI Studio does not show API slugs), so a brand-new model may need a slug added here. null = Unlimited / not applicable.",
+    "models": {
+      "antigravity": {
+        "label": "Antigravity",
+        "category": "Agents",
+        "slugs": [],
+        "rpm": 60,
+        "tpm": 100000,
+        "rpd": 100
+      },
+      "deep-research-pro-preview": {
+        "label": "Deep Research Pro Preview",
+        "category": "Agents",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-2-flash": {
+        "label": "Gemini 2 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-2-flash",
+          "gemini-2-flash-preview"
+        ],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-2-flash-lite": {
+        "label": "Gemini 2 Flash Lite",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-2-flash-lite",
+          "gemini-2-flash-lite-preview"
+        ],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "computer-use-preview": {
+        "label": "Computer Use Preview",
+        "category": "Other models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-2.5-flash": {
+        "label": "Gemini 2.5 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "nano-banana-gemini-2.5-flash-preview-image": {
+        "label": "Nano Banana (Gemini 2.5 Flash Preview Image)",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-2.5-flash-lite": {
+        "label": "Gemini 2.5 Flash Lite",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-2.5-flash-lite",
+          "gemini-2.5-flash-lite-preview"
+        ],
+        "rpm": 10,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemini-2.5-flash-tts": {
+        "label": "Gemini 2.5 Flash TTS",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 3,
+        "tpm": 10000,
+        "rpd": 10
+      },
+      "gemini-2.5-pro": {
+        "label": "Gemini 2.5 Pro",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-2.5-pro",
+          "gemini-2.5-pro-preview"
+        ],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-2.5-pro-tts": {
+        "label": "Gemini 2.5 Pro TTS",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-3-flash": {
+        "label": "Gemini 3 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3-flash",
+          "gemini-3-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "nano-banana-pro-gemini-3-pro-image": {
+        "label": "Nano Banana Pro (Gemini 3 Pro Image)",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-3.1-pro": {
+        "label": "Gemini 3.1 Pro",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.1-pro",
+          "gemini-3.1-pro-preview"
+        ],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "nano-banana-2-gemini-3.1-flash-image": {
+        "label": "Nano Banana 2 (Gemini 3.1 Flash Image)",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-3.1-flash-lite": {
+        "label": "Gemini 3.1 Flash Lite",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.1-flash-lite",
+          "gemini-3.1-flash-lite-preview"
+        ],
+        "rpm": 15,
+        "tpm": 250000,
+        "rpd": 500
+      },
+      "nano-banana-2-lite-gemini-3.1-flash-lite-image": {
+        "label": "Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-3.1-flash-tts": {
+        "label": "Gemini 3.1 Flash TTS",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 3,
+        "tpm": 10000,
+        "rpd": 10
+      },
+      "gemini-3.5-flash": {
+        "label": "Gemini 3.5 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.5-flash",
+          "gemini-3.5-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemini-3.5-flash-lite": {
+        "label": "Gemini 3.5 Flash Lite",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.5-flash-lite",
+          "gemini-3.5-flash-lite-preview"
+        ],
+        "rpm": 15,
+        "tpm": 250000,
+        "rpd": 500
+      },
+      "gemini-3.5-transcribe": {
+        "label": "Gemini 3.5 Transcribe",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": 3,
+        "tpm": 10000,
+        "rpd": 25
+      },
+      "gemini-3.6-flash": {
+        "label": "Gemini 3.6 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.6-flash",
+          "gemini-3.6-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemini-3.7-flash": {
+        "label": "Gemini 3.7 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.7-flash",
+          "gemini-3.7-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemini-3.8-flash": {
+        "label": "Gemini 3.8 Flash",
+        "category": "Text-out models",
+        "slugs": [
+          "gemini-3.8-flash",
+          "gemini-3.8-flash-preview"
+        ],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemini-3.8-flash-lite-tts": {
+        "label": "Gemini 3.8 Flash Lite TTS",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 3,
+        "tpm": 10000,
+        "rpd": 10
+      },
+      "gemini-3.8-flash-tts": {
+        "label": "Gemini 3.8 Flash TTS",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 3,
+        "tpm": 10000,
+        "rpd": 10
+      },
+      "gemini-embedding-1": {
+        "label": "Gemini Embedding 1",
+        "category": "Other models",
+        "slugs": [],
+        "rpm": 100,
+        "tpm": 30000,
+        "rpd": 1000
+      },
+      "gemini-embedding-2": {
+        "label": "Gemini Embedding 2",
+        "category": "Other models",
+        "slugs": [],
+        "rpm": 100,
+        "tpm": 30000,
+        "rpd": 1000
+      },
+      "gemini-omni-1.1-flash": {
+        "label": "Gemini Omni 1.1 Flash",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-omni-flash": {
+        "label": "Gemini Omni Flash",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "gemini-robotics-er-2-preview": {
+        "label": "Gemini Robotics ER 2 Preview",
+        "category": "Other models",
+        "slugs": [],
+        "rpm": 5,
+        "tpm": 250000,
+        "rpd": 20
+      },
+      "gemma-4-26b": {
+        "label": "Gemma 4 26B",
+        "category": "Other models",
+        "slugs": [
+          "gemma-4-26b-a4b-it",
+          "gemma-4-26b-it",
+          "gemma-4-26b"
+        ],
+        "rpm": 30,
+        "tpm": 16000,
+        "rpd": 14400
+      },
+      "gemma-4-31b": {
+        "label": "Gemma 4 31B",
+        "category": "Other models",
+        "slugs": [
+          "gemma-4-31b-it",
+          "gemma-4-31b"
+        ],
+        "rpm": 30,
+        "tpm": 16000,
+        "rpd": 14400
+      },
+      "lyria-3-clip": {
+        "label": "Lyria 3 Clip",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "lyria-3-pro": {
+        "label": "Lyria 3 Pro",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": 0,
+        "rpd": 0,
+        "noFreeAccess": true
+      },
+      "veo-3-fast-generate": {
+        "label": "Veo 3 Fast Generate",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": null,
+        "rpd": 0
+      },
+      "veo-3-generate": {
+        "label": "Veo 3 Generate",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": null,
+        "rpd": 0
+      },
+      "veo-3-lite-generate": {
+        "label": "Veo 3 Lite Generate",
+        "category": "Multi-modal generative models",
+        "slugs": [],
+        "rpm": 0,
+        "tpm": null,
+        "rpd": 0
+      },
+      "gemini-2.5-flash-native-audio-dialog": {
+        "label": "Gemini 2.5 Flash Native Audio Dialog",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 1000000,
+        "rpd": null
+      },
+      "gemini-3-flash-live": {
+        "label": "Gemini 3 Flash Live",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 65000,
+        "rpd": null
+      },
+      "gemini-3.5-live-translate": {
+        "label": "Gemini 3.5 Live Translate",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 20000,
+        "rpd": null
+      },
+      "gemini-3.5-transcribe-live": {
+        "label": "Gemini 3.5 Transcribe Live",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 20000,
+        "rpd": null
+      },
+      "gemini-3.8-live": {
+        "label": "Gemini 3.8 Live",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 65000,
+        "rpd": null
+      },
+      "gemini-3.8-live-extended-thinking": {
+        "label": "Gemini 3.8 Live Extended Thinking",
+        "category": "Live API",
+        "slugs": [],
+        "rpm": null,
+        "tpm": 65000,
+        "rpd": null
+      }
+    }
+  },
+  "literouter": {
+    "capturedAt": "2026-09-30",
+    "staleAfterDays": 30,
+    "source": "Literouter dashboard (Free + Basic tier lists).",
+    "freeContextTokens": 5000,
+    "basicDailyPremiumCredits": 50,
+    "basicMaxContextTokens": 15000,
+    "notes": "Free tier: fixed 5,000-token context (longer requests are summarized to fit). Basic tier: 50 daily premium credits shared by all premium models; cost per request = base x model multiplier x context multiplier (capped 3.0). freeDailyCap null with hasFree=true means unlimited.",
+    "models": {
+      "command-a": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "command-a-reasoning": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "command-a-vision": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "command-r": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "command-r-7b": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "command-r-plus": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "deepseek-r1": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.4,
+        "uncensored": true
+      },
+      "deepseek-r1-0528": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.4,
+        "uncensored": true
+      },
+      "deepseek-reasoner": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.4,
+        "uncensored": true
+      },
+      "deepseek-v3": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v3-0324": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v3.1": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v3.1-terminus": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v3.2": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v4-flash": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v4-flash-0731": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "deepseek-v4.1-flash": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "gemini-2.5-flash": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.4,
+        "uncensored": false
+      },
+      "gemini-2.5-flash-lite": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.1,
+        "uncensored": false
+      },
+      "gemini-2.5-flash-thinking": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.4,
+        "uncensored": false
+      },
+      "gemini-3-flash-preview": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": false
+      },
+      "gemini-3-flash-preview-thinking": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": false
+      },
+      "gemini-3.1-flash-lite": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": false
+      },
+      "gemini-3.1-flash-lite-thinking": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": false
+      },
+      "gemma-3-27b-it": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "gemma-4-26b-a4b-it": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "gemma-4-31b": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "gemma-4-31b-it": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "glm-4.6": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-4.7": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-4.7-flash": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "glm-5": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.1": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.1-cheap": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.2": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.2-cheap": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.3-cheap": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.3-flash": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 2.0,
+        "uncensored": true
+      },
+      "glm-5.3-flash-cheap": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": true
+      },
+      "gpt-oss-120b": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "gpt-oss-20b": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "kimi-k2.6-cheap": {
+        "hasFree": true,
+        "freeDailyCap": 30,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "kimi-k2.7-code-cheap": {
+        "hasFree": true,
+        "freeDailyCap": 30,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "l3-8b-lunaris": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "llama-3-8b-instruct": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": true
+      },
+      "llama-3.3-70b-instruct-turbo": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": true
+      },
+      "minimax-m2.7": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "ministral-3b-2512": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "ministral-8b-2512": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "mistral-large-2512": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": true
+      },
+      "mistral-large-3": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.8,
+        "uncensored": true
+      },
+      "mistral-medium-2508": {
+        "hasFree": true,
+        "freeDailyCap": 100,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "mistral-small-2603": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "mythomax-l2-13b": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "phi-4-mini-instruct": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "qwen3.6-27b": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "qwen3.8-27b": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": true
+      },
+      "step-3.5-flash": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      },
+      "step-3.5-flash-non-reasoning": {
+        "hasFree": false,
+        "freeDailyCap": null,
+        "premiumBasic": true,
+        "premiumCost": 1.0,
+        "uncensored": false
+      }
+    }
+  }
+}
