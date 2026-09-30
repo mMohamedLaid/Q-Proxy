@@ -22,7 +22,7 @@ const path = require('path');
 // turning a bad env var into a startup crash instead of a logged
 // warning. Ring buffer feeds the admin dashboard's Logs section; capped
 // so it can't grow unbounded, newest first.
-const RECENT_LOGS_MAX = 500;
+const RECENT_LOGS_MAX = 1000;
 const recentLogs = [];
 // target: 'both' (default) | 'console' (Render logs only) | 'admin' (Admin panel only).
 // Per-chunk stream lines go to 'console' only, so Render keeps the full
@@ -34,13 +34,33 @@ function fmtServerTs(iso) {
   const p = (n, w = 2) => String(n).padStart(w, '0');
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)} ${p(d.getUTCDate())}-${p(d.getUTCMonth() + 1)}-${d.getUTCFullYear()} UTC`;
 }
-function log(level, msg, target = 'both') {
+// rid = short per-request id (#k3f9). Every line a request writes carries it,
+// so two requests running in parallel (a stopped-and-retried generation, an
+// agent firing several calls) can be told apart in Render's console (search
+// the id) and in the Admin panel (click the chip to filter).
+function log(level, msg, target = 'both', rid = null) {
   const ts = new Date().toISOString();
-  if (target !== 'admin') console.log(`[${fmtServerTs(ts)}] [${level}] ${msg}`);
+  if (target !== 'admin') console.log(`[${fmtServerTs(ts)}] [${level}] ${rid ? '#' + rid + ' ' : ''}${msg}`);
   if (target !== 'console') {
-    recentLogs.unshift({ ts, level, msg });
+    recentLogs.unshift(rid ? { ts, level, msg, rid } : { ts, level, msg });
     if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
   }
+}
+function newRequestId() { return Math.random().toString(36).slice(2, 6).padEnd(4, '0'); }
+// A log() bound to one request id. Used by shadowing `const log = logWith(rid)`
+// at the top of a request-scoped function, so none of its call sites change.
+function logWith(rid) { return (level, msg, target = 'both') => log(level, msg, target, rid); }
+// One multi-line block (the stitched think / reply) copied to the Render
+// console when a stream finishes. Every line carries the request id so the
+// block stays attributable even if Render shows the lines interleaved with
+// another request's; a single console.log call keeps the lines contiguous.
+function consoleBlock(level, header, text, rid, maxChars = 150000) {
+  const tag = rid ? '#' + rid : '·';
+  let body = String(text || '').replace(/\n{3,}/g, '\n\n').trim();
+  let cut = '';
+  if (body.length > maxChars) { cut = `\n… [cut off here in the console copy — the client got everything]`; body = body.slice(0, maxChars); }
+  const lines = (body + cut).split('\n').map(l => `${tag} │ ${l}`);
+  console.log([`[${fmtServerTs(new Date().toISOString())}] [${level}] ${tag} ${header}`, ...lines].join('\n'));
 }
 
 // Admin-panel-only entry for streamed model text (reasoning or reply).
@@ -50,13 +70,14 @@ function log(level, msg, target = 'both') {
 // Auto-refresh on you can watch a long think grow — without rebuilding a
 // big string on every token. Capped so one huge reply can't eat memory.
 const ADMIN_STREAM_LOG_MAX_CHARS = Number(process.env.ADMIN_STREAM_LOG_MAX_CHARS) || 150000;
-function openLiveLog(level, label) {
+function openLiveLog(level, label, rid) {
   let body = '';
   let status = 'streaming…';
   let capped = false;
   const entry = {
     ts: new Date().toISOString(),
     level,
+    rid: rid || undefined,
     get msg() {
       const text = body.replace(/\n{3,}/g, '\n\n').trim();
       return `${label} — ${status}\n${text}${capped ? '\n… [cut off here in the Admin log only — Render logs and the client still got everything]' : ''}`;
@@ -70,7 +91,8 @@ function openLiveLog(level, label) {
       body += text;
       if (body.length > ADMIN_STREAM_LOG_MAX_CHARS) { body = body.slice(0, ADMIN_STREAM_LOG_MAX_CHARS); capped = true; }
     },
-    close(note) { status = note; }
+    close(note) { status = note; },
+    text() { return body.replace(/\n{3,}/g, '\n\n').trim(); }
   };
 }
 function logStitchedText(level, label, text) {
@@ -163,8 +185,10 @@ function getNextOpenRouterKey() {
       return OPENROUTER_KEYS[idx];
     }
   }
-  // all keys drained for today — hand back the last one, it'll 429 and bubble up
-  return OPENROUTER_KEYS[openrouterKeyIndex];
+  // all keys drained for today — hand back the last one, it'll 429 and bubble up.
+  // Modulo guard: openrouterKeyIndex is restored from usage-state.json on boot,
+  // so it can point past the end if keys were removed since it was saved.
+  return OPENROUTER_KEYS[openrouterKeyIndex % OPENROUTER_KEYS.length];
 }
 
 // ── Literouter: per-(key, model) daily usage. Its free-tier caps are
@@ -295,7 +319,11 @@ function literouterCapSnapshot() {
   for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
     const hops = [];
     let cur = entry;
+    let depth = 0;
     while (cur) {
+      // Depth guard: models.json is hand-editable, and a fallback cycle in it
+      // would otherwise hang this loop (and /health with it) forever.
+      if (++depth > 50) break;
       if (cur.provider === 'literouter' && cur.dailyCap != null) hops.push(cur);
       cur = cur.fallback;
     }
@@ -432,19 +460,22 @@ const usageTracker = {};
 function checkRateLimit(apiKey) {
   const keyMap = buildKeyMap();
   const keyInfo = keyMap[apiKey];
-  if (!keyInfo) return { allowed: false, reason: 'Invalid API key' };
+  if (!keyInfo) return { allowed: false, invalidKey: true, reason: 'Invalid API key' };
   const now = Date.now();
   if (!usageTracker[apiKey] || now > usageTracker[apiKey].resetAt) {
     usageTracker[apiKey] = { count: 0, resetAt: now + 60000 };
   }
+  // Count unlimited keys too — otherwise /health and the Admin usage view
+  // report 0 requests forever for exactly the key that sees all the traffic.
+  // (count > limit below is equivalent to the old check-then-increment order.)
+  usageTracker[apiKey].count++;
   if (keyInfo.limit === null || keyInfo.limit === undefined) {
     return { allowed: true, unlimited: true };
   }
-  if (usageTracker[apiKey].count >= keyInfo.limit) {
+  if (usageTracker[apiKey].count > keyInfo.limit) {
     const waitSec = Math.ceil((usageTracker[apiKey].resetAt - now) / 1000);
     return { allowed: false, reason: `Rate limit hit. Try again in ${waitSec}s` };
   }
-  usageTracker[apiKey].count++;
   return { allowed: true };
 }
 
@@ -477,6 +508,43 @@ function humanDuration(ms) {
 function estimateTokens(messages) {
   const text = (messages || []).map(messageText).join(' ');
   return Math.ceil(text.length / 4);
+}
+
+// What a provider's TPM (tokens per minute) actually counts: INPUT tokens —
+// the prompt, plus tool/response-format schemas which are sent as input too.
+// max_tokens is an OUTPUT allowance and must not be added here: a client
+// sending max_tokens 0 (which becomes the 9024 fallback or a hop's maxTokens
+// floor) used to inflate a ~9.5K prompt to ~18.5K and get the Google hop
+// skipped for "exceeding" a 14K/16K limit it was nowhere near.
+// Providers whose TPM counts INPUT tokens only (confirmed for Google AI
+// Studio). For any provider NOT in this list, how its token limit is counted
+// isn't known, so the estimate stays conservative: input + max_tokens.
+// The list lives in provider-limits.json ("tpmCountsInputOnly"); add a
+// provider there once its dashboard confirms it counts input only.
+function tpmCountsInputOnly(provider) {
+  const list = (typeof PROVIDER_LIMITS !== 'undefined' && Array.isArray(PROVIDER_LIMITS.tpmCountsInputOnly)) ? PROVIDER_LIMITS.tpmCountsInputOnly : ['google'];
+  return list.includes(provider);
+}
+function fmtN(n) { return Number(n).toLocaleString('en-US'); }
+// 4200ms -> "4s"; 254000ms -> "4m 14s" (whole seconds — for notices, not stats).
+function shortDuration(ms) { return ms < 60000 ? `${Math.round(ms / 1000)}s` : humanDuration(ms); }
+function secsToNextMinute() { return Math.max(1, Math.ceil((60000 - (Date.now() % 60000)) / 1000)); }
+// A display name for logs/errors — Google hops are sometimes stored as
+// "models/gemini-…"; the wire name is left alone, only the label is tidied.
+function displayModel(provider, model) { return provider === 'google' ? String(model || '').replace(/^models\//i, '') : model; }
+function hopLabel(pc) { return `${pc.provider}/${displayModel(pc.provider, pc.model)}`; }
+function estimateInputTokens(req) {
+  let n = estimateTokens(req && req.messages);
+  for (const k of ['tools', 'response_format']) {
+    if (req && req[k]) { try { n += Math.ceil(JSON.stringify(req[k]).length / 4); } catch (_) { /* unserializable — ignore */ } }
+  }
+  return n;
+}
+// Tokens a request counts against a limit on `provider`: input only where
+// that is known (tpmCountsInputOnly), input + max_tokens where it isn't.
+function estimateRequestTokens(req, provider) {
+  const input = estimateInputTokens(req);
+  return tpmCountsInputOnly(provider) ? input : input + ((req && req.max_tokens) || 0);
 }
 
 // ============================================================
@@ -514,10 +582,10 @@ function estimateTokens(messages) {
 //
 // per-hop fields:
 //   timeoutMs → overrides the default 300000ms timeout for that hop only
-//   tpmLimit  → if set, the request's estimated token cost is checked
-//               against this BEFORE the call is attempted; if it would
-//               exceed the budget, that hop is skipped straight to the
-//               next one in the chain (saves burning a doomed request)
+//   tpmLimit  → max INPUT size of a single request (estimated tokens, output/
+//               max_tokens NOT counted). If a request is bigger, that hop is
+//               skipped straight to the next one (saves burning a doomed
+//               request). Not a per-minute budget — that is `tpm` (Google).
 //
 // Provider base URLs:
 //   NVIDIA NIM:   https://integrate.api.nvidia.com/v1
@@ -880,16 +948,25 @@ function checkGoogleWindow(model, keyIndex, hop, estimatedTokens) {
   const nowMinute = Math.floor(Date.now() / 60000);
   if (hop.rpm) {
     if (state.rpmWindowMinute !== nowMinute) { state.rpmWindowMinute = nowMinute; state.rpmCount = 0; }
-    if (state.rpmCount >= hop.rpm) return { ok: false, reason: `rpm:${state.rpmCount}/${hop.rpm}` };
+    if (state.rpmCount >= hop.rpm) return { ok: false, reason: `rpm:${state.rpmCount}/${hop.rpm}`, note: `rpm limit reached (${state.rpmCount}/${hop.rpm} requests this minute)`, retryAfterS: secsToNextMinute() };
   }
   if (hop.tpm) {
     if (state.tpmWindowMinute !== nowMinute) { state.tpmWindowMinute = nowMinute; state.tpmTokens = 0; }
-    if ((state.tpmTokens || 0) + estimatedTokens > hop.tpm) return { ok: false, reason: `tpm:${state.tpmTokens || 0}+${estimatedTokens}>${hop.tpm}` };
+    if ((state.tpmTokens || 0) + estimatedTokens > hop.tpm) {
+      const used = state.tpmTokens || 0;
+      // Would it fit in an EMPTY minute? Then waiting helps; if not, no wait ever will.
+      const fitsWhenEmpty = estimatedTokens <= hop.tpm;
+      return { ok: false, reason: `tpm:${used}+${estimatedTokens}>${hop.tpm}`,
+        note: fitsWhenEmpty
+          ? `tpm limit: ${fmtN(used)} of ${fmtN(hop.tpm)} input tokens already used this minute and this request needs ≈ ${fmtN(estimatedTokens)}`
+          : `request ≈ ${fmtN(estimatedTokens)} input tokens is bigger than this model's whole ${fmtN(hop.tpm)}/min limit, so it can never fit — shorten the prompt`,
+        ...(fitsWhenEmpty ? { retryAfterS: secsToNextMinute() } : {}) };
+    }
   }
   if (hop.rpd) {
     const today = pacificDayKey();
     if (state.rpdDay !== today) { state.rpdDay = today; state.rpdCount = 0; }
-    if (state.rpdCount >= hop.rpd) return { ok: false, reason: `rpd:${state.rpdCount}/${hop.rpd}` };
+    if (state.rpdCount >= hop.rpd) return { ok: false, reason: `rpd:${state.rpdCount}/${hop.rpd}`, note: `daily limit reached (${state.rpdCount}/${hop.rpd} requests today) — resets at midnight Pacific` };
   }
   if (hop.rpm) state.rpmCount = (state.rpmCount || 0) + 1;
   if (hop.tpm) state.tpmTokens = (state.tpmTokens || 0) + estimatedTokens;
@@ -907,20 +984,24 @@ function checkGoogleWindow(model, keyIndex, hop, estimatedTokens) {
 // is out of room for it right now. A hop with no rpm/tpm/rpd set at all
 // skips tracking entirely and just uses whichever key the model is
 // already pinned to (or key 0), same as today's behavior.
-function pickGoogleKey(model, hop, estimatedTokens) {
+function pickGoogleKey(model, hop, estimatedTokens, why) {
   if (!GOOGLE_KEYS.length) return null;
   if (!hop.rpm && !hop.tpm && !hop.rpd) {
-    const idx = googleModelCursor[model] || 0;
+    // Modulo guard: the cursor is persisted in usage-state.json and can point
+    // past the end if keys were removed since it was saved.
+    const idx = (googleModelCursor[model] || 0) % GOOGLE_KEYS.length;
     return { key: GOOGLE_KEYS[idx], keyIndex: idx };
   }
   maybeResetGoogleCursors();
   const startIdx = googleModelCursor[model] || 0;
   for (let i = 0; i < GOOGLE_KEYS.length; i++) {
     const idx = (startIdx + i) % GOOGLE_KEYS.length;
-    if (checkGoogleWindow(model, idx, hop, estimatedTokens).ok) {
+    const chk = checkGoogleWindow(model, idx, hop, estimatedTokens);
+    if (chk.ok) {
       googleModelCursor[model] = idx; // pinned here until this key specifically runs out for this model
       return { key: GOOGLE_KEYS[idx], keyIndex: idx };
     }
+    if (Array.isArray(why) && chk.reason) why.push(chk);
   }
   return null;
 }
@@ -972,7 +1053,11 @@ function googleUsageSnapshot() {
   const byModel = {};
   for (const entry of Object.values(MODEL_MAPPING || {})) {
     let cur = entry;
+    let depth = 0;
     while (cur) {
+      // Same cycle guard as literouterCapSnapshot — hand-edited models.json
+      // with a fallback loop must not hang /admin/api/usage.
+      if (++depth > 50) break;
       if (cur.provider === 'google' && (cur.rpm || cur.tpm || cur.rpd) && !byModel[cur.model]) {
         byModel[cur.model] = {
           model: cur.model, rpm: cur.rpm || null, tpm: cur.tpm || null, rpd: cur.rpd || null,
@@ -1146,9 +1231,12 @@ function getReasoningBody(providerConfig) {
 // ============================================================
 // PARSE <think> TAGS
 // ============================================================
+const THINK_OPEN_TAG = '<think>';
 function parseThinkTags(rawText) {
   if (!rawText) return { reasoning: null, content: rawText };
-  const match = rawText.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
+  // ^\s* — some models emit a leading newline before the think tag; without
+  // this the tags leaked through as visible reply content.
+  const match = rawText.match(/^\s*<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/);
   if (match) return { reasoning: match[1].trim(), content: match[2].trim() };
   return { reasoning: null, content: rawText };
 }
@@ -1237,16 +1325,21 @@ const MODERATION_PATTERNS = /content.?(?:policy|filter)|safety|moderat|flagged/i
 // dropped just because it doesn't match a known field name.
 function extractProviderMessage(bodyText) {
   if (!bodyText) return '';
+  // One line, capped — pretty-printed JSON used to end up verbatim in logs and
+  // in the client's error popup.
+  const tidy = (x) => String(x).replace(/\s+/g, ' ').trim().slice(0, 300);
   try {
-    const j = JSON.parse(bodyText);
-    const m = (typeof j.error === 'string' ? j.error : j.error?.message) || j.detail || j.message || j.msg || j.error?.detail;
-    if (m) return String(m);
+    let j = JSON.parse(bodyText);
+    // Google wraps its error object in an array: [{"error":{...}}]
+    if (Array.isArray(j)) j = j.find(x => x && typeof x === 'object') || {};
+    const first = Array.isArray(j.errors) ? j.errors[0] : null;
+    const m = (typeof j.error === 'string' ? j.error : j.error?.message) || j.detail || j.message || j.msg || j.error?.detail || first?.message;
+    if (m) return tidy(m);
   } catch (_) { /* not JSON — fall through to raw text below */ }
-  return bodyText.trim().slice(0, 500);
+  return tidy(bodyText);
 }
 
 const TAG_HINTS = {
-  NO_HOP: 'every hop in this chain was inactive, skipped, or out of its rate/token budget',
   CLIENT_GONE: 'the client disconnected before the model answered'
 };
 
@@ -1419,6 +1512,7 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 //    (trackUsage/trackSkip), instead of only living in server logs.
 // ============================================================
 async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
+  const log = logWith(opts.rid);
   let providers;
   try {
     providers = resolveModelChain(modelId);
@@ -1439,8 +1533,8 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
     const providerConfig = providers[hopIdx];
     const isLastHop = hopIdx === providers.length - 1;
     if (providerConfig.status && providerConfig.status !== 'active') {
-      log('WARN', `Skipping ${providerConfig.provider}/${providerConfig.model} — status is "${providerConfig.status}", not "active"`);
-      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `status:${providerConfig.status}` });
+      if (providers.length > 1) log('WARN', `Skipping ${hopLabel(providerConfig)} — status is "${providerConfig.status}", not "active"`);
+      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `status:${providerConfig.status}`, note: `is marked "${providerConfig.status}" in models.json` });
       trackSkip(providerConfig.provider, providerConfig.model, `status:${providerConfig.status}`);
       continue;
     }
@@ -1449,15 +1543,19 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
     // tools) — skip it so the chain moves on instead of the agent getting a
     // plain-text answer where it expected a tool call.
     if (Array.isArray(nimRequest.tools) && nimRequest.tools.length && providerConfig.tools === false) {
-      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: 'no-tool-support' });
+      attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: 'no-tool-support', note: 'is marked "tools": false and this request uses tools' });
       trackSkip(providerConfig.provider, providerConfig.model, 'no-tool-support');
       continue;
     }
     if (providerConfig.tpmLimit) {
-      const estimated = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
+      const inputTokens = estimateInputTokens(nimRequest);
+      const estimated = estimateRequestTokens(nimRequest, providerConfig.provider);
       if (estimated > providerConfig.tpmLimit) {
-        log('WARN', `Skipping ${providerConfig.provider} — estimated ${estimated} tokens exceeds its ${providerConfig.tpmLimit} TPM budget`);
-        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `tpm-budget:${estimated}>${providerConfig.tpmLimit}` });
+        const note = estimated === inputTokens
+          ? `request ≈ ${fmtN(inputTokens)} input tokens is over the max request size of ${fmtN(providerConfig.tpmLimit)} set for this model`
+          : `request ≈ ${fmtN(estimated)} tokens (prompt ${fmtN(inputTokens)} + max_tokens ${fmtN(estimated - inputTokens)}) is over the max request size of ${fmtN(providerConfig.tpmLimit)} set for this model`;
+        if (providers.length > 1) log('WARN', `Skipping ${hopLabel(providerConfig)} — ${note}`);
+        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `tpm-budget:${estimated}>${providerConfig.tpmLimit}`, note });
         trackSkip(providerConfig.provider, providerConfig.model, `tpm-budget (~${estimated}>${providerConfig.tpmLimit})`);
         continue;
       }
@@ -1482,6 +1580,17 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
     let skippedThisHop = false;
 
     for (let attemptNum = 1; attemptNum <= maxAttempts; attemptNum++) {
+      // Re-checked every attempt, not just on failure — the client can hang
+      // up while we're sleeping in backoff between retries, and without this
+      // the next attempt fires a full upstream call nobody is waiting for.
+      if (opts.clientGone && opts.clientGone()) {
+        attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CLIENT_GONE' });
+        const gone = new Error('Client disconnected before the model answered — stopped retrying');
+        gone.tag = 'CLIENT_GONE';
+        gone.response = { status: 499 };
+        gone.attempts = attempts;
+        throw gone;
+      }
       // Re-picked every attempt, not just once before the loop — so a
       // retried literouter hop rotates to a different key on failure
       // instead of hammering the one key that just failed for the whole
@@ -1508,12 +1617,20 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
       // Google hop with none of those set behaves exactly as before.
       let pickedGoogleKey = null;
       if (providerConfig.provider === 'google') {
-        const estimatedTokens = estimateTokens(nimRequest.messages) + (nimRequest.max_tokens || 0);
-        pickedGoogleKey = pickGoogleKey(providerConfig.model, providerConfig, estimatedTokens);
+        const estimatedTokens = estimateRequestTokens(nimRequest, 'google');
+        const googleWhy = [];
+        pickedGoogleKey = pickGoogleKey(providerConfig.model, providerConfig, estimatedTokens, googleWhy);
         if (!pickedGoogleKey) {
-          log('WARN', `Skipping google/${providerConfig.model} — every Google key is out of rpm/tpm/rpd room for this model`);
-          attempts.push({ provider: 'google', model: providerConfig.model, outcome: 'skipped', reason: 'google-rpm-tpm-rpd-exhausted' });
-          trackSkip('google', providerConfig.model, 'google-rpm-tpm-rpd-exhausted');
+          // Say WHICH limit blocked it (rpm / tpm / rpd), with the numbers, and —
+          // when waiting would actually help — how long.
+          const notes = [...new Set(googleWhy.map(w => w.note))];
+          const retryAfterS = googleWhy.map(w => w.retryAfterS).filter(Number.isFinite).reduce((a, b) => Math.min(a, b), Infinity);
+          const keysNote = GOOGLE_KEYS.length > 1 ? ` (all ${GOOGLE_KEYS.length} keys)` : '';
+          const note = `${notes.join(' / ') || 'out of rpm/tpm/rpd room'}${keysNote}${Number.isFinite(retryAfterS) ? ` — try again in ~${retryAfterS}s` : ''}`;
+          const codes = [...new Set(googleWhy.map(w => w.reason))].join(';');
+          if (providers.length > 1) log('WARN', `Skipping ${hopLabel(providerConfig)} — ${note}`);
+          attempts.push({ provider: 'google', model: providerConfig.model, outcome: 'skipped', reason: 'google-limit:' + codes, note, ...(Number.isFinite(retryAfterS) ? { retryAfterS } : {}) });
+          trackSkip('google', providerConfig.model, 'google-limit:' + codes);
           skippedThisHop = true;
           break;
         }
@@ -1524,6 +1641,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           ? { base: GOOGLE_RELAY_BASE, key: pickedGoogleKey.key }
           : getProviderConfig(providerConfig.provider);
 
+      if (opts.onHop) opts.onHop(providerConfig);
       try {
         const response = await axios.post(
           `${base}/chat/completions`,
@@ -1534,7 +1652,11 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
               'Content-Type': 'application/json'
             },
             responseType: stream ? 'stream' : 'json',
-            timeout: providerConfig.timeoutMs || 300000
+            timeout: providerConfig.timeoutMs || 300000,
+            // Aborted when the client hangs up, so a request still waiting in
+            // the provider's queue is cancelled instead of running to the end
+            // for nobody.
+            ...(opts.signal ? { signal: opts.signal } : {})
           }
         );
         trackUsage(providerConfig.provider, providerConfig.model, true);
@@ -1554,7 +1676,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         err.tagInfo = cls;
         const reasonStr = cls.detail ? `${cls.tag} · ${cls.detail}` : cls.tag;
         const reasonWithMsg = cls.providerMessage ? `${reasonStr} — "${cls.providerMessage}"` : reasonStr;
-        const who = `${providerConfig.provider}/${providerConfig.model}`;
+        const who = hopLabel(providerConfig);
 
         // The client already left (closed the tab / hit stop / its own
         // timeout fired) — retrying would just burn provider calls nobody
@@ -1574,13 +1696,13 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         // (bigger context window, or actual quota left), so these fall
         // through to the next hop even when the status is a 4xx.
         if (cls.tag === 'CONTEXT_TOO_LONG') {
-          log('WARN', `[CONTEXT_TOO_LONG] ${who} — request exceeds this hop's context window, not retrying it: ${err.message}`);
+          if (!isLastHop) log('WARN', `[CONTEXT_TOO_LONG] ${who} — request exceeds this hop's context window, not retrying it: ${err.message}`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CONTEXT_TOO_LONG' });
           trackSkip(providerConfig.provider, providerConfig.model, 'CONTEXT_TOO_LONG');
           break;
         }
         if (cls.tag === 'QUOTA') {
-          log('WARN', `[QUOTA] ${who} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
+          if (!isLastHop) log('WARN', `[QUOTA] ${who} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'QUOTA' });
           trackSkip(providerConfig.provider, providerConfig.model, 'QUOTA');
           break;
@@ -1593,9 +1715,12 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const hardClientError = status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404
           && !(unlimited && cls.tag === 'UPSTREAM_DEGRADED');
         if (hardClientError) {
-          log('WARN', `[${cls.tag}] ${who} returned ${status} (client error) — not falling back`);
+          // Only worth a line when there WAS a fallback that is being skipped;
+          // otherwise the request-level ERROR line already says everything.
+          if (providers.length > 1) log('WARN', `[${cls.tag}] ${who} returned ${status} (client error) — not falling back`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: reasonStr });
           err.attempts = attempts;
+          err.chainLength = providers.length;
           throw err;
         }
 
@@ -1607,15 +1732,19 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
 
         if (unlimited && budgetLeft && attemptsLeft) {
           const delay = backoffDelayMs(attemptNum);
-          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonWithMsg}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop ? ', last hop: nothing to fall back to' : ''})...`);
+          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonWithMsg}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop && providers.length > 1 ? ', last hop: nothing to fall back to' : ''})...`);
           await sleep(delay);
           continue;
         }
 
         const elapsed = Date.now() - hopStartedAt;
-        const triedNote = attemptNum > 1 ? ` after ${attemptNum} attempts over ${elapsed}ms` : '';
-        const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached' : ` — retry window (${budgetMs}ms) used up`);
-        log('WARN', `[${cls.tag}] ${who} failed (${reasonWithMsg})${triedNote}${whyStopped} — ${isLastHop ? 'giving up, no more hops in this chain' : 'trying fallback...'}`);
+        const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached' : ` — retry window (${shortDuration(budgetMs)}) used up`);
+        const plainTried = attemptNum > 1 ? `after ${attemptNum} attempts over ${shortDuration(elapsed)}${whyStopped}` : '';
+        const triedNote = plainTried ? ` ${plainTried}` : '';
+        err.tryNote = plainTried;
+        // A failure on the LAST hop is reported once, by the request-level ERROR
+        // line (which carries this note). A line here too was the same event twice.
+        if (!isLastHop) log('WARN', `[${cls.tag}] ${who} failed (${reasonWithMsg})${triedNote} — trying fallback...`);
         attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: `${reasonStr}${triedNote}` });
         trackSkip(providerConfig.provider, providerConfig.model, reasonStr);
         break;
@@ -1624,11 +1753,20 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
     lastError = hopFinalError;
   }
   if (!lastError) {
-    lastError = new Error('No active hop available for this model (all hops are inactive, skipped, or over their TPM budget).');
+    // Every hop was skipped. Say which, and why, with the real numbers.
+    const why = (a) => `${hopLabel(a)}: ${a.note || a.reason}`;
+    const msg = providers.length === 1
+      ? `${hopLabel(providers[0])} was skipped — ${attempts[0]?.note || attempts[0]?.reason || 'it could not be used'}`
+      : `No hop could be used — ${attempts.map(why).join('; ')}`;
+    lastError = new Error(msg);
     lastError.response = { status: 503 };
     lastError.tag = 'NO_HOP';
+    // Waiting helps only if some skipped hop said it would.
+    const waits = attempts.map(a => a.retryAfterS).filter(Number.isFinite);
+    if (waits.length) lastError.retryAfterS = Math.min(...waits);
   }
   lastError.attempts = attempts;
+  lastError.chainLength = providers.length;
   throw lastError;
 }
 
@@ -1678,7 +1816,7 @@ app.get('/budget', (req, res) => {
     providerQuotas: Object.keys(PROVIDER_QUOTAS).map(getProviderQuotaSnapshot),
     note: 'No provider balance is invented. Providers with no configured quota are intentionally omitted from this list.'
   });
-});;
+});
 
 // ============================================================
 // MODELS LIST
@@ -1694,6 +1832,10 @@ app.get('/v1/models', (req, res) => {
 // CHAT ENDPOINT
 // ============================================================
 app.post('/v1/chat/completions', async (req, res) => {
+  const rid = newRequestId();
+  const log = logWith(rid);   // every line this request writes carries #rid
+  let waitTimer = null;
+  const clearWait = () => { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; } };
   const authHeader = req.headers['authorization'] || '';
   const userKey = authHeader.replace('Bearer ', '').trim();
   const keyMap = buildKeyMap();
@@ -1701,6 +1843,14 @@ app.post('/v1/chat/completions', async (req, res) => {
 
   const rateCheck = checkRateLimit(userKey);
   if (!rateCheck.allowed) {
+    // An unknown key is an auth problem (401), not a rate limit — a 429 here
+    // made clients back off and retry a key that would never work.
+    if (rateCheck.invalidKey) {
+      log('WARN', `[${userName}] Rejected — invalid API key`);
+      return res.status(401).json({
+        error: { message: 'Invalid API key.', type: 'invalid_request_error', code: 401 }
+      });
+    }
     log('WARN', `[${userName}] Rate limit hit`);
     return res.status(429).json({
       error: { message: rateCheck.reason, type: 'rate_limit_error', code: 429 }
@@ -1711,6 +1861,19 @@ app.post('/v1/chat/completions', async (req, res) => {
     const { model, messages, temperature, max_tokens, stream,
             tools, tool_choice, parallel_tool_calls, response_format, stop } = req.body;
 
+    // Shape-check before touching the body — a missing messages array used to
+    // fall through to messages.forEach and die as a 500 TypeError.
+    if (!Array.isArray(messages) || !messages.length) {
+      return res.status(400).json({
+        error: { message: 'Request body must include a non-empty "messages" array.', type: 'invalid_request_error', code: 400 }
+      });
+    }
+    if (typeof model !== 'string' || !model.trim()) {
+      return res.status(400).json({
+        error: { message: 'Request body must include a "model" string. GET /v1/models for the full list.', type: 'invalid_request_error', code: 400 }
+      });
+    }
+
     const toolNote = Array.isArray(tools) && tools.length ? ` | tools: ${tools.length}` : '';
     log('INFO', `[${userName}] REQUEST → model: ${model} | stream: ${stream || false} | ${messages.length} msgs${toolNote}`);
     // Per-message previews go to Render's console only — an agent loop
@@ -1720,6 +1883,18 @@ app.post('/v1/chat/completions', async (req, res) => {
       const extra = Array.isArray(m.tool_calls) && m.tool_calls.length ? ` [+${m.tool_calls.length} tool_calls]` : '';
       log('DEBUG', `  [msg ${i}] ${m.role}: ${messageText(m).slice(0, 300)}${extra}`, 'console');
     });
+    // The same previews as ONE Admin entry (not one line per message), so the
+    // Admin log shows what was actually sent. Capped so an agent loop with
+    // dozens of huge messages can't bury everything else.
+    {
+      const PROMPT_LOG_MAX_MSGS = 100;
+      const lines = messages.slice(0, PROMPT_LOG_MAX_MSGS).map((m, i) => {
+        const extra = Array.isArray(m.tool_calls) && m.tool_calls.length ? ` [+${m.tool_calls.length} tool_calls]` : '';
+        return `[msg ${i}] ${m.role}: ${messageText(m).slice(0, 300).replace(/\s*\n\s*/g, ' ⏎ ')}${extra}`;
+      });
+      if (messages.length > PROMPT_LOG_MAX_MSGS) lines.push(`… +${messages.length - PROMPT_LOG_MAX_MSGS} more messages`);
+      log('PROMPT', `[${userName}] prompt — ${messages.length} msgs ≈ ${estimateTokens(messages)} tokens\n${lines.join('\n')}`, 'admin');
+    }
 
     const mapping = MODEL_MAPPING[model];
     if (!mapping) {
@@ -1758,9 +1933,58 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (stop) nimRequest.stop = stop;
 
     let clientGone = false;
-    res.on('close', () => { if (!res.writableEnded) clientGone = true; });
-    const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false, { clientGone: () => clientGone });
-    log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel} | max_tokens: client sent ${max_tokens === undefined ? 'nothing' : max_tokens} → upstream got ${sentMaxTokens}`);
+    const abortCtl = new AbortController();
+    const reqStartedAt = Date.now();
+    res.on('close', () => {
+      clearWait();
+      if (!res.writableEnded && !clientGone) {
+        clientGone = true;
+        // Also cancels a call that is still waiting for the provider to answer
+        // (a queued NIM request), not just one that is already streaming.
+        abortCtl.abort();
+        log('INFO', `[${userName}] client disconnected after ${shortDuration(Date.now() - reqStartedAt)} — cancelling the upstream request`);
+      }
+    });
+
+    // "Waiting…" notices: from the moment the request starts until the model
+    // produces its FIRST output (thinking counts as output — this is only the
+    // queue / connect wait before anything comes back). Silent for models that
+    // answer quickly: the first notice only appears once 10s have gone by, then
+    // again at 30s, 60s and every minute after.
+    let firstOutputAt = null;
+    let currentHop = model;
+    const WAIT_FIRST_MS = Number(process.env.QP_WAIT_NOTICE_MS) || 10000;  // env only so tests needn't wait 10s
+    const waitAt = (n) => n === 0 ? WAIT_FIRST_MS : n === 1 ? WAIT_FIRST_MS * 3 : WAIT_FIRST_MS * 6 + (n - 2) * 60000;
+    let waitN = 0;
+    const scheduleWait = () => {
+      waitTimer = setTimeout(() => {
+        waitTimer = null;
+        if (firstOutputAt || clientGone) return;
+        log('INFO', `[${userName}] ⏳ still waiting for ${currentHop} to start answering — ${shortDuration(Date.now() - reqStartedAt)} and no output yet (queue/connect time, not thinking)`);
+        waitN++; scheduleWait();
+      }, Math.max(0, waitAt(waitN) - (Date.now() - reqStartedAt)));
+    };
+    scheduleWait();
+    const markFirstOutput = () => {
+      if (firstOutputAt) return;
+      firstOutputAt = Date.now();
+      clearWait();
+      if (firstOutputAt - reqStartedAt >= WAIT_FIRST_MS) log('INFO', `[${userName}] ✓ first output arrived after ${shortDuration(firstOutputAt - reqStartedAt)}`);
+    };
+
+    const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false, {
+      clientGone: () => clientGone, signal: abortCtl.signal, rid,
+      onHop: (pc) => { currentHop = hopLabel(pc); }
+    });
+    // The client left while we were waiting and the answer arrived anyway
+    // (raced the cancel): drop it instead of streaming to nobody.
+    if (clientGone) {
+      try { response.data && typeof response.data.destroy === 'function' && response.data.destroy(); } catch (_) { /* already gone */ }
+      return;
+    }
+    if (!stream) markFirstOutput();
+    const usedAttempt = (attempts || []).find(a => a.outcome === 'used');
+    log('INFO', `[${userName}] → provider: ${usedProvider} | model: ${usedModel} | max_tokens: client sent ${max_tokens === undefined ? 'nothing' : max_tokens} → upstream got ${sentMaxTokens}${usedAttempt && usedAttempt.retries ? ` | after ${usedAttempt.retries} retr${usedAttempt.retries === 1 ? 'y' : 'ies'}` : ''}`);
 
     // Surface the fallback path back to the client, not just server logs —
     // every hop that was tried, in order, with what happened to it.
@@ -1791,7 +2015,11 @@ app.post('/v1/chat/completions', async (req, res) => {
       let thinkBuffer = '';
       let inThink = false;
       let thinkSent = false;
-      let accumRaw = '';
+      // Undecided-phase text: held while a '<think>' opener could still be
+      // forming (leading whitespace + a prefix of the tag). Writing this
+      // straight through used to leak the first fragment of a split tag
+      // (e.g. "<thi") to the client as visible reply text.
+      let pending = '';
       const streamStartedAt = Date.now();
       let chunkCount = 0;
       let contentChars = 0;      // every content delta seen (incl. text later re-labelled as reasoning)
@@ -1830,12 +2058,12 @@ app.post('/v1/chat/completions', async (req, res) => {
       let thinkLogged = 0;
       const logReasoning = (t) => {
         if (!t) return;
-        if (!reasoningLog) reasoningLog = openLiveLog('THINK', `[${userName}] reasoning`);
+        if (!reasoningLog) reasoningLog = openLiveLog('THINK', `[${userName}] reasoning`, rid);
         reasoningLog.append(t);
       };
       const logContent = (t) => {
         if (!t) return;
-        if (!contentLog) contentLog = openLiveLog('REPLY', `[${userName}] reply`);
+        if (!contentLog) contentLog = openLiveLog('REPLY', `[${userName}] reply`, rid);
         contentLog.append(t);
       };
       // Think-tag models: mirror the buffered thinking text into the Admin
@@ -1880,6 +2108,16 @@ app.post('/v1/chat/completions', async (req, res) => {
       // that dies mid-thought just goes quiet and the client treats it
       // as a dead connection and throws away what it had.
       const emitTail = (defaultReason, allowNotice) => {
+        // Flush text still held in the undecided phase (a possible partial
+        // '<think>' opener that turned out to be plain content) so a stream
+        // cut at just the wrong moment doesn't swallow it.
+        if (!inThink && !thinkSent && pending) {
+          const text = pending;
+          pending = '';
+          contentDelivered += text.length;
+          logContent(text);
+          writeChunk({ ...chunkMeta(), choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: null }] });
+        }
         if (inThink && thinkBuffer.trim()) {
           flushThinkLog(true);
           const text = thinkBuffer.replace('</think>', '').trim();
@@ -1908,6 +2146,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
         lines.forEach(line => {
           if (!line.startsWith('data: ')) return;
+          markFirstOutput();
           if (line.includes('[DONE]')) { emitTail('stop', false); return; }
 
           try {
@@ -1920,7 +2159,12 @@ app.post('/v1/chat/completions', async (req, res) => {
             if (!delta) { writeChunk(data); return; }
             if (delta.tool_calls) sawToolCalls = true;
 
-            const nativeReasoning = delta.reasoning_content || null;
+            // reasoning_content is the NIM/Z.AI convention; OpenRouter's
+            // documented field is "reasoning" (a string when present). Only a
+            // string counts — OpenRouter can also send object-shaped
+            // reasoning_details, which are not text and must not be injected.
+            const nativeReasoning = delta.reasoning_content
+              || (typeof delta.reasoning === 'string' ? delta.reasoning : null);
             const rawContent = delta.content || '';
             chunkCount++;
             contentChars += rawContent.length;
@@ -1933,23 +2177,46 @@ app.post('/v1/chat/completions', async (req, res) => {
             if (nativeReasoning) {
               logReasoning(nativeReasoning);
               if (rawContent) { logContent(rawContent); contentDelivered += rawContent.length; }
+              // Re-label OpenRouter's "reasoning" string to reasoning_content,
+              // so both wire conventions reach the client in the same shape
+              // (reasoning_content passthrough needs no rewrite).
+              if (!delta.reasoning_content && typeof delta.reasoning === 'string') {
+                delta.reasoning_content = nativeReasoning;
+                delete delta.reasoning;
+              }
               writeChunk(data);
               return;
             }
 
-            accumRaw += rawContent;
-
+            // Think-tag detection only runs while a <think> opener is still
+            // possible — before any plain reply text has been positively
+            // identified. Once decided, `pending` is no longer touched.
+            let plainText = rawContent;
+            // Chunks with no text (tool_calls, role-only, finish_reason) can't
+            // be part of a think opener — pass them straight through.
+            if (!inThink && !rawContent) { writeChunk(data); return; }
             if (!inThink && !thinkSent) {
-              if (accumRaw.includes('<think>')) {
+              pending += rawContent;
+              const openIdx = pending.indexOf(THINK_OPEN_TAG);
+              if (openIdx !== -1) {
                 inThink = true;
-                const start = accumRaw.indexOf('<think>') + 7;
-                thinkBuffer += accumRaw.slice(start);
-                accumRaw = '';
+                const start = openIdx + THINK_OPEN_TAG.length;
+                thinkBuffer += pending.slice(start);
+                pending = '';
                 flushThinkLog(false);
                 return;
-              } else if (accumRaw.length > 10 && !accumRaw.startsWith('<')) {
-                thinkSent = true;
               }
+              // Hold back only what could still become the opener: an
+              // optional run of leading whitespace followed by a prefix of
+              // '<think>'. Anything else proves this is a plain reply, and
+              // everything held so far is delivered as content. (Bounded:
+              // at most whitespace + 7 chars are ever withheld.)
+              let ws = 0;
+              while (ws < pending.length && /\s/.test(pending[ws])) ws++;
+              if (THINK_OPEN_TAG.startsWith(pending.slice(ws))) return;
+              thinkSent = true;
+              plainText = pending;
+              pending = '';
             }
 
             if (inThink) {
@@ -1983,18 +2250,20 @@ app.post('/v1/chat/completions', async (req, res) => {
               return;
             }
 
-            delta.content = rawContent;
+            delta.content = plainText;
             delete delta.reasoning_content;
-            if (rawContent) { logContent(rawContent); contentDelivered += rawContent.length; }
+            if (plainText) { logContent(plainText); contentDelivered += plainText.length; }
             writeChunk(data);
 
           } catch (e) {
             // A single malformed/split chunk boundary is counted and
             // reported once in the summary line, with just the last
-            // error's message kept as a sample.
+            // error's message kept as a sample. The raw line is passed
+            // through with a proper SSE terminator — a lone \n would glue
+            // it to the next event's data line and corrupt the stream.
             parseErrorCount++;
             lastParseError = e.message;
-            res.write(line + '\n');
+            res.write(line + '\n\n');
           }
         });
       });
@@ -2013,7 +2282,14 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (contentLog) contentLog.close(`${contentDelivered} chars ≈ ${Math.round(contentDelivered / 4)} tokens${note}`);
 
         const totalChars = reasoningChars + contentDelivered;
-        const statsStr = `${chunkCount} chunks | reply ${sizeStr(contentDelivered)} | reasoning ${sizeStr(reasoningChars)} | total ${sizeStr(totalChars)} | ${ms}ms (${humanDuration(ms)})`;
+        // Two clocks: streaming time (from when the provider started sending)
+        // and time since the request arrived (which also includes any wait).
+        const waitPart = firstOutputAt ? ` | first output after ${shortDuration(firstOutputAt - reqStartedAt)} | ${humanDuration(Date.now() - reqStartedAt)} since request` : '';
+        const statsStr = `${chunkCount} chunks | reply ${sizeStr(contentDelivered)} | reasoning ${sizeStr(reasoningChars)} | total ${sizeStr(totalChars)} | ${ms}ms (${humanDuration(ms)}) streaming${waitPart}`;
+        // Copy the stitched think / reply into the Render console too — they
+        // were Admin-only, leaving Render with thousands of per-chunk lines.
+        if (reasoningLog) consoleBlock('THINK', `[${userName}] reasoning — ${sizeStr(reasoningChars)}`, reasoningLog.text(), rid, ADMIN_STREAM_LOG_MAX_CHARS);
+        if (contentLog) consoleBlock('REPLY', `[${userName}] reply — ${sizeStr(contentDelivered)}`, contentLog.text(), rid, ADMIN_STREAM_LOG_MAX_CHARS);
         const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
         if (how === 'error') {
           log('ERROR', `[${userName}] [${classifyError(err).tag}] stream error after ${chunkCount} chunks: ${err?.message}`);
@@ -2030,11 +2306,35 @@ app.post('/v1/chat/completions', async (req, res) => {
 
       response.data.on('end', () => finalizeStream('end'));
       response.data.on('error', (err) => finalizeStream('error', err));
+      // Safety net. With real axios a dropped socket normally arrives as an
+      // 'error' (ECONNRESET) and a connection that goes silent is cut by axios's
+      // idle timeout (timeoutMs: 300s default, 30 min on glm-5.3-nv) — both are
+      // already handled above. This only matters if a stream closes with neither
+      // 'end' nor 'error' (reproduced with the mock; not seen from real axios on
+      // Node 22). It fires only once the upstream connection is actually closed,
+      // so it can never cut a reply that is still coming in. finalizeStream is
+      // idempotent, so this is a no-op when 'end'/'error' already ran.
+      response.data.on('close', () => finalizeStream('close'));
+      // Client hung up mid-stream: stop reading the upstream instead of
+      // paying for tokens nobody will ever see. The 'close' handler above
+      // closes the client side out afterwards (writes to a closed res are
+      // harmless no-ops). On a normal completion 'finalized' is already
+      // true, so the post-end 'close' event doesn't destroy anything.
+      res.on('close', () => {
+        if (!finalized) {
+          try { response.data.destroy(); } catch (_) { /* already gone */ }
+        }
+      });
 
 
     } else {
-      const rawText = response.data.choices[0]?.message?.content || '';
-      const nativeReasoning = response.data.choices[0]?.message?.reasoning_content || null;
+      const message0 = response.data.choices[0]?.message || {};
+      const rawText = message0.content || '';
+      // reasoning_content is the NIM/Z.AI convention; OpenRouter's documented
+      // field is "reasoning" (a string when present). Only a string counts —
+      // object-shaped reasoning payloads are not text.
+      const nativeReasoning = message0.reasoning_content
+        || (typeof message0.reasoning === 'string' ? message0.reasoning : null);
 
       log('DEBUG', `[${userName}] RESPONSE: native_reasoning: ${!!nativeReasoning} | content length: ${rawText.length}`);
 
@@ -2062,7 +2362,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
             ...(finalReasoning ? { reasoning_content: finalReasoning } : {})
           },
-          finish_reason: response.data.choices[0].finish_reason
+          finish_reason: response.data.choices[0].finish_reason || 'stop'
         }],
         usage: response.data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
       };
@@ -2074,30 +2374,47 @@ app.post('/v1/chat/completions', async (req, res) => {
     const rawBody = await getErrorBodyText(error);
     const errorBody = truncateForLog(rawBody);
     const cls = classifyError(error, rawBody);
+    const clientGoneFlag = () => res.destroyed || (res.req && res.req.aborted) || !!error.clientWasGone;
+    clearWait();
     const lastAttempt = Array.isArray(error.attempts) && error.attempts.length ? error.attempts[error.attempts.length - 1] : null;
-    const where = lastAttempt ? `${lastAttempt.provider}/${lastAttempt.model}` : 'proxy';
-    log('ERROR', `[${userName}] [${cls.tag}] ${where} — ${error.message} | status: ${error.response?.status} | body: ${errorBody}`);
+    const where = lastAttempt ? `${lastAttempt.provider}/${displayModel(lastAttempt.provider, lastAttempt.model)}` : 'proxy';
+    // The client hung up (our own cancel surfaces here): nothing to send back,
+    // and it is not an error worth an ERROR line.
+    if (cls.tag === 'CLIENT_GONE' || clientGoneFlag()) {
+      log('INFO', `[${userName}] request ended — client disconnected, upstream cancelled${error.tryNote ? ` (${error.tryNote})` : ''}`);
+      return;
+    }
+    const multiHop = (error.chainLength || 0) > 1;
+    const shownMsg = cls.providerMessage || error.message || 'Internal server error';
+    const statusNum = error.response?.status;
+    const detailBits = [statusNum ? `HTTP ${statusNum}` : null, error.tryNote || null].filter(Boolean).join(', ');
+    // One line: what failed, the provider's own one-line message, status and
+    // retry info. The raw body is only added when nothing readable came out of it.
+    log('ERROR', `[${userName}] [${cls.tag}] ${cls.tag === 'NO_HOP' ? shownMsg : `${where} — ${shownMsg}`}${detailBits && cls.tag !== 'NO_HOP' ? ` (${detailBits})` : ''}${cls.providerMessage || !rawBody ? '' : ` | body: ${errorBody}`}`);
     if (res.headersSent) { try { res.end(); } catch (_) { /* already closed */ } return; }
-    if (Array.isArray(error.attempts) && error.attempts.length) {
+    if (multiHop && Array.isArray(error.attempts) && error.attempts.length) {
       const pathStr = error.attempts.map(a => `${a.provider}/${a.model}:${a.outcome}${a.reason ? `(${a.reason})` : ''}`).join(' -> ');
       res.setHeader('X-QProxy-Fallback-Path', pathStr);
     }
     res.setHeader('X-QProxy-Error-Tag', cls.tag);
+    if (error.retryAfterS) res.setHeader('Retry-After', String(error.retryAfterS));
     const httpStatus = error.response?.status || cls.httpStatus || 500;
     res.status(httpStatus).json({
       error: {
-        // Shows up as-is in Janitor/Marinara error popups, so it says what
-        // failed and where, not just "failed".
-        message: `[Q-Proxy · ${cls.tag}] ${where}: ${cls.providerMessage || error.message || 'Internal server error'}${cls.hint ? ` — ${cls.hint}` : ''}`,
+        // Shows up as-is in Janitor/Marinara error popups: what failed, the
+        // provider's one-line reason, and (only when it helps) how long to wait.
+        message: cls.tag === 'NO_HOP'
+          ? `[Q-Proxy · NO_HOP] ${shownMsg}`
+          : `[Q-Proxy · ${cls.tag}] ${where}: ${shownMsg}${detailBits ? ` (${detailBits})` : ''}${cls.hint ? ` — ${cls.hint}` : ''}`,
         type: cls.type,
         tag: cls.tag,
         code: httpStatus,
-        // Raw text so a coding agent (or you) can read exactly what the
-        // provider said, separate from Q-Proxy's own wrapper message above.
         provider_message: cls.providerMessage || null,
-        provider: where.split('/')[0] || null
+        provider: where.split('/')[0] || null,
+        ...(error.retryAfterS ? { retry_after_s: error.retryAfterS } : {})
       },
-      ...(Array.isArray(error.attempts) && error.attempts.length ? { attempts: error.attempts } : {})
+      // The hop-by-hop trail only means something when there WAS more than one hop.
+      ...(multiHop && Array.isArray(error.attempts) && error.attempts.length ? { attempts: error.attempts } : {})
     });
   }
 });
@@ -2343,8 +2660,9 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // ============================================================
 app.get('/admin/api/logs', requireAdmin, (req, res) => {
   const level = (req.query.level || '').toUpperCase();
+  const ridQ = String(req.query.rid || '').replace(/^#/, '').trim();
   const limit = Math.min(Number(req.query.limit) || RECENT_LOGS_MAX, RECENT_LOGS_MAX);
-  const filtered = level ? recentLogs.filter(l => l.level === level) : recentLogs;
+  const filtered = recentLogs.filter(l => (!level || l.level === level) && (!ridQ || l.rid === ridQ));
   // recentLogs is newest-first internally (that's what makes capping via
   // recentLogs.length = MAX correctly drop the OLDEST entries) — but
   // that's an implementation detail. Take the most recent `limit`
@@ -2474,67 +2792,48 @@ const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'li
 // token-weighted "optimization cost" and account-specific settings this
 // table can't capture) — this only powers the info shown in the
 // sync-result UI before you add a model.
-const LITEROUTER_KNOWN_MODELS = {
-  'deepseek-r1-0528': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
-  'deepseek-r1': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
-  'deepseek-reasoner': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: true },
-  'deepseek-v3-0324': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v3.1-terminus': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v3.1': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v3.2': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v3': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v4-flash-0731': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v4-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'deepseek-v4.1-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'gemini-2.5-flash-lite': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.1, uncensored: false },
-  'gemini-2.5-flash': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.4, uncensored: false },
-  'gemini-2.5-flash-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.4, uncensored: false },
-  'gemini-3-flash-preview': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
-  'gemini-3-flash-preview-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
-  'gemini-3.1-flash-lite': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
-  'gemini-3.1-flash-lite-thinking': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: false },
-  'gemma-3-27b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'gemma-4-26b-a4b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'gemma-4-31b-it': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'gemma-4-31b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'glm-4.6': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-4.7-flash': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'glm-4.7': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.1-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.1': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.2-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.2': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.3-cheap': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'glm-5.3-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 2, uncensored: true },
-  'glm-5.3-flash-cheap': { freeDailyCap: null, premiumBasic: true, premiumCost: 1.8, uncensored: true },
-  'glm-5': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'gpt-oss-120b': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'gpt-oss-20b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'kimi-k2.6-cheap': { freeDailyCap: 30, premiumBasic: false, premiumCost: null, uncensored: null },
-  'kimi-k2.7-code-cheap': { freeDailyCap: 30, premiumBasic: false, premiumCost: null, uncensored: null },
-  'l3-8b-lunaris': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'llama-3-8b-instruct': { freeDailyCap: null, premiumBasic: false, premiumCost: null, uncensored: true },
-  'llama-3.3-70b-instruct-turbo': { freeDailyCap: null, premiumBasic: false, premiumCost: null, uncensored: true },
-  'minimax-m2.7': { freeDailyCap: 100, premiumBasic: false, premiumCost: null, uncensored: null },
-  'ministral-3b-2512': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'ministral-8b-2512': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'mistral-large-2512': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.8, uncensored: true },
-  'mistral-large-3': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1.8, uncensored: true },
-  'mistral-medium-2508': { freeDailyCap: 100, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'mistral-small-2603': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'mythomax-l2-13b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'qwen3.6-27b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'qwen3.8-27b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: true },
-  'command-a': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'command-a-reasoning': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'command-a-vision': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'command-r': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'command-r-7b': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'command-r-plus': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'phi-4-mini-instruct': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'step-3.5-flash': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-  'step-3.5-flash-non-reasoning': { freeDailyCap: null, premiumBasic: true, premiumCost: 1, uncensored: false },
-};
+// Static, hand-pasted limit snapshots (Google AI Studio + Literouter). No API
+// returns any of this, so it lives in provider-limits.json — refresh it by
+// re-pasting the provider's dashboard and bumping capturedAt. Loaded once at
+// boot; if the file is missing the proxy still runs, sync-add just won't
+// pre-fill limits and Literouter models all show up as Unverified.
+const PROVIDER_LIMITS_PATH = path.join(__dirname, 'provider-limits.json');
+function loadProviderLimits() {
+  try { return JSON.parse(fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8')); }
+  catch (e) {
+    log('WARN', `provider-limits.json not loaded (${e.message}) — sync-add won't pre-fill limits and Literouter models will all show as Unverified`);
+    return {};
+  }
+}
+const PROVIDER_LIMITS = loadProviderLimits();
+// Keyed by base model name (no ":free"): { hasFree, freeDailyCap (null =
+// unlimited), premiumBasic, premiumCost, uncensored }.
+const LITEROUTER_KNOWN_MODELS = (PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.models) || {};
+
+// Google's /models returns ids as "models/gemini-2.5-flash"; the OpenAI-compat
+// endpoint and the rest of models.json use the bare slug. Strip the prefix
+// everywhere so ids/models never come out as "models-gemini-...-g".
+function normalizeGoogleModelId(id) {
+  return String(id || '').trim().replace(/^models\//i, '');
+}
+function googleLimitsFor(model) {
+  const rows = PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.models;
+  if (!rows) return null;
+  const slug = normalizeGoogleModelId(model).toLowerCase();
+  const candidates = [slug, slug.replace(/-preview(-\d{2}-\d{2,4})?$/, ''), slug.replace(/-latest$/, '')];
+  for (const c of candidates) {
+    for (const row of Object.values(rows)) if ((row.slugs || []).includes(c)) return row;
+  }
+  return null;
+}
+// How old a snapshot is, so the Admin panel can warn when it's stale.
+function limitsMeta(provider) {
+  const sec = PROVIDER_LIMITS[provider];
+  if (!sec || !sec.capturedAt) return null;
+  const ageDays = Math.floor((Date.now() - new Date(sec.capturedAt).getTime()) / 86400000);
+  const staleAfterDays = sec.staleAfterDays || 30;
+  return { capturedAt: sec.capturedAt, ageDays, staleAfterDays, stale: ageDays > staleAfterDays, source: sec.source || null };
+}
 
 // Literouter model ids can carry stacked variant suffixes (:free, :metered,
 // :full-context, :metered:full-context). Peel them off to find the base model
@@ -2806,30 +3105,23 @@ app.get('/admin/api/detect/:provider', requireAdmin, async (req, res) => {
   }
 });
 
+// Deliberately preserves EVERY hop field (spread, not a whitelist): this
+// feeds /admin/api/sync/:provider/remove, which round-trips entries through
+// flatten+nest to filter out one provider's hops. A whitelist here silently
+// destroyed anything it didn't know about — maxTokens floors, tools:false,
+// retryBudgetMs, maxRetries, all the reasoningField* maps, even the
+// "custom": true bundle flag — the first time a synced model was removed.
 function flattenEntry(entry) {
   const hops = [];
   let cur = entry;
+  let depth = 0;
   while (cur) {
-    hops.push({
-      model: cur.model || '',
-      provider: cur.provider || 'nvidia',
-      reasoningSchema: cur.reasoningSchema || null,
-      reasoning: cur.reasoning || null,
-      status: cur.status || 'active',
-      limitType: cur.limitType || 'rate-limited',
-      notes: cur.notes,
-      tpmLimit: cur.tpmLimit,
-      dailyCap: cur.dailyCap,
-      literouterTier: cur.literouterTier || null,
-      rpm: cur.rpm,
-      tpm: cur.tpm,
-      rpd: cur.rpd,
-      timeoutMs: cur.timeoutMs,
-      freeUntil: cur.freeUntil,
-      deprecatedOn: cur.deprecatedOn,
-      retryAsUnlimited: cur.retryAsUnlimited
-    });
-    cur = cur.fallback || null;
+    // Same cycle guard as resolveModelChain — hand-edited models.json with
+    // a fallback loop must not hang the sync endpoint.
+    if (++depth > 50) throw new Error('Fallback chain is suspiciously deep (50+) — check for a mistake.');
+    const { fallback, ...hop } = cur;
+    hops.push(hop);
+    cur = fallback || null;
   }
   return hops;
 }
@@ -2837,26 +3129,11 @@ function flattenEntry(entry) {
 function nestHops(hops) {
   let result = null;
   for (let i = hops.length - 1; i >= 0; i--) {
-    const h = hops[i];
-    const item = {
-      model: h.model,
-      provider: h.provider,
-      reasoningSchema: h.reasoningSchema || null,
-      reasoning: h.reasoning || null,
-      status: h.status || 'active',
-      limitType: h.limitType || 'rate-limited'
-    };
-    if (h.notes) item.notes = h.notes;
-    if (h.tpmLimit !== undefined) item.tpmLimit = h.tpmLimit;
-    if (h.dailyCap !== undefined && h.dailyCap !== null) item.dailyCap = h.dailyCap;
-    if (h.literouterTier) item.literouterTier = h.literouterTier;
-    if (h.rpm !== undefined && h.rpm !== null) item.rpm = h.rpm;
-    if (h.tpm !== undefined && h.tpm !== null) item.tpm = h.tpm;
-    if (h.rpd !== undefined && h.rpd !== null) item.rpd = h.rpd;
-    if (h.timeoutMs !== undefined) item.timeoutMs = h.timeoutMs;
-    if (h.freeUntil) item.freeUntil = h.freeUntil;
-    if (h.deprecatedOn) item.deprecatedOn = h.deprecatedOn;
-    if (typeof h.retryAsUnlimited === 'boolean') item.retryAsUnlimited = h.retryAsUnlimited;
+    const item = { ...hops[i] };
+    // Only fill in the two defaults flattenEntry used to guarantee; every
+    // other field passes through exactly as it was.
+    if (!item.status) item.status = 'active';
+    if (!item.limitType) item.limitType = 'rate-limited';
     if (result) item.fallback = result;
     result = item;
   }
@@ -2866,6 +3143,7 @@ function nestHops(hops) {
 function buildSuggestedModelId(provider, model) {
   const base = String(model || '')
     .toLowerCase()
+    .replace(/^models\//, '')
     .replace(/[:/]+/g, '-')
     .replace(/[^a-z0-9.-]+/g, '-')
     .replace(/-+/g, '-')
@@ -2895,7 +3173,12 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
       headers: { Authorization: `Bearer ${key}` },
       timeout: 15000
     });
-    const liveIds = (r.data?.data || []).map(m => m.id);
+    // Google lists ids as "models/xyz" but hops are stored bare (or, in older
+    // entries, with the prefix) — compare on the bare slug so a configured
+    // model isn't offered again as "new" under the other spelling.
+    const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
+    const liveIds = [...new Set((r.data?.data || []).map(m => canon(m.id)))];
+    const liveSet = new Set(liveIds);
 
     const configuredIds = new Set();
     for (const entry of Object.values(MODEL_MAPPING)) {
@@ -2905,9 +3188,10 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
         hop = hop.fallback;
       }
     }
+    const configuredCanon = new Set([...configuredIds].map(canon));
 
-    let newlyAvailable = liveIds.filter(id => !configuredIds.has(id));
-    const noLongerListed = [...configuredIds].filter(id => !liveIds.includes(id));
+    let newlyAvailable = liveIds.filter(id => !configuredCanon.has(id));
+    const noLongerListed = [...configuredIds].filter(id => !liveSet.has(canon(id)));
     // Three-way split, shown before you add a model: 'free' (no cost),
     // 'premium' (usable, but from a tighter/shared pool than free),
     // 'inaccessible' (listed by the provider but this plan/key can't
@@ -2919,20 +3203,24 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     // table, not a live provider signal; everything else is 'unknown'
     // rather than a hardcoded guess about a provider's own model tiers.
     const modelInfo = {};
-    let hiddenInaccessible = 0;
     if (provider === 'literouter') {
+      // Nothing is dropped any more: models this plan can't reach ('inaccessible')
+      // and ones missing from the table ('unknown') are both returned, and the
+      // Admin panel tucks everything that isn't Free / Premium Basic into one
+      // collapsed "other" group instead of hiding a count.
       for (const id of newlyAvailable) modelInfo[id] = classifyLiterouterModel(id);
-      // Models this plan can't reach are worthless to list — drop them
-      // (only the count is kept, so the panel can say something was hidden).
-      const usable = newlyAvailable.filter(id => modelInfo[id].tier !== 'inaccessible');
-      hiddenInaccessible = newlyAvailable.length - usable.length;
-      for (const id of newlyAvailable) if (modelInfo[id].tier === 'inaccessible') delete modelInfo[id];
-      newlyAvailable = usable.sort((a, b) => a.localeCompare(b));
+      newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
+    } else if (provider === 'google') {
+      for (const id of newlyAvailable) {
+        const row = googleLimitsFor(id);
+        modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null,
+          limits: row ? { rpm: row.rpm, tpm: row.tpm, rpd: row.rpd, noFreeAccess: !!row.noFreeAccess, label: row.label } : null };
+      }
     } else {
       for (const id of newlyAvailable) modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null };
     }
 
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, hiddenInaccessible, partialNote: PARTIAL_SYNC_NOTES[provider] || null });
+    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
@@ -2950,7 +3238,9 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: { message: 'Body must include a string "model".', type: 'invalid_request_error', code: 400 } });
   }
 
-  const safeId = (id && String(id).trim()) || buildSuggestedModelId(provider, model);
+  // Google hands out "models/xyz"; store and name everything by the bare slug.
+  const cleanModel = provider === 'google' ? normalizeGoogleModelId(model) : model.trim();
+  const safeId = (id && String(id).trim()) || buildSuggestedModelId(provider, cleanModel);
   if (MODEL_MAPPING[safeId]) {
     return res.status(409).json({ error: { message: `Model id "${safeId}" already exists.`, type: 'conflict_error', code: 409 } });
   }
@@ -2967,22 +3257,53 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
   // sync screen (via 🧪) before hitting "Add to config" — an actually-
   // inspected config, not a guess or a config carried over from a
   // differently-versioned model that happened to share a name prefix.
-  const preset = MODEL_PRESETS[presetKeyFor(provider, model.trim())];
+  const preset = MODEL_PRESETS[presetKeyFor(provider, cleanModel)] || MODEL_PRESETS[presetKeyFor(provider, model.trim())];
   const usedPreset = Boolean(preset) && !reasoningOverride;
   const usedDetection = Boolean(reasoningOverride && typeof reasoningOverride === 'object' && reasoningOverride.reasoningSchema);
   const src = usedDetection ? reasoningOverride : preset;
+  // Pre-fill provider limits from the saved snapshot (provider-limits.json) —
+  // no API returns these, so this is the "populate as if it were an API call" step.
+  const limitFields = {};
+  const limitNotes = [];
+  let limitsApplied = null;
+  if (provider === 'google') {
+    const row = googleLimitsFor(cleanModel);
+    if (row && row.noFreeAccess) {
+      limitNotes.push(`AI Studio lists 0 RPM / 0 TPM / 0 RPD for "${row.label}" on the free tier — likely not usable without billing. Limits left blank on purpose (0 would be read as "not tracked").`);
+    } else if (row) {
+      if (row.rpm != null) limitFields.rpm = row.rpm;
+      if (row.tpm != null) limitFields.tpm = row.tpm;
+      if (row.rpd != null) limitFields.rpd = row.rpd;
+      limitsApplied = { provider, matched: row.label, ...limitFields, capturedAt: PROVIDER_LIMITS.google.capturedAt };
+    } else {
+      limitNotes.push('No row for this model in the saved AI Studio limits snapshot — RPM/TPM/RPD left blank. Add its limits by hand (Edit) or add its slug to provider-limits.json.');
+    }
+  } else if (provider === 'literouter') {
+    const { base, variants } = literouterBaseAndVariants(cleanModel);
+    const known = LITEROUTER_KNOWN_MODELS[base] || null;
+    if (known && variants.includes('free') && known.hasFree) {
+      if (known.freeDailyCap != null) limitFields.dailyCap = known.freeDailyCap;
+      const ctx = PROVIDER_LIMITS.literouter.freeContextTokens;
+      limitNotes.push(`Free tier: ${known.freeDailyCap != null ? known.freeDailyCap + '/day per key' : 'no daily cap listed'}${ctx ? `; ${ctx.toLocaleString('en-US')}-token context (longer requests are summarized by Literouter)` : ''}.`);
+      limitsApplied = { provider, matched: base, ...limitFields, capturedAt: PROVIDER_LIMITS.literouter.capturedAt };
+    } else if (known && !variants.includes('free') && known.premiumBasic) {
+      limitNotes.push(`Premium Basic · ${known.premiumCost}x credit cost (shared daily premium pool, not a per-model cap).`);
+      limitsApplied = { provider, matched: base, premiumCost: known.premiumCost, capturedAt: PROVIDER_LIMITS.literouter.capturedAt };
+    }
+  }
   MODEL_MAPPING[safeId] = {
-    model: model.trim(),
+    model: cleanModel,
     provider,
-    reasoningSchema: src?.reasoningSchema ?? inferReasoningSchema(provider, model.trim()),
+    reasoningSchema: src?.reasoningSchema ?? inferReasoningSchema(provider, cleanModel),
     reasoning: src?.reasoning ? JSON.parse(JSON.stringify(src.reasoning)) : {},
     ...(src?.reasoningFieldEnabled ? { reasoningFieldEnabled: JSON.parse(JSON.stringify(src.reasoningFieldEnabled)) } : {}),
     ...(src?.reasoningFieldKeys ? { reasoningFieldKeys: JSON.parse(JSON.stringify(src.reasoningFieldKeys)) } : {}),
     ...(src?.reasoningFieldTransport ? { reasoningFieldTransport: JSON.parse(JSON.stringify(src.reasoningFieldTransport)) } : {}),
     ...(src?.reasoningFieldOptions ? { reasoningFieldOptions: JSON.parse(JSON.stringify(src.reasoningFieldOptions)) } : {}),
-    ...(preset?.notes && !usedDetection ? { notes: preset.notes } : {}),
+    ...((preset?.notes && !usedDetection) || limitNotes.length ? { notes: [(preset?.notes && !usedDetection) ? preset.notes : null, ...limitNotes].filter(Boolean).join(' ') } : {}),
     status: (status || 'active'),
-    limitType: (limitType || 'rate-limited')
+    limitType: (limitType || 'rate-limited'),
+    ...limitFields
   };
   let sync;
   try {
@@ -2991,8 +3312,8 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
     delete MODEL_MAPPING[safeId];
     return res.status(500).json({ error: { message: `Added in memory but failed to write models.json: ${e.message}`, type: 'server_error', code: 500 } });
   }
-  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${model})${usedDetection ? ' — applied detected example config' : usedPreset ? ' — applied saved preset' : ''}${sync.ok ? ' (synced to GitHub)' : ''}`);
-  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId], usedPreset, usedDetection, githubSync: sync });
+  log('INFO', `[admin] sync-add "${safeId}" (${provider} / ${cleanModel})${limitsApplied ? ' — pre-filled limits from snapshot' : ''}${usedDetection ? ' — applied detected example config' : usedPreset ? ' — applied saved preset' : ''}${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, id: safeId, entry: MODEL_MAPPING[safeId], usedPreset, usedDetection, limitsApplied, githubSync: sync });
 });
 
 app.post('/admin/api/sync/:provider/remove', requireAdmin, async (req, res) => {
@@ -3060,6 +3381,9 @@ async function bootstrapConfigAndStart() {
 
   app.listen(PORT, () => {
     log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
+    // Logged once so the time zone is never a mystery when debugging: every
+    // stamp in Render's console is UTC; the Admin panel shows your local time.
+    log('INFO', `Server clock: ${new Date().toISOString()} | TZ env: ${process.env.TZ || '(unset → UTC)'} | zone: ${Intl.DateTimeFormat().resolvedOptions().timeZone} — all log stamps are UTC`);
     log('INFO', `OpenRouter keys loaded: ${OPENROUTER_KEYS.length}`);
     log('INFO', `Literouter keys loaded: ${LITEROUTER_KEYS.length}`);
     log('INFO', `Model presets loaded: ${Object.keys(MODEL_PRESETS).length}`);
