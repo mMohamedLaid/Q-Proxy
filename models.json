@@ -203,7 +203,7 @@
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "gpt-oss-20b-lr": {
     "model": "gpt-oss-20b:free",
@@ -229,7 +229,8 @@
     "reasoningSchema": null,
     "reasoning": null,
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "dailyCap": 100
   },
   "qwen3-coder-or": {
     "model": "qwen/qwen3-coder:free",
@@ -257,7 +258,7 @@
     "status": "active",
     "limitType": "rate-limited",
     "notes": "near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "llama-nemotron": {
     "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
@@ -277,7 +278,7 @@
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "gemma-3-27b-it-lr": {
     "model": "gemma-3-27b-it:free",
@@ -290,14 +291,14 @@
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "gemini-2.5-flash-lr": {
     "model": "gemini-2.5-flash:free",
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "deepseek-v4-flash-lr": {
     "model": "deepseek-v4-flash:free",
@@ -373,21 +374,21 @@
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "mistral-large-3-lr": {
     "model": "mistral-large-3:free",
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "mistral-medium-2508-lr": {
     "model": "mistral-medium-2508:free",
     "provider": "literouter",
     "status": "active",
     "limitType": "rate-limited",
-    "dailyCap": 30
+    "dailyCap": 100
   },
   "mistral-small-2603-lr": {
     "model": "mistral-small-2603:free",
@@ -450,9 +451,10 @@
     "reasoningSchema": null,
     "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "dailyCap": 100
   },
-  "models-gemini-3.6-flash-g": {
+  "gemini-3.6-flash-g": {
     "model": "models/gemini-3.6-flash",
     "provider": "google",
     "reasoningSchema": null,
@@ -462,13 +464,5 @@
     "rpm": 5,
     "tpm": 250000,
     "rpd": 20
-  },
-  "models-gemini-2.5-flash-g": {
-    "model": "models/gemini-2.5-flash",
-    "provider": "google",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
   }
 }
