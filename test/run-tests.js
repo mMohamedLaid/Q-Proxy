@@ -387,6 +387,27 @@ async function main() {
     check('hang-up: logged as a calm INFO (no ERROR), and it never "completes"', /client disconnected after .* cancelling the upstream request/.test(gone) && /request ended — client disconnected/.test(gone) && !/\[ERROR\]|stream complete/.test(gone), gone.slice(0, 600));
     try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
 
+    // ── load-order invariant: the limits table exists before anything can read it ──
+    const srcText = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    check('provider-limits is declared above every function that reads it (no TDZ at load)',
+      srcText.indexOf('const PROVIDER_LIMITS =') > -1 && srcText.indexOf('const PROVIDER_LIMITS =') < srcText.indexOf('function tpmCountsInputOnly') && !/typeof PROVIDER_LIMITS/.test(srcText));
+
+    // ── QUOTA outranks 429 in classifyError (known, intended): pin what it actually does ──
+    const quotaBody = JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED' } });
+    setScenario({ mode: 'upstream-error', status: 429, body: quotaBody });
+    let qt0 = Date.now();
+    r = await chat({ model: 'glm-5.3-nv', messages: [{ role: 'user', content: 'hi' }] });
+    j = await r.json();
+    check('QUOTA: a quota-worded 429 on a single-hop NIM model stops retrying at once and is returned as 429 (not 503)',
+      r.status === 429 && r.headers.get('x-qproxy-error-tag') === 'QUOTA' && Date.now() - qt0 < 3000, `${r.status} ${r.headers.get('x-qproxy-error-tag')} ${Date.now() - qt0}ms`);
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-q', entry: { model: 'nv-a', provider: 'nvidia', status: 'active', limitType: 'unlimited',
+      fallback: { model: 'gemma-4-31b-it', provider: 'google', status: 'active', limitType: 'rate-limited' } } }) }); await r.text();
+    r = await chat({ model: 'zz-q', messages: [{ role: 'user', content: 'hi' }] });
+    j = await r.json();
+    check('QUOTA: on a two-hop chain it still FALLS BACK to the next hop (only the retry loop stops)',
+      Array.isArray(j.attempts) && j.attempts.length === 2 && j.attempts.every(a => a.reason === 'QUOTA'), JSON.stringify(j.attempts));
+    r = await fetch(BASE + '/admin/api/models/zz-q', { method: 'DELETE', headers: admin2 }); await r.text();
+
     // ── /health after a cycle-free run (cycle guard smoke) ────────────
     r = await fetch(BASE + '/health');
     check('/health still healthy at end', r.ok, String(r.status));
