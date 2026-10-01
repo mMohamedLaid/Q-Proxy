@@ -12,7 +12,7 @@ DONE (27-29 Sep 2026)
 - Resets are baked in, no env vars: Literouter 00:00 GMT+7 (17:00 UTC), OpenRouter 00:00 UTC, Google midnight Pacific (DST-aware).
 - Google per-hop rpm/tpm/rpd are editable in the Admin form and shown as "Limits" on model cards.
 
-DONE (30 Sep - 01 Oct 2026)  [all committed except the TDZ fix and 3 extra tests - see STATE OF THE REPO]
+DONE (30 Sep - 01 Oct 2026)  [all committed]
 - Request ids: every line a request writes carries a short id (#k3f9) - in Render's console and the Admin log. In Admin, click a #id chip (or type it in the box) to show only that request; the API takes ?rid=. Done by shadowing `const log = logWith(rid)` in the route and in makeAPICall, so no call site changed (AsyncLocalStorage was deliberately not used).
 - Admin log: 1000 entries (RECENT_LOGS_MAX), auto-refresh ON by default (the list isn't redrawn when nothing changed, so text selection survives), a label saying times are my local time while Render is UTC. New PROMPT entries (one per request): what was sent, 300 chars per message, up to 100 messages. The Render console still prints one [msg N] line per message.
 - THINK/REPLY blocks are stamped with when they STARTED, not finished. A compiled copy of each is also printed to the Render console when a stream ends (every line prefixed "#id |").
@@ -32,12 +32,11 @@ KNOWN BEHAVIOUR - measured, not bugs, but they surprise people
 - QUOTA outranks 429 in classifyError (patterns match on any status and include broad words: billing, daily limit, requests per day, resource_exhausted). A quota-worded 429 stops retrying at once, STILL falls back to the next hop, and is returned to the client as 429 (not 503). Pinned by two tests.
 - Retry only applies before a stream starts; a stream that dies mid-way ends with finish_reason "length", it is not retried.
 
-STATE OF THE REPO (checked 01-10-2026 against github.com/mMohamedLaid/Q-Proxy, HEAD 7323903)
-- Identical to the final files: public/admin.html, README.md, provider-limits.json, handof.md, test/mock-axios.js. models.json: same content and key order (only a trailing newline differs). The tests were moved into test/ on 01-10.
-- HELD BACK ON PURPOSE, to avoid two forks of server.js: the final server.js and test/run-tests.js. Checked, NOT a fork: HEAD's server.js plus ONE localized change (the PROVIDER_LIMITS loader moved from line ~2808 to ~80, and the `typeof PROVIDER_LIMITS` guard removed) is byte-identical to the final server.js, and HEAD's run-tests.js has no line the final one lacks (the final adds 3 tests: load order, and two QUOTA behaviours). The change fixes a guard that protected nothing (typeof on a const in its dead zone throws); not a live bug, because every reader runs at request time.
-- If/when committing: server.js FIRST (the current tests pass against it, 77/77), then test/run-tests.js. The final run-tests.js on its own FAILS one check against HEAD's server.js (the load-order test).
+STATE OF THE REPO (checked 01-10-2026 against github.com/mMohamedLaid/Q-Proxy, HEAD 1277f94 - the commit before this handoff update; nothing is pending)
+- Everything is committed. server.js, public/admin.html, models.json, provider-limits.json, README.md and test/ are identical to the final files; the only differences are trailing newlines (two blank lines at the end of server.js, a final newline in models.json).
+- The held-back commits were checked for a fork before landing: the old server.js plus one localized change (the PROVIDER_LIMITS loader moved from line ~2808 to ~80, and the `typeof PROVIDER_LIMITS` guard removed) was byte-identical to the final one. That change fixes a guard that protected nothing (typeof on a const in its dead zone throws); it was never a live bug, because every reader runs at request time.
 - package-lock.json exists on my machine but is NOT in the repo, so dependency versions resolve fresh on each deploy (whether to commit it is undecided).
-- Verified on Node 22 with mocked axios: HEAD as pushed = 77/77 pass; the final server.js + run-tests.js = 80/80. Not tested: live NIM/Google/Literouter, Node 20, the new Admin log UI in a browser.
+- Verified on Node 22 with mocked axios: HEAD as pushed = 80/80 pass (`node test/run-tests.js`); models.json and usage-state.json are restored byte-for-byte after a run. Not tested: live NIM/Google/Literouter, Node 20, the new Admin log UI in a browser.
 
 OPEN
 1. FIRST: delete TEMP_ADMIN_KEY ('123') from server.js once I say testing is done (7 mentions).
@@ -54,3 +53,4 @@ HOW TO WORK WITH ME
 - If I hold a commit back on purpose, it is to avoid two forks of the same file. Don't list it as "missing": check the repo's file is an ancestor of yours (apply your delta to the repo's copy, then cmp), report that, and say what order to commit in.
 - Don't state guesses as facts about providers or Anthropic products. Say what's verified and what's assumed. If I paste another AI's claim, check it by running the code before agreeing or disagreeing.
 - I prefer known facts baked in over env vars, and readable Admin logs over noisy ones (the Render console can stay noisy).
+
