@@ -408,6 +408,33 @@ async function main() {
       Array.isArray(j.attempts) && j.attempts.length === 2 && j.attempts.every(a => a.reason === 'QUOTA'), JSON.stringify(j.attempts));
     r = await fetch(BASE + '/admin/api/models/zz-q', { method: 'DELETE', headers: admin2 }); await r.text();
 
+    // ── admin auth: only ADMIN_KEY opens the panel ──
+    r = await fetch(BASE + '/admin/api/models', { headers: { 'X-Admin-Key': 'wrongkey' } });
+    j = await r.json().catch(() => ({}));
+    check('admin: a wrong key is rejected (401)', r.status === 401 && /Invalid or missing admin key/.test(j.error?.message || ''), `${r.status} ${JSON.stringify(j)}`);
+    r = await fetch(BASE + '/admin/api/models', { headers: { 'X-Admin-Key': 'adminkey' } });
+    check('admin: the real ADMIN_KEY works (one wrong try did not lock it out)', r.ok, String(r.status)); await r.text();
+
+    // ── fails closed when ADMIN_KEY is not set at all: 503 for every key, plus a boot WARN ──
+    {
+      const env2 = { ...process.env, MY_KEY: 'testkey', NIM_API_KEY: 'nv', PORT: String(PORT + 1), MOCK_FILE: SCEN };
+      delete env2.ADMIN_KEY;
+      const child2 = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], { cwd: ROOT, env: env2, stdio: ['ignore', 'pipe', 'pipe'] });
+      let log2 = ''; child2.stdout.on('data', d => { log2 += d; }); child2.stderr.on('data', d => { log2 += d; });
+      const exited2 = new Promise(resolve => child2.on('exit', resolve));
+      const B2 = `http://127.0.0.1:${PORT + 1}`;
+      let up2 = false;
+      for (let i = 0; i < 50 && !up2; i++) { try { const hr = await fetch(B2 + '/health'); up2 = hr.ok; await hr.text(); } catch (_) {} if (!up2) await sleep(200); }
+      check('no ADMIN_KEY: server still boots (the proxy itself does not need it)', up2);
+      if (up2) {
+        const codes = [];
+        for (const k of ['wrongkey', 'adminkey', '']) { const ar = await fetch(B2 + '/admin/api/models', { headers: { 'X-Admin-Key': k } }); codes.push(ar.status); await ar.text(); }
+        check('no ADMIN_KEY: admin panel answers 503 for every key', codes.every(c => c === 503), JSON.stringify(codes));
+        check('no ADMIN_KEY: a clear WARN is logged at boot', /ADMIN_KEY is not set — the admin panel is disabled/.test(log2), log2.slice(0, 400));
+      }
+      child2.kill(); await Promise.race([exited2, sleep(3000)]);
+    }
+
     // ── /health after a cycle-free run (cycle guard smoke) ────────────
     r = await fetch(BASE + '/health');
     check('/health still healthy at end', r.ok, String(r.status));
@@ -426,3 +453,4 @@ async function main() {
 }
 
 main().catch(e => { console.error('TEST DRIVER ERROR', e); process.exit(2); });
+
