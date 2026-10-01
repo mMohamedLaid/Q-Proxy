@@ -1414,6 +1414,15 @@
       const res = await api('/admin/api/logs' + (qs.length ? '?' + qs.join('&') : ''));
       renderLogs(res, force === true);
     } catch (err) {
+      // A rejected key (401) or an IP lockout (429) won't fix itself, and every
+      // further poll counts as another failed attempt — which prolongs the lockout.
+      // Stop polling instead of hammering the server from a stale tab.
+      if (/admin key/i.test(err.message)) {
+        if (logAutoRefreshTimer) { clearInterval(logAutoRefreshTimer); logAutoRefreshTimer = null; }
+        const cb = $('#log-auto-refresh'); if (cb) cb.checked = false;
+        $('#logs-view').innerHTML = `<div class="logs-empty">Admin key rejected — auto-refresh paused so this tab can't lock you out. Reload the page and enter the current key. (${escapeHtml(err.message)})</div>`;
+        return;
+      }
       $('#logs-view').innerHTML = `<div class="logs-empty">Couldn't load logs: ${escapeHtml(err.message)}</div>`;
     }
   }
