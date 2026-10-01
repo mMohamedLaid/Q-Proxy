@@ -63,6 +63,22 @@ function consoleBlock(level, header, text, rid, maxChars = 150000) {
   console.log([`[${fmtServerTs(new Date().toISOString())}] [${level}] ${tag} ${header}`, ...lines].join('\n'));
 }
 
+// Static, hand-pasted limit snapshots (Google AI Studio + Literouter). No API
+// returns any of this, so it lives in provider-limits.json — refresh it by
+// re-pasting the provider's dashboard and bumping capturedAt. Loaded once at
+// boot — declared up here, above every function that reads it, so nothing can
+// ever touch it before it exists; if the file is missing the proxy still runs, sync-add just won't
+// pre-fill limits and Literouter models all show up as Unverified.
+const PROVIDER_LIMITS_PATH = path.join(__dirname, 'provider-limits.json');
+function loadProviderLimits() {
+  try { return JSON.parse(fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8')); }
+  catch (e) {
+    log('WARN', `provider-limits.json not loaded (${e.message}) — sync-add won't pre-fill limits and Literouter models will all show as Unverified`);
+    return {};
+  }
+}
+const PROVIDER_LIMITS = loadProviderLimits();
+
 // Admin-panel-only entry for streamed model text (reasoning or reply).
 // Tokens are appended as they arrive and stitched into one readable block
 // (the model's own line breaks are kept), instead of one log line per
@@ -522,7 +538,7 @@ function estimateTokens(messages) {
 // The list lives in provider-limits.json ("tpmCountsInputOnly"); add a
 // provider there once its dashboard confirms it counts input only.
 function tpmCountsInputOnly(provider) {
-  const list = (typeof PROVIDER_LIMITS !== 'undefined' && Array.isArray(PROVIDER_LIMITS.tpmCountsInputOnly)) ? PROVIDER_LIMITS.tpmCountsInputOnly : ['google'];
+  const list = Array.isArray(PROVIDER_LIMITS.tpmCountsInputOnly) ? PROVIDER_LIMITS.tpmCountsInputOnly : ['google'];
   return list.includes(provider);
 }
 function fmtN(n) { return Number(n).toLocaleString('en-US'); }
@@ -2792,20 +2808,6 @@ const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'li
 // token-weighted "optimization cost" and account-specific settings this
 // table can't capture) — this only powers the info shown in the
 // sync-result UI before you add a model.
-// Static, hand-pasted limit snapshots (Google AI Studio + Literouter). No API
-// returns any of this, so it lives in provider-limits.json — refresh it by
-// re-pasting the provider's dashboard and bumping capturedAt. Loaded once at
-// boot; if the file is missing the proxy still runs, sync-add just won't
-// pre-fill limits and Literouter models all show up as Unverified.
-const PROVIDER_LIMITS_PATH = path.join(__dirname, 'provider-limits.json');
-function loadProviderLimits() {
-  try { return JSON.parse(fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8')); }
-  catch (e) {
-    log('WARN', `provider-limits.json not loaded (${e.message}) — sync-add won't pre-fill limits and Literouter models will all show as Unverified`);
-    return {};
-  }
-}
-const PROVIDER_LIMITS = loadProviderLimits();
 // Keyed by base model name (no ":free"): { hasFree, freeDailyCap (null =
 // unlimited), premiumBasic, premiumCost, uncensored }.
 const LITEROUTER_KNOWN_MODELS = (PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.models) || {};
@@ -3395,5 +3397,7 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
+
 
 
