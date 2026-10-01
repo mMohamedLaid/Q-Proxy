@@ -2455,15 +2455,10 @@ app.post('/v1/chat/completions', async (req, res) => {
 // ============================================================
 const ADMIN_KEY = process.env.ADMIN_KEY;
 
-// ⚠️⚠️ TEMPORARY — DELETE THIS WHOLE BLOCK (and the two places that read
-// TEMP_ADMIN_KEY in requireAdmin below) AS SOON AS YOU'RE DONE TESTING. ⚠️⚠️
-// "123" is a second admin key that works alongside ADMIN_KEY. Anyone who
-// finds your Render URL can guess it, and the admin panel can rewrite
-// models.json and push commits to your GitHub repo. To remove it: delete
-// the next line, and delete `&& !TEMP_ADMIN_KEY` / `&& provided !== TEMP_ADMIN_KEY`
-// in requireAdmin (search this file for TEMP_ADMIN_KEY).
-const TEMP_ADMIN_KEY = '123'; // TODO(DELETE AFTER TESTING)
-if (TEMP_ADMIN_KEY) log('WARN', '[admin] ⚠ TEMP_ADMIN_KEY is active — the admin panel accepts the throwaway key "123". Delete it from server.js after testing.');
+// Without ADMIN_KEY the admin panel is disabled (every /admin request answers
+// 503). Say so once at boot, so a missing env var shows up in Render's logs
+// instead of looking like a broken panel.
+if (!ADMIN_KEY) log('WARN', '[admin] ADMIN_KEY is not set — the admin panel is disabled (every /admin request returns 503). Set ADMIN_KEY in the environment (Render → Environment) to enable it.');
 // Keyed by client IP, not one shared counter — a single global
 // {count, lockedUntil} means ANY stranger (or bot scanning for open
 // admin panels) sending 5 wrong keys locks out the real admin for up
@@ -2479,7 +2474,7 @@ app.use('/admin', (req, res, next) => {
 });
 
 function requireAdmin(req, res, next) {
-  if (!ADMIN_KEY && !TEMP_ADMIN_KEY) { // TEMP_ADMIN_KEY: delete with the temp-key block above
+  if (!ADMIN_KEY) {
     return res.status(503).json({
       error: { message: 'Admin panel disabled — set ADMIN_KEY in your environment to enable it.', type: 'admin_disabled', code: 503 }
     });
@@ -2499,7 +2494,7 @@ function requireAdmin(req, res, next) {
   // bookmark convenience is a client-side-only convenience (see
   // admin.html) and doesn't need this fallback to keep working.
   const provided = req.headers['x-admin-key'] || '';
-  if (provided !== ADMIN_KEY && provided !== TEMP_ADMIN_KEY) { // TEMP_ADMIN_KEY: delete with the temp-key block above
+  if (provided !== ADMIN_KEY) {
     state.count++;
     if (state.count >= 5) {
       const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
@@ -3397,7 +3392,3 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
-
-
-
-
