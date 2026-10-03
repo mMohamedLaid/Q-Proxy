@@ -78,6 +78,21 @@ function loadProviderLimits() {
   }
 }
 const PROVIDER_LIMITS = loadProviderLimits();
+// Re-read the file into the SAME object (other code holds references into it).
+function reloadProviderLimits() {
+  try {
+    const fresh = JSON.parse(fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8'));
+    for (const k of Object.keys(PROVIDER_LIMITS)) if (k !== 'literouter') delete PROVIDER_LIMITS[k];
+    for (const [k, v] of Object.entries(fresh)) {
+      if (k === 'literouter' && PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.models && v && v.models) {
+        const lm = PROVIDER_LIMITS.literouter.models;
+        for (const m of Object.keys(lm)) delete lm[m];
+        Object.assign(lm, v.models);
+        Object.assign(PROVIDER_LIMITS.literouter, { ...v, models: lm });
+      } else PROVIDER_LIMITS[k] = v;
+    }
+  } catch (e) { log('WARN', `provider-limits.json could not be reloaded (${e.message}) — keeping what was loaded at start`); }
+}
 
 // Admin-panel-only entry for streamed model text (reasoning or reply).
 // Tokens are appended as they arrive and stitched into one readable block
@@ -713,6 +728,7 @@ const GITHUB_MODELS_PATH  = process.env.GITHUB_MODELS_PATH || 'models.json';
 const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schemas.json';
 const GITHUB_PRESETS_PATH = process.env.GITHUB_PRESETS_PATH || 'model-presets.json';
 const GITHUB_USAGE_PATH   = process.env.GITHUB_USAGE_PATH || 'usage-state.json';
+const GITHUB_LIMITS_PATH  = process.env.GITHUB_LIMITS_PATH || 'provider-limits.json';
 const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
 function githubHeaders() {
@@ -762,7 +778,7 @@ async function syncConfigFromGitHubOnBoot() {
     log('WARN', 'GITHUB_TOKEN/GITHUB_REPO not set — admin panel edits will NOT survive a restart on Render Free. See README > Persistence.');
     return;
   }
-  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH], [GITHUB_PRESETS_PATH, MODEL_PRESETS_PATH], [GITHUB_USAGE_PATH, USAGE_STATE_PATH]]) {
+  for (const [repoPath, localPath] of [[GITHUB_MODELS_PATH, MODELS_PATH], [GITHUB_SCHEMAS_PATH, REASONING_SCHEMAS_PATH], [GITHUB_PRESETS_PATH, MODEL_PRESETS_PATH], [GITHUB_USAGE_PATH, USAGE_STATE_PATH], [GITHUB_LIMITS_PATH, PROVIDER_LIMITS_PATH]]) {
     try {
       const remote = await githubFetchFile(repoPath);
       if (remote) {
@@ -776,6 +792,7 @@ async function syncConfigFromGitHubOnBoot() {
       log('WARN', `[github-sync] could not pull ${repoPath} from GitHub on boot (${e.message}) — using the copy baked into this deploy instead`);
     }
   }
+  reloadProviderLimits();   // provider-limits.json is read at load time, i.e. BEFORE this pull
 }
 
 // Pushes a local save up to GitHub. Never throws — a GitHub outage or bad
@@ -838,6 +855,9 @@ function loadUsageStateFromDisk() {
   }
 }
 
+// Google limit mismatches learned from Google's own 429s (see learnGoogleLimitsFrom429).
+// Persisted with the usage state so the "limits may be outdated" warning survives a restart.
+let googleLimitMismatches = [];
 async function saveUsageState(commitMessage) {
   const snapshot = {
     savedAt: new Date().toISOString(),
@@ -852,6 +872,7 @@ async function saveUsageState(commitMessage) {
     googleModelCursor,
     googleUsageWindows,
     googleLastResetDay,
+    googleLimitMismatches,
   };
   const json = JSON.stringify(snapshot, null, 2);
   fs.writeFileSync(USAGE_STATE_PATH, json);
@@ -883,6 +904,7 @@ function hydrateUsageStateFromDisk() {
   if (saved.googleModelCursor) Object.assign(googleModelCursor, saved.googleModelCursor);
   if (saved.googleUsageWindows) Object.assign(googleUsageWindows, saved.googleUsageWindows);
   if (typeof saved.googleLastResetDay === 'string') googleLastResetDay = saved.googleLastResetDay;
+  if (Array.isArray(saved.googleLimitMismatches)) googleLimitMismatches = saved.googleLimitMismatches.slice(0, 20);
   log('INFO', `[usage-state] restored from ${saved.savedAt || 'unknown time'} — Literouter/OpenRouter counters survive this restart instead of starting at zero.`);
 }
 
@@ -894,6 +916,65 @@ function hydrateUsageStateFromDisk() {
 // silently dropped.
 let usageStateDirty = false;
 function markUsageStateDirty() { usageStateDirty = true; }
+
+// ── Learning from Google's own 429s ───────────────────────────────────
+// A Google 429 (RESOURCE_EXHAUSTED) carries QuotaFailure details naming the quota that
+// was hit (quotaId) and its value (quotaValue), e.g. ...RequestsPerMinute... = "5".
+// If that value differs from what a Google hop has saved, the saved value is wrong:
+// fix it on every hop for that model, and remember it so the Admin panel can warn that
+// the rest of the saved table may be outdated too. Shape assumed from Google's quota
+// errors, NOT verified against a live 429: anything unrecognised is ignored, never guessed.
+function googleQuotaField(quotaId) {
+  const t = String(quotaId || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (t.includes('perday') && t.includes('request')) return 'rpd';
+  if (t.includes('perminute') && t.includes('token')) return 'tpm';
+  if (t.includes('perminute') && t.includes('request')) return 'rpm';
+  return null;
+}
+function collectQuotaViolations(node, out, depth) {
+  if (!node || typeof node !== 'object' || depth > 8) return;
+  if (Array.isArray(node)) { for (const n of node) collectQuotaViolations(n, out, depth + 1); return; }
+  if (node.quotaValue !== undefined && (node.quotaId || node.quotaMetric)) out.push(node);
+  for (const v of Object.values(node)) collectQuotaViolations(v, out, depth + 1);
+}
+function parseGoogleQuotaFrom429(bodyText) {
+  const found = [];
+  try { collectQuotaViolations(JSON.parse(bodyText), found, 0); } catch (_) { return []; }
+  const res = [];
+  for (const v of found) {
+    const field = googleQuotaField(v.quotaId) || (/input_?token/i.test(String(v.quotaMetric || '')) ? 'tpm' : null);
+    const value = Math.round(Number(v.quotaValue));
+    if (!field || !Number.isFinite(value) || value <= 0) continue;
+    const model = v.quotaDimensions && v.quotaDimensions.model ? String(v.quotaDimensions.model) : null;
+    res.push({ field, value, model });
+  }
+  return res;
+}
+function learnGoogleLimitsFrom429(providerConfig, bodyText) {
+  const hopModel = normalizeGoogleModelId(providerConfig.model);
+  let changed = false;
+  for (const v of parseGoogleQuotaFrom429(bodyText)) {
+    if (v.model && normalizeGoogleModelId(v.model) !== hopModel) continue;   // another model's quota — not ours to touch
+    const fixedHops = []; let ours;
+    for (const [id, entry] of Object.entries(MODEL_MAPPING)) {
+      for (let hop = entry; hop; hop = hop.fallback) {
+        if (hop.provider !== 'google' || normalizeGoogleModelId(hop.model) !== hopModel || hop[v.field] === v.value) continue;
+        if (ours === undefined) ours = hop[v.field] === undefined ? null : hop[v.field];
+        hop[v.field] = v.value; fixedHops.push(id);
+      }
+    }
+    if (!fixedHops.length) continue;
+    changed = true;
+    googleLimitMismatches = googleLimitMismatches.filter(m => !(m.model === hopModel && m.field === v.field));
+    googleLimitMismatches.unshift({ model: hopModel, field: v.field, ours, google: v.value, at: new Date().toISOString(), fixedHops: [...new Set(fixedHops)] });
+    googleLimitMismatches.length = Math.min(googleLimitMismatches.length, 20);
+    log('WARN', `[limits] Google says ${hopModel} ${v.field.toUpperCase()} is ${fmtN(v.value)} (we had ${ours === null ? 'nothing' : fmtN(ours)}) — corrected on ${[...new Set(fixedHops)].join(', ')}. The rest of the saved Google limits may be outdated too: Admin → Refresh limits.`);
+  }
+  if (changed) {
+    markUsageStateDirty();
+    saveModels(MODEL_MAPPING, 'Q-Proxy: corrected a Google limit from Google\'s own 429').catch(e => log('WARN', `[limits] could not save the corrected limit: ${e.message}`));
+  }
+}
 setInterval(() => {
   if (!usageStateDirty) return;
   usageStateDirty = false;
@@ -1332,6 +1413,9 @@ const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded you
 // is believed to report a degraded / cold endpoint this way, so on hops
 // that retry (nvidia, "unlimited") these are treated as transient instead
 // of a hard client error.
+// A key problem reported with a non-401/403 status (some gateways answer 500 with
+// "Invalid API key"): retrying can't fix it, so it is classified AUTH like a real 401.
+const AUTH_BODY_PATTERNS = /invalid[_ -]?api[_ -]?key|incorrect api key|api[_ -]?key (is |was )?(invalid|not valid|expired|revoked|missing)|unauthori[sz]ed|authentication (failed|error)|invalid (auth|authorization)|invalid[_ -]?token/i;
 const TRANSIENT_4XX_PATTERNS = /degraded|overloaded|temporarily|try again|capacity|service unavailable|\bbusy\b|cold.?start|warming|queue/i;
 const MODERATION_PATTERNS = /content.?(?:policy|filter)|safety|moderat|flagged/i;
 
@@ -1374,6 +1458,7 @@ function classifyError(err, bodyText = '') {
 
   if (TOKEN_LIMIT_PATTERNS.test(text))    return mk('CONTEXT_TOO_LONG', 'the request is bigger than this model\'s context window — trim the chat history or lower max tokens', 400, 'invalid_request_error');
   if (QUOTA_EXHAUSTED_PATTERNS.test(text)) return mk('QUOTA', 'the provider says the quota/credits are used up', 429, 'rate_limit_error');
+  if (status !== 429 && !(status >= 200 && status < 300) && AUTH_BODY_PATTERNS.test(text)) return mk('AUTH', 'the provider rejected the API key (missing, wrong, or revoked)', 401, 'authentication_error');
   if (status === 429)                      return mk('RATE_LIMIT', 'too many requests to this provider — retry shortly', 429, 'rate_limit_error');
   if (status === 401 || status === 403)    return mk('AUTH', 'the provider rejected the API key (missing, wrong, or revoked)', status, 'authentication_error');
   if (status === 404)                      return mk('NOT_FOUND', 'the provider does not have this model (renamed, deprecated or pulled)', 404, 'invalid_request_error');
@@ -1385,6 +1470,8 @@ function classifyError(err, bodyText = '') {
     if (MODERATION_PATTERNS.test(text))    return mk('MODERATED', 'the provider blocked this request/response on content grounds', 400, 'invalid_request_error');
     return mk('BAD_REQUEST', 'the provider rejected the request itself (a parameter or message shape it does not accept)', 400, 'invalid_request_error');
   }
+  // Our own config is wrong (bad URL / TLS certificate): no amount of retrying fixes it.
+  if (['ERR_INVALID_URL', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'ERR_TLS_CERT_ALTNAME_INVALID'].includes(code)) return mk('NET_CONFIG', 'cannot reach the provider because of a URL / TLS-certificate problem on our side', 502);
   if (['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(code) || /socket hang up|aborted|premature close/i.test(msg)) return mk('NET_RESET', 'the connection to the provider was dropped', 502);
   if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) return mk('NET_DNS', 'could not resolve the provider\'s hostname', 502);
   if (code === 'ECONNREFUSED')             return mk('NET_REFUSED', 'the provider refused the connection', 502);
@@ -1489,6 +1576,15 @@ function isUnlimitedRetryHop(providerConfig) {
 }
 
 const UNLIMITED_MAX_RETRIES = 100;
+// "Unlimited" hops retry on transient trouble, but some errors can't fix themselves
+// by trying the SAME hop again. Those stop retrying at once; unlike a malformed
+// request they still fall through to the next hop, if there is one:
+//   NOT_FOUND  (404: the provider doesn't have this model)   NET_CONFIG (bad URL / TLS cert)
+// Assumption: a 404 is permanent. If NIM ever answers 404 while an endpoint is warming
+// up, remove NOT_FOUND from this set.
+const NO_RETRY_BUT_FALL_BACK_TAGS = new Set(['NOT_FOUND', 'NET_CONFIG']);
+// A DNS failure can be a blip, so it gets a few tries, not 100.
+const DNS_FAIL_MAX_ATTEMPTS = 3;
 // Retry window = time spent RETRYING after a hop's first failure — the first
 // (possibly very slow) attempt is free, otherwise a NIM request that thinks
 // for 5 minutes and then dies has already "used up" the window and gets no
@@ -1658,6 +1754,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           : getProviderConfig(providerConfig.provider);
 
       if (opts.onHop) opts.onHop(providerConfig);
+      const attemptStartedAt = Date.now();
       try {
         const response = await axios.post(
           `${base}/chat/completions`,
@@ -1693,6 +1790,9 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const reasonStr = cls.detail ? `${cls.tag} · ${cls.detail}` : cls.tag;
         const reasonWithMsg = cls.providerMessage ? `${reasonStr} — "${cls.providerMessage}"` : reasonStr;
         const who = hopLabel(providerConfig);
+        // Google says exactly which quota it hit and its value; if that differs from
+        // what we have saved, fix it and flag the whole table as possibly outdated.
+        if (providerConfig.provider === 'google' && status === 429) learnGoogleLimitsFrom429(providerConfig, bodyText);
 
         // The client already left (closed the tab / hit stop / its own
         // timeout fired) — retrying would just burn provider calls nobody
@@ -1724,12 +1824,20 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           break;
         }
 
+        if (NO_RETRY_BUT_FALL_BACK_TAGS.has(cls.tag)) {
+          if (!isLastHop) log('WARN', `[${cls.tag}] ${who} — ${reasonWithMsg}; retrying this hop can't help, moving on`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: reasonStr });
+          trackSkip(providerConfig.provider, providerConfig.model, cls.tag);
+          break;
+        }
+
         // Genuine hard client errors (malformed request, bad key, ...) —
         // never retry, never fall back: the same broken request would just
         // fail on the next hop too. Exception: a 4xx whose body says the
         // endpoint is degraded/busy, on a hop that retries anyway.
-        const hardClientError = status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404
-          && !(unlimited && cls.tag === 'UPSTREAM_DEGRADED');
+        const hardClientError = cls.tag === 'AUTH'
+          || (status && status >= 400 && status < 500 && status !== 429 && status !== 408 && status !== 404
+            && !(unlimited && cls.tag === 'UPSTREAM_DEGRADED'));
         if (hardClientError) {
           // Only worth a line when there WAS a fallback that is being skipped;
           // otherwise the request-level ERROR line already says everything.
@@ -1744,7 +1852,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const retryElapsed = Date.now() - retryClockStart;
         const budgetMs = providerConfig.retryBudgetMs || (isLastHop ? UNLIMITED_LAST_HOP_BUDGET_MS : UNLIMITED_RETRY_BUDGET_MS);
         const budgetLeft = retryElapsed < budgetMs;
-        const attemptsLeft = attemptNum < maxAttempts;
+        const attemptsLeft = attemptNum < maxAttempts && !(cls.tag === 'NET_DNS' && attemptNum >= DNS_FAIL_MAX_ATTEMPTS);
 
         if (unlimited && budgetLeft && attemptsLeft) {
           const delay = backoffDelayMs(attemptNum);
@@ -1754,7 +1862,15 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         }
 
         const elapsed = Date.now() - hopStartedAt;
-        const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached' : ` — retry window (${shortDuration(budgetMs)}) used up`);
+        // Two different clocks end up in this message, which read as a contradiction
+        // ("over 15m 7s" vs "10m window"): the total runs from the hop's start, the
+        // window from its FIRST failure, and the window is only checked between attempts —
+        // an attempt already running is never cut short. Say so when the last attempt was long.
+        const lastAttemptMs = Date.now() - attemptStartedAt;
+        const tidy = (ms) => ms < 1000 ? `${ms}ms` : ms < 60000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000) ? ` ${Math.round((ms % 60000) / 1000)}s` : ''}`;
+        const whyStopped = !unlimited ? '' : (!attemptsLeft ? ' — attempt cap reached'
+          : ` — the ${tidy(budgetMs)} retry window (counted from the first failure) ran out`
+            + (lastAttemptMs >= budgetMs / 10 ? `; attempt ${attemptNum} began inside it and was allowed to finish, taking ${tidy(lastAttemptMs)}` : ''));
         const plainTried = attemptNum > 1 ? `after ${attemptNum} attempts over ${shortDuration(elapsed)}${whyStopped}` : '';
         const triedNote = plainTried ? ` ${plainTried}` : '';
         err.tryNote = plainTried;
@@ -2684,6 +2800,48 @@ app.get('/admin/api/logs', requireAdmin, (req, res) => {
   res.json({ logs: mostRecent.reverse(), total: recentLogs.length, capacity: RECENT_LOGS_MAX });
 });
 
+// ── Google limits: status (for the "may be outdated" warning), preview/apply of a pasted
+// AI Studio table, and dismissing the mismatch warning ──────────────────────────────
+app.get('/admin/api/limits/status', requireAdmin, (req, res) => {
+  const meta = limitsMeta('google');
+  res.json({ google: meta, mismatches: googleLimitMismatches, outdated: !!(meta && meta.stale) || googleLimitMismatches.length > 0 });
+});
+app.post('/admin/api/limits/dismiss', requireAdmin, (req, res) => {
+  googleLimitMismatches = [];
+  markUsageStateDirty();
+  res.json({ ok: true });
+});
+function planFromPaste(text) {
+  const rows = parseAiStudioLimitsPaste(text);
+  if (rows.length < 3 || !rows.some(r => /^gemini|^gemma/i.test(r.label))) return { error: `Couldn't find the AI Studio rate-limit table in what you pasted (found ${rows.length} model row${rows.length === 1 ? '' : 's'}). Select the whole table on the AI Studio "Rate limit" page — model name, category, RPM, TPM and RPD columns — and paste it as is.` };
+  const merged = mergeGoogleSnapshot(PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.models, rows);
+  return { rows, merged, hopChanges: planGoogleHopUpdates(merged.models) };
+}
+function planSummary(plan) {
+  return { rows: plan.rows.length, changes: plan.merged.changes, added: plan.merged.added, keptNotInPaste: plan.merged.kept,
+    hopChanges: plan.hopChanges.map(({ hop, ...rest }) => rest), previousCapturedAt: PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.capturedAt };
+}
+app.post('/admin/api/limits/google/preview', requireAdmin, (req, res) => {
+  const plan = planFromPaste(req.body && req.body.text);
+  if (plan.error) return res.status(400).json({ error: { message: plan.error } });
+  res.json({ ok: true, ...planSummary(plan) });
+});
+app.post('/admin/api/limits/google/apply', requireAdmin, async (req, res) => {
+  const plan = planFromPaste(req.body && req.body.text);
+  if (plan.error) return res.status(400).json({ error: { message: plan.error } });
+  const summary = planSummary(plan);
+  for (const c of plan.hopChanges) c.hop[c.field] = c.to;
+  PROVIDER_LIMITS.google = { ...(PROVIDER_LIMITS.google || {}), capturedAt: new Date().toISOString().slice(0, 10), models: plan.merged.models };
+  fs.writeFileSync(PROVIDER_LIMITS_PATH, JSON.stringify(PROVIDER_LIMITS, null, 2) + '\n');
+  googleLimitMismatches = [];
+  markUsageStateDirty();
+  const msg = `Q-Proxy admin: refresh Google limits from an AI Studio paste (${plan.merged.changes.length} row change(s), ${plan.hopChanges.length} hop value(s))`;
+  const syncLimits = await githubSyncFile(GITHUB_LIMITS_PATH, fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8'), msg);
+  const syncModels = plan.hopChanges.length ? await saveModels(MODEL_MAPPING, msg) : { ok: true, skipped: true };
+  log('INFO', `[admin] ${msg}${syncLimits.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, ...summary, capturedAt: PROVIDER_LIMITS.google.capturedAt, githubSync: { limits: syncLimits, models: syncModels } });
+});
+
 app.post('/admin/api/logs/clear', requireAdmin, (req, res) => {
   recentLogs.length = 0;
   res.json({ ok: true });
@@ -2814,7 +2972,9 @@ function normalizeGoogleModelId(id) {
   return String(id || '').trim().replace(/^models\//i, '');
 }
 function googleLimitsFor(model) {
-  const rows = PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.models;
+  return googleRowFor(PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.models, model);
+}
+function googleRowFor(rows, model) {
   if (!rows) return null;
   const slug = normalizeGoogleModelId(model).toLowerCase();
   const candidates = [slug, slug.replace(/-preview(-\d{2}-\d{2,4})?$/, ''), slug.replace(/-latest$/, '')];
@@ -2822,6 +2982,66 @@ function googleLimitsFor(model) {
     for (const row of Object.values(rows)) if ((row.slugs || []).includes(c)) return row;
   }
   return null;
+}
+// ── Refresh the Google limits snapshot from a pasted AI Studio rate-limit table ──
+// No API returns these numbers, so the table is pasted into the Admin panel. Rows are
+// MERGED into the snapshot (rows missing from the paste are kept, never dropped); the
+// slugs a row matches stay as they are, new rows get slugs derived by naming convention.
+function parseLimitCell(t) {
+  const v = String(t).split('/').pop().trim();
+  if (!v || v === '-' || /^unlimited$/i.test(v)) return null;
+  const m = v.replace(/,/g, '').match(/^([\d.]+)\s*([KM]?)$/i);
+  if (!m) return null;
+  return Math.round(parseFloat(m[1]) * ({ '': 1, K: 1e3, M: 1e6 })[m[2].toUpperCase()]);
+}
+function parseAiStudioLimitsPaste(text) {
+  const tokens = String(text || '').split(/\r?\n/).flatMap(l => l.split(/\t+/)).map(t => t.trim()).filter(Boolean);
+  const isCell = (t) => t === '-' || /^[\d.,]+\s*[KM]?\s*\/\s*(unlimited|-|[\d.,]+\s*[KM]?)$/i.test(t);
+  const rows = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === 'Tools' && rows.length) break;           // the grounding/tools tables after the models table
+    if (!isCell(tokens[i]) || i < 2 || isCell(tokens[i - 1]) || isCell(tokens[i - 2])) continue;
+    if (!isCell(tokens[i + 1] || '') || !isCell(tokens[i + 2] || '')) continue;
+    rows.push({ label: tokens[i - 2], category: tokens[i - 1], rpm: parseLimitCell(tokens[i]), tpm: parseLimitCell(tokens[i + 1]), rpd: parseLimitCell(tokens[i + 2]) });
+    i += 2;
+  }
+  return rows;
+}
+function deriveGoogleSlugs(label, category) {
+  const base = label.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-|-$/g, '');
+  if (/^gemma/i.test(label)) return [base + '-it', base];
+  if (category === 'Text-out models' && /^gemini/i.test(label)) return [base, base + '-preview'];
+  return [];
+}
+// Merge parsed rows into a copy of the current table; returns { models, changes, added, kept }.
+function mergeGoogleSnapshot(existing, rows) {
+  const models = JSON.parse(JSON.stringify(existing || {}));
+  const changes = [], added = [], seen = new Set();
+  for (const r of rows) {
+    const key = r.label.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-|-$/g, '');
+    seen.add(key);
+    const prev = models[key];
+    const next = { label: r.label, category: r.category, slugs: prev ? prev.slugs : deriveGoogleSlugs(r.label, r.category), rpm: r.rpm, tpm: r.tpm, rpd: r.rpd };
+    if (r.rpm === 0 && r.tpm === 0 && r.rpd === 0) next.noFreeAccess = true;
+    if (!prev) added.push(r.label);
+    else for (const f of ['rpm', 'tpm', 'rpd']) if (prev[f] !== next[f]) changes.push({ label: r.label, field: f, from: prev[f], to: next[f] });
+    models[key] = next;
+  }
+  const kept = Object.keys(models).filter(k => !seen.has(k)).length;
+  return { models, changes, added, kept };
+}
+// Which EXISTING Google hops would change if these rows were applied.
+function planGoogleHopUpdates(models) {
+  const out = [];
+  for (const [id, entry] of Object.entries(MODEL_MAPPING)) {
+    for (let hop = entry; hop; hop = hop.fallback) {
+      if (hop.provider !== 'google') continue;
+      const row = googleRowFor(models, hop.model);
+      if (!row || row.noFreeAccess) continue;
+      for (const f of ['rpm', 'tpm', 'rpd']) if (row[f] != null && hop[f] !== row[f]) out.push({ id, model: displayModel('google', hop.model), field: f, from: hop[f] === undefined ? null : hop[f], to: row[f], hop });
+    }
+  }
+  return out;
 }
 // How old a snapshot is, so the Admin panel can warn when it's stale.
 function limitsMeta(provider) {
