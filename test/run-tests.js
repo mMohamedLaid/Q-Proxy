@@ -58,6 +58,8 @@ async function main() {
   const hadUsage = fs.existsSync(usagePath);
   if (hadUsage) fs.copyFileSync(usagePath, usagePath + '.bak');
   fs.writeFileSync(usagePath, '{}');
+  const limitsPath = path.join(ROOT, 'provider-limits.json');   // the Google-limits import rewrites this file
+  fs.copyFileSync(limitsPath, limitsPath + '.bak');
 
   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
     cwd: ROOT,
@@ -435,6 +437,116 @@ async function main() {
       child2.kill(); await Promise.race([exited2, sleep(3000)]);
     }
 
+    // ══ retry "walls": errors that can't fix themselves must not be retried 100 times ══
+    const timedChat = async (model, ms) => {
+      const ac = new AbortController(); const t0 = Date.now(); const to = setTimeout(() => ac.abort(), ms);
+      try {
+        const rr = await fetch(BASE + '/v1/chat/completions', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }] }) });
+        const jj = await rr.json().catch(() => ({})); clearTimeout(to);
+        return { status: rr.status, tag: rr.headers.get('x-qproxy-error-tag'), ms: Date.now() - t0, j: jj };
+      } catch (_) { return { hung: true, ms: Date.now() - t0 }; }
+    };
+    setScenario({ mode: 'upstream-error', status: 404, body: 'model not found' });
+    let w = await timedChat('glm-5.3-nv', 4000);
+    check('walls: 404 on an unlimited hop stops at once (was ~100 retries)', w.status === 404 && w.tag === 'NOT_FOUND' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms, hung: w.hung }));
+    setScenario({ mode: 'upstream-error', status: 500, body: 'Invalid API key provided' });
+    w = await timedChat('glm-5.3-nv', 4000);
+    check('walls: a key error reported as a 500 is AUTH and stops at once', w.tag === 'AUTH' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms, hung: w.hung }));
+    setScenario({ mode: 'network-error', code: 'ENOTFOUND' });
+    w = await timedChat('glm-5.3-nv', 6000);
+    check('walls: DNS failure gets 3 tries, not 100', w.tag === 'NET_DNS' && w.ms < 4000 && /after 3 attempts/.test(w.j?.error?.message || ''), JSON.stringify({ t: w.tag, ms: w.ms, hung: w.hung, m: w.j?.error?.message }));
+    setScenario({ mode: 'network-error', code: 'CERT_HAS_EXPIRED' });
+    w = await timedChat('glm-5.3-nv', 4000);
+    check('walls: a TLS/URL config error (NET_CONFIG) stops at once', w.tag === 'NET_CONFIG' && w.ms < 1500, JSON.stringify({ t: w.tag, ms: w.ms, hung: w.hung }));
+    setScenario({ mode: 'upstream-error', status: 503, body: 'service unavailable' });
+    w = await timedChat('glm-5.3-nv', 1500);
+    check('walls: a 503 on an unlimited hop STILL retries (the intended behaviour is unchanged)', w.hung === true, JSON.stringify(w));
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-404', entry: { model: 'nv-a', provider: 'nvidia', status: 'active', limitType: 'unlimited',
+      fallback: { model: 'gemma-4-31b-it', provider: 'google', status: 'active', limitType: 'rate-limited' } } }) }); await r.text();
+    setScenario({ mode: 'upstream-error', status: 404, body: 'not found' });
+    w = await timedChat('zz-404', 4000);
+    check('walls: a 404 still FALLS BACK to the next hop (only the retrying stops)', Array.isArray(w.j?.attempts) && w.j.attempts.length === 2 && w.j.attempts.every(a => /NOT_FOUND/.test(a.reason)) && w.ms < 3000, JSON.stringify(w.j?.attempts));
+    r = await fetch(BASE + '/admin/api/models/zz-404', { method: 'DELETE', headers: admin2 }); await r.text();
+
+    // ── the retry-window wording: total time vs the window counted from the FIRST failure ──
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-win', entry: { model: 'nv-slow', provider: 'nvidia', status: 'active', limitType: 'unlimited', retryBudgetMs: 1000 } }) }); await r.text();
+    setScenario({ mode: 'upstream-error', status: 504, body: 'gateway timeout', delayMs: 900 });   // each attempt takes ~0.9s to fail; the window is 1s
+    w = await timedChat('zz-win', 8000);
+    check('retry window: a long last attempt is explained (started inside the window, allowed to finish, how long it took)',
+      w.status === 504 && /after 2 attempts over \d+s — the 1s retry window \(counted from the first failure\) ran out; attempt 2 began inside it and was allowed to finish, taking \d+ms/.test(w.j?.error?.message || ''), w.j?.error?.message);
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-win2', entry: { model: 'nv-fast', provider: 'nvidia', status: 'active', limitType: 'unlimited', retryBudgetMs: 300 } }) }); await r.text();
+    setScenario({ mode: 'upstream-error', status: 504, body: 'gateway timeout' });                  // instant failures: nothing to explain
+    w = await timedChat('zz-win2', 8000);
+    check('retry window: quick failures just say the window ran out (no "allowed to finish" clause)',
+      /ran out$|ran out\)/.test((w.j?.error?.message || '').split(' — the provider')[0]) && !/allowed to finish/.test(w.j?.error?.message || '') && /the 300ms retry window/.test(w.j?.error?.message || ''), w.j?.error?.message);
+    for (const id of ['zz-win', 'zz-win2']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+
+    // ══ Google limits: paste-to-refresh (AI Studio table) ══
+    const fx = fs.readFileSync(path.join(__dirname, 'fixtures', 'ai-studio-limits.txt'), 'utf8');
+    const limitsPath2 = path.join(ROOT, 'provider-limits.json');
+    const litBefore = JSON.stringify(JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).literouter);
+    const post = async (url, body) => { const rr = await fetch(BASE + url, { method: 'POST', headers: admin2, body: JSON.stringify(body) }); return { status: rr.status, j: await rr.json().catch(() => ({})) }; };
+    const getModels = async () => (await (await fetch(BASE + '/admin/api/models', { headers: admin2 })).json()).models;
+    const getStatus = async () => (await fetch(BASE + '/admin/api/limits/status', { headers: admin2 })).json();
+    let pv = await post('/admin/api/limits/google/preview', { text: fx });
+    check('limits import: the real AI Studio paste parses to all 44 model rows (header lines and the Tools section ignored)', pv.status === 200 && pv.j.rows === 44, JSON.stringify({ s: pv.status, rows: pv.j.rows, e: pv.j.error }));
+    check('limits import: pasting the same table = no differences', pv.j.changes.length === 0 && pv.j.added.length === 0 && pv.j.hopChanges.length === 0, JSON.stringify({ c: pv.j.changes, a: pv.j.added, h: pv.j.hopChanges }).slice(0, 300));
+    const fxChanged = fx.replace(/(Gemini 2\.5 Flash\t?\nText-out models\t?\n)0 \/ 5\n/, '$10 / 10\n');
+    check('limits import: (test setup) the edited paste really differs', fxChanged !== fx);
+    pv = await post('/admin/api/limits/google/preview', { text: fxChanged });
+    check('limits import: preview shows the changed table row', pv.j.changes.length === 1 && pv.j.changes[0].label === 'Gemini 2.5 Flash' && pv.j.changes[0].field === 'rpm' && pv.j.changes[0].from === 5 && pv.j.changes[0].to === 10, JSON.stringify(pv.j.changes));
+    check('limits import: preview shows which EXISTING Google hop would change', pv.j.hopChanges.some(h => h.id === 'gemini-2.5-flash-g' && h.field === 'rpm' && h.from === 5 && h.to === 10), JSON.stringify(pv.j.hopChanges));
+    let mm = await getModels();
+    check('limits import: preview changes NOTHING', mm['gemini-2.5-flash-g'].rpm === 5 && JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).google.models['gemini-2.5-flash'].rpm === 5);
+    pv = await post('/admin/api/limits/google/apply', { text: fxChanged });
+    mm = await getModels();
+    const fileAfter = JSON.parse(fs.readFileSync(limitsPath2, 'utf8'));
+    check('limits import: apply updates the existing hop', pv.status === 200 && mm['gemini-2.5-flash-g'].rpm === 10, JSON.stringify({ s: pv.status, rpm: mm['gemini-2.5-flash-g']?.rpm }));
+    check('limits import: apply writes the table (capturedAt = today) and leaves the Literouter section untouched', fileAfter.google.models['gemini-2.5-flash'].rpm === 10 && fileAfter.google.capturedAt === new Date().toISOString().slice(0, 10) && JSON.stringify(fileAfter.literouter) === litBefore);
+    pv = await post('/admin/api/limits/google/apply', { text: fx });   // put the original numbers back
+    mm = await getModels();
+    check('limits import: pasting the original table again restores the original numbers', mm['gemini-2.5-flash-g'].rpm === 5 && JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).google.models['gemini-2.5-flash'].rpm === 5);
+    pv = await post('/admin/api/limits/google/preview', { text: fx.split('\n').slice(0, 26).join('\n') + '\n' });
+    check('limits import: a partial paste KEEPS the rows it does not contain', pv.status === 200 && pv.j.rows >= 3 && pv.j.rows < 10 && pv.j.keptNotInPaste >= 30, JSON.stringify({ rows: pv.j.rows, kept: pv.j.keptNotInPaste }));
+    pv = await post('/admin/api/limits/google/preview', { text: 'this is not a table\nat all' });
+    check('limits import: something that is not the table is refused with an explanation (400)', pv.status === 400 && /Couldn't find the AI Studio rate-limit table/.test(pv.j.error?.message || ''), JSON.stringify(pv));
+
+    // ══ Google limits: learn from Google's own 429 ══
+    const g429 = (id, value, model) => JSON.stringify([{ error: { code: 429, message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: id, quotaDimensions: { location: 'global', model }, quotaValue: String(value) }] }] } }]);
+    // returns the HTTP status + whether our OWN rpm window blocked the request before Google was ever called (then there is no 429 to learn from)
+    const hit429 = async (body, modelId = 'gemini-2.5-flash-g') => { setScenario({ mode: 'upstream-error', status: 429, body }); const rr = await chat({ model: modelId, messages: [{ role: 'user', content: 'hi' }] }); const txt = await rr.text(); await sleep(200); hit429.lastBlockedLocally = /NO_HOP/.test(txt); return rr.status; };
+    check('learn-429: (setup) hop starts at rpm 5', (await getModels())['gemini-2.5-flash-g'].rpm === 5);
+    mark = serverLog.length;
+    await hit429(g429('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 10, 'gemini-2.5-flash'));
+    mm = await getModels(); let st = await getStatus();
+    check('learn-429: Google says rpm is 10 -> the hop value is corrected', mm['gemini-2.5-flash-g'].rpm === 10, String(mm['gemini-2.5-flash-g'].rpm));
+    check('learn-429: the mismatch is recorded and the "may be outdated" flag is raised', st.outdated === true && st.mismatches.length === 1 && st.mismatches[0].model === 'gemini-2.5-flash' && st.mismatches[0].field === 'rpm' && st.mismatches[0].ours === 5 && st.mismatches[0].google === 10, JSON.stringify(st.mismatches));
+    check('learn-429: one clear WARN says what changed and where to refresh', /\[limits\] Google says gemini-2\.5-flash RPM is 10 \(we had 5\).*Refresh limits/.test(serverLog.slice(mark)), serverLog.slice(mark).slice(0, 300));
+    await hit429(g429('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 10, 'gemini-2.5-flash'));
+    st = await getStatus();
+    check('learn-429: the same value again changes nothing and adds no duplicate', st.mismatches.length === 1 && (await getModels())['gemini-2.5-flash-g'].rpm === 10);
+    await hit429(g429('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 99, 'gemini-3-flash'));
+    check('learn-429: a violation for a DIFFERENT model is ignored', (await getModels())['gemini-2.5-flash-g'].rpm === 10 && (await getStatus()).mismatches.length === 1);
+    await hit429(g429('GenerateContentInputTokensPerModelPerMinute-FreeTier', 250000, 'gemini-2.5-flash'));
+    check('learn-429: a value that already matches (tpm 250,000) changes nothing', (await getModels())['gemini-2.5-flash-g'].tpm === 250000 && (await getStatus()).mismatches.length === 1);
+    await hit429(g429('SomeQuotaWeDoNotKnow', 7, 'gemini-2.5-flash'));
+    check('learn-429: an unrecognised quota id is ignored, never guessed', (await getModels())['gemini-2.5-flash-g'].rpm === 10 && (await getStatus()).mismatches.length === 1);
+    const odd = await hit429('Too Many Requests');
+    check('learn-429: a plain-text 429 body does not break anything', odd === 429 && (await getStatus()).mismatches.length === 1, String(odd));
+    pv = await post('/admin/api/limits/google/preview', { text: fx });
+    check('learn-429 + import: refreshing from the table puts the corrected hop back in line (10 -> 5)', pv.j.hopChanges.some(h => h.id === 'gemini-2.5-flash-g' && h.field === 'rpm' && h.from === 10 && h.to === 5), JSON.stringify(pv.j.hopChanges));
+    pv = await post('/admin/api/limits/google/apply', { text: fx });
+    st = await getStatus();
+    check('learn-429 + import: applying a refresh clears the warning', st.mismatches.length === 0, JSON.stringify(st.mismatches));
+    // (a different model: gemini-2.5-flash has already used up this minute's 5 requests, so OUR rpm would block it before Google is called)
+    await hit429(g429('GenerateRequestsPerDayPerProjectPerModel-FreeTier', 15000, 'gemma-4-31b-it'), 'gemma-4-31b-g');
+    st = await getStatus();
+    mm = await getModels();
+    check('learn-429: a daily-limit violation maps to rpd (and every hop on that model is corrected)', !hit429.lastBlockedLocally && mm['gemma-4-31b-g'].rpd === 15000 && mm['gemma-4-31b'].rpd === 15000 && st.mismatches[0]?.field === 'rpd' && st.mismatches[0]?.model === 'gemma-4-31b-it' && st.mismatches[0].fixedHops.length >= 2, JSON.stringify({ blockedLocally: hit429.lastBlockedLocally, st: st.mismatches }));
+    r = await post('/admin/api/limits/dismiss', {});
+    check('limits: Dismiss clears the mismatch list', (await getStatus()).mismatches.length === 0);
+
     // ── /health after a cycle-free run (cycle guard smoke) ────────────
     r = await fetch(BASE + '/health');
     check('/health still healthy at end', r.ok, String(r.status));
@@ -445,6 +557,7 @@ async function main() {
     fs.copyFileSync(modelsPath + '.bak', modelsPath);
     fs.unlinkSync(modelsPath + '.bak');
     if (hadUsage) { fs.copyFileSync(usagePath + '.bak', usagePath); fs.unlinkSync(usagePath + '.bak'); } else { try { fs.unlinkSync(usagePath); } catch (_) {} }
+    fs.copyFileSync(limitsPath + '.bak', limitsPath); fs.unlinkSync(limitsPath + '.bak');
     try { fs.unlinkSync(SCEN); } catch (_) {}
   }
 
@@ -453,4 +566,5 @@ async function main() {
 }
 
 main().catch(e => { console.error('TEST DRIVER ERROR', e); process.exit(2); });
+
 
