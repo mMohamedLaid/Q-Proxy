@@ -56,7 +56,10 @@ const mockAxios = {
         }, { once: true });
       });
     }
+    // 'network-error': the request never got an HTTP response (DNS failure, TLS problem, ...).
+    if (sc.mode === 'network-error') throw Object.assign(new Error(sc.message || ('mock network error ' + sc.code)), { code: sc.code });
     if (sc.mode === 'upstream-error') {
+      if (sc.delayMs) await new Promise(r => setTimeout(r, sc.delayMs));   // e.g. a gateway that gives up after minutes
       const err = new Error('Request failed with status code ' + sc.status);
       err.response = { status: sc.status, data: sc.body || 'mock error' };
       throw err;
