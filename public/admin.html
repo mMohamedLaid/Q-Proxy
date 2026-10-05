@@ -455,6 +455,21 @@
 
   <div class="stats" id="stats"></div>
   <section id="warnings"></section>
+  <section id="limits-banner" hidden></section>
+  <section id="limits-panel" hidden>
+    <div class="warn-item" style="display:block;">
+      <span class="id">Refresh Google limits</span><br>
+      <span class="msg">Open <b>AI Studio → Rate limit</b>, select the whole models table (name, category, RPM, TPM, RPD) and paste it here. Nothing changes until you press Apply. Rows missing from your paste are kept; existing Google hops pick up the new numbers.</span>
+      <textarea id="limits-paste" rows="7" placeholder="Paste the AI Studio rate-limit table here…" style="width:100%;margin-top:8px;font-family:var(--font-mono);font-size:11.5px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;"></textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn-secondary" id="limits-preview-btn">Preview changes</button>
+        <button class="btn-primary" id="limits-apply-btn" disabled>Apply</button>
+        <button class="btn-secondary" id="limits-close-btn">Close</button>
+        <span class="sync-result-note" id="limits-status"></span>
+      </div>
+      <div id="limits-result" style="margin-top:10px;"></div>
+    </div>
+  </section>
 
   <section>
     <div class="section-head"><h2>Models by provider</h2><span class="count split"><span id="model-count"></span><span id="model-visible-count"></span></span></div>
@@ -1058,7 +1073,7 @@
     if (state.error) return `<div class="sync-result" data-sync-result="${provider}">Sync failed: ${escapeHtml(state.error)}</div>`;
     const r = state.data;
     if (!r) return '';
-    const grouped = provider === 'literouter';
+    const grouped = provider === 'literouter' || provider === 'openrouter';
     const renderItem = (m) => {
       const st = syncDetectState[syncDetectKey(provider, m)] || {};
       const scanned = st.result && st.result.ok;
@@ -1073,6 +1088,13 @@
           if (L.noFreeAccess) bits.push('0 / 0 / 0 on free tier');
           else bits.push([L.rpm != null ? nn(L.rpm) + ' RPM' : null, L.tpm != null ? nn(L.tpm) + ' TPM' : null, L.rpd != null ? nn(L.rpd) + ' RPD' : null].filter(Boolean).join(' · '));
         }
+        if (info.price) {            // OpenRouter: what it costs per million tokens
+          const usd = (v) => v === null || v === undefined ? '?' : '$' + (+v.toFixed(v >= 100 ? 0 : 2));
+          bits.push(`${usd(info.price.in)} in / ${usd(info.price.out)} out per M`);
+        }
+        if (info.context) bits.push(`${info.context >= 1e6 ? +(info.context / 1e6).toFixed(1) + 'M' : Math.round(info.context / 1000) + 'K'} ctx`);
+        if (info.tools === false) bits.push('no tools');
+        if (info.reasoning === true) bits.push('reasoning');
         if (info.cost != null) bits.push(`${info.cost}x`);
         if (info.variant) bits.push(`:${info.variant}`);
         if (info.uncensored === true) bits.push('uncensored'); else if (info.uncensored === false) bits.push('moderated');
@@ -1092,13 +1114,17 @@
     if (!r.newlyAvailable.length) {
       addRows = '<div class="sync-result-note">None found.</div>';
     } else if (grouped) {
-      const groups = { free: [], premium: [], inaccessible: [], unknown: [] };
+      const groups = { free: [], paid: [], premium: [], inaccessible: [], unknown: [] };
       r.newlyAvailable.forEach(m => {
         const t = (r.modelInfo && r.modelInfo[m] && r.modelInfo[m].tier) || 'unknown';
         (groups[t] || groups.unknown).push(m);
       });
       const tierBlock = (t, inner) => {
-        const meta = SYNC_TIER_META[t];
+        let meta = SYNC_TIER_META[t];
+        if (provider === 'openrouter') {            // two groups: Free open, Paid collapsed
+          meta = { free: { title: 'Free', hint: `free models — ${(r.tierNotes && r.tierNotes.freePerDayPerKey) || 50} requests/day per key`, open: true },
+                   paid: { title: 'Paid', hint: 'spends credits — price per million tokens shown on each line', open: false } }[t] || meta;
+        }
         const key = `${provider}:${t}`;
         const isOpen = syncTierOpen[key] !== undefined ? syncTierOpen[key] : meta.open;
         const count = t === 'other' ? groups.inaccessible.length + groups.unknown.length : groups[t].length;
@@ -1108,7 +1134,7 @@
         </details>`;
       };
       const itemsBlock = (t) => `<div class="sync-items">${groups[t].map(renderItem).join('')}</div>`;
-      const up = ['free', 'premium'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+      const up = ['free', 'paid', 'premium'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
       const nested = ['inaccessible', 'unknown'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
       addRows = up + (nested ? tierBlock('other', `<div style="margin-left:10px;">${nested}</div>`) : '');
     } else {
@@ -1117,7 +1143,7 @@
     // Age of the saved limits snapshot (provider-limits.json) that sync-add pre-fills from.
     const lm = r.limitsMeta;
     const limitsNote = lm
-      ? `<div class="${lm.stale ? 'sync-partial-note' : 'sync-result-note'}">${lm.stale ? '⚠ ' : ''}Limits pre-filled on add come from a saved snapshot captured ${escapeHtml(lm.capturedAt)} (${lm.ageDays} day${lm.ageDays === 1 ? '' : 's'} ago)${lm.stale ? ` — older than ${lm.staleAfterDays} days, re-check the provider's dashboard and refresh provider-limits.json` : ''}.</div>` : '';
+      ? `<div class="${lm.stale ? 'sync-partial-note' : 'sync-result-note'}">${lm.stale ? '⚠ ' : ''}Limits pre-filled on add come from a saved snapshot captured ${escapeHtml(lm.capturedAt)} (${lm.ageDays} day${lm.ageDays === 1 ? '' : 's'} ago)${lm.stale ? ` — older than ${lm.staleAfterDays} days, re-check the provider's dashboard` : ''}.${provider === 'google' ? ' <a href="#" data-open-limits="1">Refresh limits…</a>' : ''}</div>` : '';
     const removeRows = r.noLongerListed.length
       ? `<div class="sync-items">${r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')}</div>`
       : '<div class="sync-result-note">None found.</div>';
@@ -1387,6 +1413,58 @@
   }
 
   // ---------- logs ----------
+  // ── Google limits: "may be outdated" warning + paste-to-refresh ──
+  let limitsStatus = null, limitsPreviewed = '';
+  const LIMIT_FIELD = { rpm: 'requests/min', tpm: 'input tokens/min', rpd: 'requests/day' };
+  const nfmt = (v) => v === null || v === undefined ? 'not set' : Number(v).toLocaleString();
+  async function loadLimitsStatus() {
+    try { limitsStatus = await api('/admin/api/limits/status'); } catch (_) { limitsStatus = null; }
+    renderLimitsBanner();
+  }
+  function renderLimitsBanner() {
+    const el = $('#limits-banner'), st = limitsStatus;
+    if (!st || !st.outdated) { el.hidden = true; el.innerHTML = ''; return; }
+    const lines = (st.mismatches || []).map(m => `${m.model}: ${LIMIT_FIELD[m.field] || m.field} was ${nfmt(m.ours)}, Google says ${nfmt(m.google)} — corrected automatically.`);
+    if (st.google && st.google.stale) lines.push(`The saved table is ${st.google.ageDays} days old (captured ${st.google.capturedAt}).`);
+    el.hidden = false;
+    el.innerHTML = `<div class="warn-item"><span>⚠</span><div><span class="id">Google limits may be outdated</span><br><span class="msg">${lines.map(escapeHtml).join('<br>')}${(st.mismatches || []).length ? '<br>If one value was wrong, the others may be too.' : ''}</span>
+      <div style="margin-top:8px;display:flex;gap:8px;"><button class="btn-primary" data-open-limits="1">Refresh limits…</button>${(st.mismatches || []).length ? '<button class="btn-secondary" id="limits-dismiss-btn">Dismiss</button>' : ''}</div></div></div>`;
+  }
+  function openLimitsPanel() { $('#limits-panel').hidden = false; $('#limits-paste').focus(); $('#limits-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function renderLimitsPlan(r, applied) {
+    const rows = [];
+    (r.changes || []).forEach(c => rows.push(`<tr><td>${escapeHtml(c.label)}</td><td>${LIMIT_FIELD[c.field] || c.field}</td><td>${nfmt(c.from)} → <b>${nfmt(c.to)}</b></td></tr>`));
+    const hopRows = (r.hopChanges || []).map(c => `<tr><td>${escapeHtml(c.id)}</td><td>${LIMIT_FIELD[c.field] || c.field}</td><td>${nfmt(c.from)} → <b>${nfmt(c.to)}</b></td></tr>`);
+    const none = !rows.length && !hopRows.length && !(r.added || []).length;
+    return `<div class="sync-result-note">${applied ? 'Applied.' : 'Preview — nothing saved yet.'} Read ${r.rows} model rows${(r.added || []).length ? `, ${(r.added || []).length} new (${escapeHtml(r.added.join(', '))})` : ''}${r.keptNotInPaste ? `, ${r.keptNotInPaste} saved row(s) not in this paste were kept` : ''}.</div>
+      ${none ? '<div class="sync-result-note" style="margin-top:6px;">No differences — the saved limits already match this paste.</div>' : ''}
+      ${rows.length ? `<div style="margin-top:8px;font-weight:600;">Saved table</div><table style="font-size:12px;border-collapse:collapse;"><tbody>${rows.join('')}</tbody></table>` : ''}
+      ${hopRows.length ? `<div style="margin-top:8px;font-weight:600;">Your Google models (${hopRows.length} value${hopRows.length === 1 ? '' : 's'} would change)</div><table style="font-size:12px;border-collapse:collapse;"><tbody>${hopRows.join('')}</tbody></table>` : ''}`;
+  }
+  async function limitsRequest(kind) {
+    const text = $('#limits-paste').value;
+    const status = $('#limits-status'); status.textContent = kind === 'apply' ? 'Applying…' : 'Reading…';
+    try {
+      const r = await api(`/admin/api/limits/google/${kind}`, { method: 'POST', body: { text } });
+      $('#limits-result').innerHTML = renderLimitsPlan(r, kind === 'apply');
+      if (kind === 'preview') { limitsPreviewed = text; $('#limits-apply-btn').disabled = false; status.textContent = ''; }
+      else {
+        limitsPreviewed = ''; $('#limits-apply-btn').disabled = true;
+        const gs = r.githubSync || {};
+        status.textContent = (gs.limits && gs.limits.ok) ? 'Saved and committed to GitHub.' : (gs.limits && gs.limits.skipped) ? 'Saved locally only (GitHub sync not configured).' : 'Saved locally, but the GitHub commit failed.';
+        await loadAll(); await loadLimitsStatus();
+      }
+    } catch (e) { $('#limits-result').innerHTML = ''; status.textContent = e.message; if (kind === 'preview') $('#limits-apply-btn').disabled = true; }
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-open-limits]')) { e.preventDefault(); openLimitsPanel(); }
+    else if (e.target.id === 'limits-preview-btn') limitsRequest('preview');
+    else if (e.target.id === 'limits-apply-btn') limitsRequest('apply');
+    else if (e.target.id === 'limits-close-btn') $('#limits-panel').hidden = true;
+    else if (e.target.id === 'limits-dismiss-btn') api('/admin/api/limits/dismiss', { method: 'POST' }).then(loadLimitsStatus).catch(() => {});
+  });
+  $('#limits-paste').addEventListener('input', () => { if ($('#limits-paste').value !== limitsPreviewed) $('#limits-apply-btn').disabled = true; });   // Apply only what was previewed
+
   let logAutoRefreshTimer = null;
   let currentLogLevel = '';
   let currentLogRid = '';
@@ -1403,7 +1481,8 @@
   })();
 
   function startLogAutoRefresh() {
-    if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(loadLogs, 5000);
+    let tick = 0;
+    if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(() => { loadLogs(); if (++tick % 12 === 0) loadLimitsStatus(); }, 5000);
   }
 
   async function loadLogs(force) {
@@ -2541,6 +2620,7 @@
     renderProviders(modelsRes.models, usageIndex);
     renderUsage(usageRes);
     await loadLogs(true);
+    loadLimitsStatus();
     if ($('#log-auto-refresh').checked) startLogAutoRefresh();
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
@@ -2573,6 +2653,3 @@
 </script>
 </body>
 </html>
-
-
-
