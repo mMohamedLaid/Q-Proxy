@@ -3376,6 +3376,21 @@ function buildSuggestedModelId(provider, model) {
   return candidate;
 }
 
+// OpenRouter's /models response carries each model's price (USD per token, as strings),
+// context length and supported parameters — no table to hand-type, unlike Literouter.
+//   free : pricing 0/0 (or a ":free" id)
+//   paid : everything else — it spends credits. Includes routers whose price varies (-1)
+//          and models with no price listed; the Admin panel keeps this group collapsed.
+function classifyOpenRouterModel(m) {
+  const perM = (v) => { const n = Number(v); return (v === undefined || v === null || v === '' || !Number.isFinite(n)) ? NaN : Math.round(n * 1e6 * 1e6) / 1e6; };
+  const input = perM(m.pricing && m.pricing.prompt), output = perM(m.pricing && m.pricing.completion);
+  const free = String(m.id).endsWith(':free') || (input === 0 && output === 0);
+  const sp = Array.isArray(m.supported_parameters) ? m.supported_parameters : null;
+  return { tier: free ? 'free' : 'paid', cost: null, uncensored: null,
+    price: free ? null : { in: input >= 0 ? input : null, out: output >= 0 ? output : null },
+    context: Number(m.context_length) > 0 ? Number(m.context_length) : null,
+    tools: sp ? sp.includes('tools') : null, reasoning: sp ? sp.includes('reasoning') : null };
+}
 app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) {
@@ -3396,6 +3411,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
     const liveIds = [...new Set((r.data?.data || []).map(m => canon(m.id)))];
     const liveSet = new Set(liveIds);
+    const rawById = new Map((r.data?.data || []).map(m => [canon(m.id), m]));
 
     const configuredIds = new Set();
     for (const entry of Object.values(MODEL_MAPPING)) {
@@ -3433,11 +3449,15 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
         modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null,
           limits: row ? { rpm: row.rpm, tpm: row.tpm, rpd: row.rpd, noFreeAccess: !!row.noFreeAccess, label: row.label } : null };
       }
+    } else if (provider === 'openrouter') {
+      for (const id of newlyAvailable) modelInfo[id] = classifyOpenRouterModel(rawById.get(id) || { id });
+      newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
     } else {
       for (const id of newlyAvailable) modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null };
     }
 
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null });
+    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
+      tierNotes: provider === 'openrouter' ? { freePerDayPerKey: OPENROUTER_DAILY_CAP } : null });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
@@ -3612,3 +3632,4 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
