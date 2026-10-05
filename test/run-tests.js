@@ -63,7 +63,7 @@ async function main() {
 
   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
     cwd: ROOT,
-    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
+    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', d => { serverLog += d; });
@@ -481,6 +481,55 @@ async function main() {
       /ran out$|ran out\)/.test((w.j?.error?.message || '').split(' — the provider')[0]) && !/allowed to finish/.test(w.j?.error?.message || '') && /the 300ms retry window/.test(w.j?.error?.message || ''), w.j?.error?.message);
     for (const id of ['zz-win', 'zz-win2']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
 
+    // ══ reasoning controls written by the 🧪 detector must actually reach the provider ══
+    // (they used to be silently dropped: the schema ids the detector writes did not exist)
+    const upstreamBody = async (id) => {
+      setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } });
+      const rr = await chat({ model: id, messages: [{ role: 'user', content: 'hi' }] }); await rr.text(); await sleep(100);
+      return JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
+    };
+    const addHop = async (id, entry) => { const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id, entry: { provider: 'nvidia', status: 'active', limitType: 'unlimited', model: 'org/' + id, ...entry } }) }); await rr.text(); };
+    // exactly what admin.html's applyDetectionToHop writes for NVIDIA's DeepSeek-V4-Flash sample (thinking + reasoning_effort, both inside chat_template_kwargs)
+    await addHop('zz-think', { reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true, reasoning_effort: 'high' }, reasoningFieldEnabled: { thinking_toggle: true, reasoning_effort: true },
+      reasoningFieldKeys: { thinking_toggle: 'thinking', reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs', reasoning_effort: 'chat_template_kwargs' }, reasoningFieldOptions: { reasoning_effort: ['high', 'low', 'max'] } });
+    let ub = await upstreamBody('zz-think');
+    check('detect->apply: toggle + effort in chat_template_kwargs reach the provider, under the model\'s own key ("thinking")', JSON.stringify(ub.chat_template_kwargs) === JSON.stringify({ thinking: true, reasoning_effort: 'high' }), JSON.stringify(ub));
+    await addHop('zz-think2', { reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: false, reasoning_effort: 'high' }, reasoningFieldEnabled: { thinking_toggle: true },
+      reasoningFieldKeys: { thinking_toggle: 'enable_thinking' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs' } });
+    ub = await upstreamBody('zz-think2');
+    check('detect->apply: a field that is not switched on is NOT sent (effort stays out; toggle can send false)', JSON.stringify(ub.chat_template_kwargs) === JSON.stringify({ enable_thinking: false }) && !('reasoning_effort' in ub), JSON.stringify(ub));
+    await addHop('zz-think3', { reasoningSchema: 'thinking-and-effort', reasoning: { reasoning_effort: 'low' }, reasoningFieldEnabled: { reasoning_effort: true }, reasoningFieldKeys: { reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { reasoning_effort: 'top_level' } });
+    ub = await upstreamBody('zz-think3');
+    check('detect->apply: an effort level whose transport is top_level goes to the top of the request', ub.reasoning_effort === 'low' && !('chat_template_kwargs' in ub), JSON.stringify(ub));
+    await addHop('zz-raw', { reasoningSchema: 'raw', reasoning: { __raw: { enable_thinking: true, clear_thinking: true } }, reasoningFieldTransport: { __raw: 'chat_template_kwargs' } });
+    ub = await upstreamBody('zz-raw');
+    check('detect->apply: the "raw" (special case) schema reaches the provider too', JSON.stringify(ub.chat_template_kwargs) === JSON.stringify({ enable_thinking: true, clear_thinking: true }), JSON.stringify(ub));
+    check('detect->apply: the hop you already had (kimi-k3-nv, reasoning-effort-select) is unchanged', (await upstreamBody('kimi-k3-nv')).reasoning_effort === 'max');
+    for (const id of ['zz-think', 'zz-think2', 'zz-think3', 'zz-raw']) { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await rr.text(); }
+    check('every schema id the Admin detector can write exists in reasoning-schemas.json', ['thinking-and-effort', 'raw'].every(k => JSON.parse(fs.readFileSync(path.join(ROOT, 'reasoning-schemas.json'), 'utf8'))[k]));
+
+    // ══ OpenRouter sync: free / paid / premium from the live price list ══
+    setScenario({ mode: 'nonstream', modelObjects: [
+      { id: 'google/gemma-4-31b-it:free', pricing: { prompt: '0', completion: '0' }, context_length: 262144, supported_parameters: ['temperature', 'tools', 'reasoning'] },   // already configured -> must not be offered
+      { id: 'acme/free-by-suffix:free', pricing: { prompt: '0', completion: '0' }, context_length: 131072, supported_parameters: ['tools', 'reasoning'] },
+      { id: 'acme/free-no-suffix', pricing: { prompt: '0', completion: '0' } },
+      { id: 'acme/cheap', pricing: { prompt: '0.0000003', completion: '0.0000012' }, context_length: 200000, supported_parameters: ['temperature'] },
+      { id: 'acme/just-under', pricing: { prompt: '0.000001', completion: '0.0000049' } },
+      { id: 'acme/at-threshold', pricing: { prompt: '0.000001', completion: '0.000005' } },
+      { id: 'acme/expensive', pricing: { prompt: '0.000015', completion: '0.000075' }, context_length: 1000000 },
+      { id: 'acme/router', pricing: { prompt: '-1', completion: '-1' } },
+      { id: 'acme/no-price' }
+    ] });
+    r = await fetch(BASE + '/admin/api/sync/openrouter', { headers: admin2 }); j = await r.json();
+    const tierOr = id => j.modelInfo?.[id]?.tier;
+    check('openrouter sync: configured models are not offered again; the rest are (8)', r.ok && j.newlyAvailable?.length === 8 && !j.newlyAvailable.includes('google/gemma-4-31b-it:free'), JSON.stringify(j.newlyAvailable));
+    check('openrouter sync: free by ":free" suffix AND by zero price (no suffix)', tierOr('acme/free-by-suffix:free') === 'free' && tierOr('acme/free-no-suffix') === 'free');
+    check('openrouter sync: everything that is not free is "paid" (cheap, $4.90, $5, expensive, variable -1, unpriced)', ['cheap', 'just-under', 'at-threshold', 'expensive', 'router', 'no-price'].every(k => tierOr('acme/' + k) === 'paid'), JSON.stringify(['cheap', 'just-under', 'at-threshold', 'expensive', 'router', 'no-price'].map(k => tierOr('acme/' + k))));
+    check('openrouter sync: every model is either free or paid', Object.values(j.modelInfo).every(v => v.tier === 'free' || v.tier === 'paid'));
+    check('openrouter sync: price per MILLION tokens is reported ($0.30 in / $1.20 out)', Math.abs(j.modelInfo['acme/cheap'].price.in - 0.3) < 1e-9 && Math.abs(j.modelInfo['acme/cheap'].price.out - 1.2) < 1e-9 && j.modelInfo['acme/free-by-suffix:free'].price === null, JSON.stringify(j.modelInfo['acme/cheap']));
+    check('openrouter sync: context + tool/reasoning support are read from the response (null when not listed)', j.modelInfo['acme/free-by-suffix:free'].context === 131072 && j.modelInfo['acme/free-by-suffix:free'].tools === true && j.modelInfo['acme/free-by-suffix:free'].reasoning === true && j.modelInfo['acme/cheap'].tools === false && j.modelInfo['acme/free-no-suffix'].tools === null, JSON.stringify(j.modelInfo['acme/cheap']));
+    check('openrouter sync: the free per-key daily cap is sent along so the panel can say it', j.tierNotes?.freePerDayPerKey === 50, JSON.stringify(j.tierNotes));
+
     // ══ Google limits: paste-to-refresh (AI Studio table) ══
     const fx = fs.readFileSync(path.join(__dirname, 'fixtures', 'ai-studio-limits.txt'), 'utf8');
     const limitsPath2 = path.join(ROOT, 'provider-limits.json');
@@ -559,6 +608,7 @@ async function main() {
     if (hadUsage) { fs.copyFileSync(usagePath + '.bak', usagePath); fs.unlinkSync(usagePath + '.bak'); } else { try { fs.unlinkSync(usagePath); } catch (_) {} }
     fs.copyFileSync(limitsPath + '.bak', limitsPath); fs.unlinkSync(limitsPath + '.bak');
     try { fs.unlinkSync(SCEN); } catch (_) {}
+    try { fs.unlinkSync(SCEN + '.lastbody'); } catch (_) {}
   }
 
   console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASS');
@@ -566,5 +616,3 @@ async function main() {
 }
 
 main().catch(e => { console.error('TEST DRIVER ERROR', e); process.exit(2); });
-
-
