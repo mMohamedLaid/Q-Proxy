@@ -211,12 +211,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gpt-oss-120b-or": {
-    "model": "openai/gpt-oss-120b:free",
-    "provider": "openrouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gpt-oss-20b-or": {
     "model": "openai/gpt-oss-20b:free",
     "provider": "openrouter",
