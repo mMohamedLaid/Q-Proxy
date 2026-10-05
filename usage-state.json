@@ -1,16 +1,16 @@
 {
-  "savedAt": "2026-10-05T11:33:38.057Z",
+  "savedAt": "2026-10-05T21:22:01.050Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
-      "count": 2,
-      "day": "2026-10-04"
+      "count": 1,
+      "day": "2026-10-05"
     }
   },
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {
     "glm-5.2:free": 0
   },
-  "literouterLastResetDay": "2026-10-04",
+  "literouterLastResetDay": "2026-10-05",
   "literouterRotationIndex": 0,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
@@ -57,5 +57,6 @@
       "rpdCount": 1
     }
   },
-  "googleLastResetDay": "2026-10-05"
+  "googleLastResetDay": "2026-10-05",
+  "googleLimitMismatches": []
 }
