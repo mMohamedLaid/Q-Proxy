@@ -49,6 +49,10 @@ When a hop has more than one key configured and an actual limit to track, each *
   - **Learning from Google's own 429s.** A Google 429 names the quota it hit and its value. If that differs from what a Google hop has saved, the value is corrected on every hop for that model and the Admin panel shows *"Google limits may be outdated — if one value was wrong, the others may be too"* with a Refresh button (it also shows when the table is older than 30 days; applying a refresh clears it). The 429 format is assumed from Google's quota errors and has not been checked against a live one — anything unrecognised is ignored, never guessed. It can only learn when a request gets past our own limits and Google rejects it.
 - The Admin dashboard's model list shows a live countdown to the next reset when you're on the Literouter or Google tab specifically (server sends one absolute timestamp; the page just ticks down to it — no per-provider timezone math happens in the browser).
 
+## OpenRouter: sync groups
+
+The Admin **Sync** panel for OpenRouter splits new models into two groups from OpenRouter's own `/models` response (price per token, context length, supported parameters — nothing to hand-type): **Free** (price 0, or a `:free` id), open by default, and **Paid** (everything else, including routers whose price varies), collapsed by default. Each line shows price per million tokens, context size, `no tools` and `reasoning` where the response says so.
+
 ## Literouter: Premium Basic reference table, and what the credits actually cost
 
 Confirmed from Literouter's own docs (docs.literouter.com/credits, checked Sep 2026):
@@ -66,7 +70,12 @@ Save a hop's current reasoning config (schema + values) as a named preset keyed 
 
 ## Auto-detect reasoning schema
 
-In the Admin hop editor, paste a provider's example request (curl, Python SDK snippet, raw JSON) into the detect panel and Q-Proxy will try to infer the right reasoning transport and field names from it, rather than you hand-building a schema from scratch. Useful for a newly-added model whose docs use unfamiliar parameter names.
+The 🧪 button in the Admin hop editor and sync panel infers a model's reasoning controls (a thinking toggle, an effort level, other think/reason fields — never temperature, top_p or limits) from an example request, so you don't hand-build a schema. What it can read:
+
+- **Paste box (any provider):** a **JSON** request body (a curl `-d` body, or the `extra_body` dict written with JSON `true`/`false`). Python `True`/`False` and whole Python/JS SDK scripts are **not** read — a whole script says "nothing to apply", which looks the same as "this model has no controls".
+- **Automatic page fetch (NVIDIA NIM only):** reads the sample code on the model's page, including Python (it converts `True`/`False`). It only sees code samples: controls that NVIDIA describes in prose (e.g. GLM-5.3's `reasoning_effort`) are invisible to it, and the page URL is built from the model id, which does not always match NVIDIA's page address (`z-ai/glm-5.3` is `build.nvidia.com/z-ai/glm-5-3`).
+
+**Apply** writes the hop's `reasoningSchema` as `thinking-and-effort` (a toggle and/or effort, each sent only when switched on, with the wire key and placement — `chat_template_kwargs` or top level — set per hop) or `raw` (any other detected fields). Both are defined in `reasoning-schemas.json`; a hop pointing at a schema id that isn't defined there sends nothing and logs `Unknown reasoning schema`.
 
 ## Custom bundles
 
@@ -134,4 +143,3 @@ It also stops retrying as soon as the client disconnects (`CLIENT_GONE`). Retrie
 - **THINK / REPLY** blocks are stitched live in the Admin log, and a copy of each is written to the Render console when the stream finishes (every line prefixed with the request id), so Render no longer has only per-chunk lines.
 - **Waiting notices.** From the moment a request arrives until the model's *first output* (thinking counts as output) an Admin/console line appears once 10s pass with nothing back, then again at 30s, 60s and every minute: `⏳ still waiting for nvidia/… to start answering — 2m 0s and no output yet (queue/connect time, not thinking)`. Fast models never print one. When output finally starts after a long wait you get `✓ first output arrived after 4m 14s`, and the end-of-stream line shows both clocks: time streaming, and time since the request arrived.
 - **Client hang-up cancels the upstream call.** When the client stops or disconnects, the in-flight request to the provider is aborted — including one still waiting in the provider's queue — instead of running to the end for nobody. (Before this, a stopped generation kept running and competed with the retry for the same provider capacity.)
-
