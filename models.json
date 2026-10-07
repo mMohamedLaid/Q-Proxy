@@ -330,13 +330,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "glm-5.3-flash-lr": {
-    "model": "glm-5.3-flash:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
-  },
   "l3-8b-lunaris-lr": {
     "model": "l3-8b-lunaris:free",
     "provider": "literouter",
