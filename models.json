@@ -167,13 +167,6 @@
     "limitType": "rate-limited",
     "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
   },
-  "kimi": {
-    "model": "moonshotai/kimi-k2.6",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "Literouter fallback removed 2026-09 — Literouter no longer offers any free-tier Kimi model."
-  },
   "kimi-k3-nv": {
     "model": "moonshotai/kimi-k3",
     "provider": "nvidia",
