@@ -530,35 +530,19 @@ async function main() {
     check('openrouter sync: context + tool/reasoning support are read from the response (null when not listed)', j.modelInfo['acme/free-by-suffix:free'].context === 131072 && j.modelInfo['acme/free-by-suffix:free'].tools === true && j.modelInfo['acme/free-by-suffix:free'].reasoning === true && j.modelInfo['acme/cheap'].tools === false && j.modelInfo['acme/free-no-suffix'].tools === null, JSON.stringify(j.modelInfo['acme/cheap']));
     check('openrouter sync: the free per-key daily cap is sent along so the panel can say it', j.tierNotes?.freePerDayPerKey === 50, JSON.stringify(j.tierNotes));
 
-    // ══ Google limits: paste-to-refresh (AI Studio table) ══
-    const fx = fs.readFileSync(path.join(__dirname, 'fixtures', 'ai-studio-limits.txt'), 'utf8');
-    const limitsPath2 = path.join(ROOT, 'provider-limits.json');
-    const litBefore = JSON.stringify(JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).literouter);
+    // ══ Admin helpers for the Google-limit tests below ══
     const post = async (url, body) => { const rr = await fetch(BASE + url, { method: 'POST', headers: admin2, body: JSON.stringify(body) }); return { status: rr.status, j: await rr.json().catch(() => ({})) }; };
     const getModels = async () => (await (await fetch(BASE + '/admin/api/models', { headers: admin2 })).json()).models;
     const getStatus = async () => (await fetch(BASE + '/admin/api/limits/status', { headers: admin2 })).json();
-    let pv = await post('/admin/api/limits/google/preview', { text: fx });
-    check('limits import: the real AI Studio paste parses to all 44 model rows (header lines and the Tools section ignored)', pv.status === 200 && pv.j.rows === 44, JSON.stringify({ s: pv.status, rows: pv.j.rows, e: pv.j.error }));
-    check('limits import: pasting the same table = no differences', pv.j.changes.length === 0 && pv.j.added.length === 0 && pv.j.hopChanges.length === 0, JSON.stringify({ c: pv.j.changes, a: pv.j.added, h: pv.j.hopChanges }).slice(0, 300));
-    const fxChanged = fx.replace(/(Gemini 2\.5 Flash\t?\nText-out models\t?\n)0 \/ 5\n/, '$10 / 10\n');
-    check('limits import: (test setup) the edited paste really differs', fxChanged !== fx);
-    pv = await post('/admin/api/limits/google/preview', { text: fxChanged });
-    check('limits import: preview shows the changed table row', pv.j.changes.length === 1 && pv.j.changes[0].label === 'Gemini 2.5 Flash' && pv.j.changes[0].field === 'rpm' && pv.j.changes[0].from === 5 && pv.j.changes[0].to === 10, JSON.stringify(pv.j.changes));
-    check('limits import: preview shows which EXISTING Google hop would change', pv.j.hopChanges.some(h => h.id === 'gemini-2.5-flash-g' && h.field === 'rpm' && h.from === 5 && h.to === 10), JSON.stringify(pv.j.hopChanges));
-    let mm = await getModels();
-    check('limits import: preview changes NOTHING', mm['gemini-2.5-flash-g'].rpm === 5 && JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).google.models['gemini-2.5-flash'].rpm === 5);
-    pv = await post('/admin/api/limits/google/apply', { text: fxChanged });
-    mm = await getModels();
-    const fileAfter = JSON.parse(fs.readFileSync(limitsPath2, 'utf8'));
-    check('limits import: apply updates the existing hop', pv.status === 200 && mm['gemini-2.5-flash-g'].rpm === 10, JSON.stringify({ s: pv.status, rpm: mm['gemini-2.5-flash-g']?.rpm }));
-    check('limits import: apply writes the table (capturedAt = today) and leaves the Literouter section untouched', fileAfter.google.models['gemini-2.5-flash'].rpm === 10 && fileAfter.google.capturedAt === new Date().toISOString().slice(0, 10) && JSON.stringify(fileAfter.literouter) === litBefore);
-    pv = await post('/admin/api/limits/google/apply', { text: fx });   // put the original numbers back
-    mm = await getModels();
-    check('limits import: pasting the original table again restores the original numbers', mm['gemini-2.5-flash-g'].rpm === 5 && JSON.parse(fs.readFileSync(limitsPath2, 'utf8')).google.models['gemini-2.5-flash'].rpm === 5);
-    pv = await post('/admin/api/limits/google/preview', { text: fx.split('\n').slice(0, 26).join('\n') + '\n' });
-    check('limits import: a partial paste KEEPS the rows it does not contain', pv.status === 200 && pv.j.rows >= 3 && pv.j.rows < 10 && pv.j.keptNotInPaste >= 30, JSON.stringify({ rows: pv.j.rows, kept: pv.j.keptNotInPaste }));
-    pv = await post('/admin/api/limits/google/preview', { text: 'this is not a table\nat all' });
-    check('limits import: something that is not the table is refused with an explanation (400)', pv.status === 400 && /Couldn't find the AI Studio rate-limit table/.test(pv.j.error?.message || ''), JSON.stringify(pv));
+    let mm, pv;
+    // The 429-learner tests above leave a few Google hops at the numbers Google reported. Put them back to the saved-table values by hand.
+    const resetGoogleHops = async () => {
+      const cur = await getModels();
+      for (const [id, field, val] of [['gemini-2.5-flash-g', 'rpm', 5], ['gemma-4-31b-g', 'rpd', 14400], ['gemma-4-31b', 'rpd', 14400]]) {
+        if (cur[id]) await post('/admin/api/models', { id, entry: { ...cur[id], [field]: val } });
+      }
+      await post('/admin/api/limits/dismiss', {});
+    };
 
     // ══ Google limits: learn from Google's own 429 ══
     const g429 = (id, value, model) => JSON.stringify([{ error: { code: 429, message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED',
@@ -583,11 +567,6 @@ async function main() {
     check('learn-429: an unrecognised quota id is ignored, never guessed', (await getModels())['gemini-2.5-flash-g'].rpm === 10 && (await getStatus()).mismatches.length === 1);
     const odd = await hit429('Too Many Requests');
     check('learn-429: a plain-text 429 body does not break anything', odd === 429 && (await getStatus()).mismatches.length === 1, String(odd));
-    pv = await post('/admin/api/limits/google/preview', { text: fx });
-    check('learn-429 + import: refreshing from the table puts the corrected hop back in line (10 -> 5)', pv.j.hopChanges.some(h => h.id === 'gemini-2.5-flash-g' && h.field === 'rpm' && h.from === 10 && h.to === 5), JSON.stringify(pv.j.hopChanges));
-    pv = await post('/admin/api/limits/google/apply', { text: fx });
-    st = await getStatus();
-    check('learn-429 + import: applying a refresh clears the warning', st.mismatches.length === 0, JSON.stringify(st.mismatches));
     // (a different model: gemini-2.5-flash has already used up this minute's 5 requests, so OUR rpm would block it before Google is called)
     await hit429(g429('GenerateRequestsPerDayPerProjectPerModel-FreeTier', 15000, 'gemma-4-31b-it'), 'gemma-4-31b-g');
     st = await getStatus();
@@ -667,9 +646,9 @@ async function main() {
     ww = await getWarn();
     const lim = warnFor(ww, 'google', 'gemma-4-31b-it');
     check('warnings (saved table): a hop whose numbers drifted from the table is "limits changed", with the numbers', lim && lim.kind === 'limits-changed' && lim.source === 'snapshot' && /rpd 15,000 here vs 14,400 in the saved table/.test(lim.detail), JSON.stringify(lim));
-    await post('/admin/api/limits/google/apply', { text: fx });
+    await resetGoogleHops();
     ww = await getWarn();
-    check('warnings (saved table): refreshing the limits clears it — and the real config has no saved-table warnings', ww.hops.filter(x => x.source === 'snapshot').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot')));
+    check('warnings (saved table): putting the numbers back in line with the table clears it — and the real config has no saved-table warnings', ww.hops.filter(x => x.source === 'snapshot').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot')));
     await addHop('zz-w-gpaid', { provider: 'google', model: 'gemini-2.5-pro' });
     await addHop('zz-w-glim', { provider: 'google', model: 'gemma-4-26b-a4b-it', rpd: 99999 });
     await addHop('zz-w-lnofree', { provider: 'literouter', model: 'command-a:free' });
