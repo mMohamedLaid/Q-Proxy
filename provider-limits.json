@@ -848,5 +848,14 @@
         "uncensored": false
       }
     }
+  },
+  "zai": {
+    "capturedAt": "2026-10-02",
+    "source": "Z.ai official pricing page (docs.z.ai/guides/overview/pricing): the only models priced $0 for input, cached input and output",
+    "freeModels": [
+      "glm-4.7-flash",
+      "glm-4.5-flash",
+      "glm-4.6v-flash"
+    ]
   }
 }
