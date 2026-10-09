@@ -406,6 +406,26 @@
   /* Request id — click to show only that request (parallel requests interleave) */
   .log-line .rid { flex-shrink: 0; font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; cursor: pointer; }
   .log-line .rid:hover { color: var(--text); border-color: var(--text-faint); }
+  .log-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .log-chip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-faint); border-radius: 999px; padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  .log-chip:hover { color: var(--text); }
+  .log-chip.on { color: var(--text); border-color: var(--text-faint); background: rgba(255,255,255,.08); }
+  .log-chips.all .log-chip[data-lvl] { color: var(--text-dim); }      /* nothing picked = every level shown */
+  .log-chip.on.lc-ERROR, .log-chips.all .lc-ERROR { color: var(--broken); }
+  .log-chip.on.lc-WARN, .log-chips.all .lc-WARN { color: #E6A028; }
+  .log-chip.on.lc-THINK { color: #A78BFA; } .log-chip.on.lc-REPLY { color: #4ADE80; } .log-chip.on.lc-PROMPT { color: #5EEAD4; }
+  /* request chunks + folding */
+  .log-group { border-bottom: 1px solid var(--border); }
+  .log-group-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.04); cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 1; }
+  .log-group-head:hover { background: rgba(255,255,255,.07); }
+  .log-group-head .gid { font-weight: 600; color: var(--text); }
+  .log-group-head .gmeta { color: var(--text-faint); font-size: 11px; }
+  .gbadge { font-size: 10.5px; font-weight: 600; color: var(--text-faint); }
+  .gbadge.lvl-ERROR { color: var(--broken); } .gbadge.lvl-WARN { color: #E6A028; }
+  .caret { display: inline-block; width: 12px; color: var(--text-faint); flex-shrink: 0; }
+  .log-line .fold { cursor: pointer; user-select: none; }
+  .log-line .fold:hover { color: var(--text); }
+  .log-line.collapsed .msg { flex-basis: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .75; }
   .log-tz-note { font-size: 11px; color: var(--text-faint); }
   .logs-empty { padding: 24px; text-align: center; color: var(--text-faint); }
 
@@ -528,17 +548,24 @@
   <section>
     <div class="section-head"><h2>Logs</h2><span class="count"><span id="log-count"></span></span></div>
     <div class="logs-toolbar">
-      <select id="log-level-filter">
-        <option value="">All levels</option>
-        <option value="ERROR">ERROR only</option>
-        <option value="WARN">WARN only</option>
-        <option value="INFO">INFO only</option>
-        <option value="THINK">THINK only (reasoning)</option>
-        <option value="REPLY">REPLY only</option>
-        <option value="PROMPT">PROMPT only (what was sent)</option>
+<div class="log-chips" id="log-level-chips" role="group" aria-label="Show these levels">
+        <button type="button" class="log-chip on" id="log-chip-all" title="Show every level">All</button>
+        <button type="button" class="log-chip lc-ERROR" data-lvl="ERROR">ERROR</button>
+        <button type="button" class="log-chip lc-WARN" data-lvl="WARN">WARN</button>
+        <button type="button" class="log-chip lc-INFO" data-lvl="INFO">INFO</button>
+        <button type="button" class="log-chip lc-THINK" data-lvl="THINK" title="Reasoning">THINK</button>
+        <button type="button" class="log-chip lc-REPLY" data-lvl="REPLY">REPLY</button>
+        <button type="button" class="log-chip lc-PROMPT" data-lvl="PROMPT" title="What was sent">PROMPT</button>
+      </div>
+      <select id="log-order" title="Order of the lines (or of the chunks when grouped)">
+        <option value="asc">Oldest first ↓</option>
+        <option value="desc">Newest first ↑</option>
       </select>
+      <label class="log-auto-label" title="Put each request's lines together in one collapsible chunk, ordered by when the request started"><input type="checkbox" id="log-group"> Group by request</label>
       <input type="text" id="log-rid-filter" placeholder="request #id" title="Show only one request's lines. Click any #id in the log to fill this in." style="width:96px;">
       <button type="button" class="btn-secondary" id="log-refresh-btn">Refresh</button>
+      <button type="button" class="btn-secondary" id="log-collapse-btn" title="Fold every request chunk and every THINK / REPLY / PROMPT block">Collapse all</button>
+      <button type="button" class="btn-secondary" id="log-expand-btn">Expand all</button>
       <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh" checked> Auto-refresh (5s)</label>
       <span class="log-tz-note" id="log-tz-note"></span>
       <button type="button" class="btn-secondary" id="log-clear-btn" style="border-color: rgba(248,113,113,.3); color: var(--broken);">Clear</button>
@@ -1512,7 +1539,10 @@
   $('#limits-paste').addEventListener('input', () => { if ($('#limits-paste').value !== limitsPreviewed) $('#limits-apply-btn').disabled = true; });   // Apply only what was previewed
 
   let logAutoRefreshTimer = null;
-  let currentLogLevel = '';
+  const logLevels = new Set();          // empty = every level; otherwise only these (picked in the chips)
+  let logOrder = 'asc', logGroup = false;
+  const logCollapsed = new Set();       // 'g:<rid>' for a request chunk, 'e:<key>' for one THINK / REPLY / PROMPT block
+  let lastLogRes = null;
   let currentLogRid = '';
   let lastLogSig = '';
 
@@ -1534,7 +1564,7 @@
   async function loadLogs(force) {
     try {
       const qs = [];
-      if (currentLogLevel) qs.push(`level=${encodeURIComponent(currentLogLevel)}`);
+      if (logLevels.size) qs.push(`level=${encodeURIComponent([...logLevels].join(','))}`);
       if (currentLogRid) qs.push(`rid=${encodeURIComponent(currentLogRid)}`);
       const res = await api('/admin/api/logs' + (qs.length ? '?' + qs.join('&') : ''));
       renderLogs(res, force === true);
@@ -1552,7 +1582,41 @@
     }
   }
 
-  function renderLogs(res, force) {
+  const LOG_FOLDABLE = new Set(['THINK', 'REPLY', 'PROMPT']);
+  const logKey = l => `${l.rid || ''}|${l.level}|${l.ts}`;
+  // <arrange-logs>
+  // logs arrive oldest-first. Returns the display items: single lines, or (grouped) one chunk per request id.
+  // Chunks are placed by when their request STARTED; the lines inside a chunk always stay in time order.
+  // Lines with no request id stay as single lines at their own time.
+  function arrangeLogs(logs, order, group) {
+    let items;
+    if (!group) items = logs.map(l => ({ kind: 'line', l }));
+    else {
+      items = []; const byRid = new Map();
+      for (const l of logs) {
+        if (!l.rid) { items.push({ kind: 'line', l }); continue; }
+        let g = byRid.get(l.rid);
+        if (!g) { g = { kind: 'group', rid: l.rid, lines: [], first: l.ts, counts: {} }; byRid.set(l.rid, g); items.push(g); }
+        g.lines.push(l); g.counts[l.level] = (g.counts[l.level] || 0) + 1;
+      }
+    }
+    return order === 'desc' ? items.reverse() : items;
+  }
+  // </arrange-logs>
+  function logLineHtml(l) {
+    const foldable = LOG_FOLDABLE.has(l.level), key = logKey(l), isCollapsed = foldable && logCollapsed.has('e:' + key);
+    const msg = String(l.msg == null ? '' : l.msg);
+    const body = isCollapsed ? escapeHtml(msg.replace(/\s+/g, ' ').slice(0, 140) + (msg.length > 140 ? '…' : '')) : tagifyLogMsg(escapeHtml(msg));
+    return `<div class="log-line lvl-${escapeHtml(l.level)}${isCollapsed ? ' collapsed' : ''}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span>${foldable ? `<span class="fold caret" data-fold="${escapeHtml(key)}" title="Fold / unfold">${isCollapsed ? '▸' : '▾'}</span>` : ''}<span class="lvl">${escapeHtml(l.level)}</span>${l.rid ? `<span class="rid" data-rid="${escapeHtml(l.rid)}" title="Show only this request">#${escapeHtml(l.rid)}</span>` : ''}<span class="msg">${body}</span></div>`;
+  }
+  function logGroupHtml(g) {
+    const open = !logCollapsed.has('g:' + g.rid);
+    const badges = ['ERROR', 'WARN', 'PROMPT', 'THINK', 'REPLY', 'INFO'].filter(k => g.counts[k]).map(k => `<span class="gbadge lvl-${k}">${k} ${g.counts[k]}</span>`).join('');
+    return `<div class="log-group"><div class="log-group-head" data-gid="${escapeHtml(g.rid)}" title="Fold / unfold this request"><span class="caret">${open ? '▾' : '▸'}</span><span class="gid">#${escapeHtml(g.rid)}</span><span class="gmeta">${escapeHtml(fmtLogTs(g.first))} · ${g.lines.length} line${g.lines.length === 1 ? '' : 's'}</span>${badges}</div>${open ? g.lines.map(logLineHtml).join('') : ''}</div>`;
+  }
+
+  function renderLogs(res, force, keepScroll) {
+    lastLogRes = res;
     $('#log-count').textContent = `${res.logs.length} of ${res.total} (cap ${res.capacity})`;
     // With auto-refresh on by default, don't rebuild the list (and lose a text
     // selection / scroll position) when nothing has changed. Live THINK/REPLY
@@ -1565,19 +1629,42 @@
       return;
     }
     const view = $('#logs-view');
-    // Only force-scroll if the viewer was already at (or near) the
-    // bottom — if someone's scrolled up to read older entries, an
-    // auto-refresh shouldn't yank them back down.
+    // Only force-scroll if the viewer was already at (or near) the end where new
+    // lines appear (bottom when oldest-first, top when newest-first) — if someone's
+    // scrolled away to read older entries, an auto-refresh shouldn't yank them.
     const wasNearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
-    view.innerHTML = res.logs.map(l =>
-      `<div class="log-line lvl-${escapeHtml(l.level)}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span><span class="lvl">${escapeHtml(l.level)}</span>${l.rid ? `<span class="rid" data-rid="${escapeHtml(l.rid)}" title="Show only this request">#${escapeHtml(l.rid)}</span>` : ''}<span class="msg">${tagifyLogMsg(escapeHtml(l.msg))}</span></div>`
-    ).join('');
-    if (wasNearBottom) view.scrollTop = view.scrollHeight;
+    view.innerHTML = arrangeLogs(res.logs, logOrder, logGroup).map(it => it.kind === 'group' ? logGroupHtml(it) : logLineHtml(it.l)).join('');
+    if (!keepScroll && logOrder === 'asc' && wasNearBottom) view.scrollTop = view.scrollHeight;
+    if (!keepScroll && logOrder === 'desc' && view.scrollTop < 40) view.scrollTop = 0;
+  }
+  const rerenderLogs = () => { if (lastLogRes) renderLogs(lastLogRes, true, true); };
+  function syncLogChips() {
+    $('#log-level-chips').classList.toggle('all', logLevels.size === 0);
+    $('#log-chip-all').classList.toggle('on', logLevels.size === 0);
+    document.querySelectorAll('#log-level-chips [data-lvl]').forEach(b => b.classList.toggle('on', logLevels.has(b.dataset.lvl)));
   }
 
-  $('#log-level-filter').addEventListener('change', e => { currentLogLevel = e.target.value; loadLogs(true); });
+  // Level chips: with nothing picked every level shows; the first click isolates that level ("X only"), further clicks add or remove levels.
+  $('#log-level-chips').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'log-chip-all') logLevels.clear();
+    else if (b.dataset.lvl) { if (logLevels.has(b.dataset.lvl)) logLevels.delete(b.dataset.lvl); else logLevels.add(b.dataset.lvl); }
+    syncLogChips(); loadLogs(true);
+  });
+  $('#log-order').addEventListener('change', e => { logOrder = e.target.value; rerenderLogs(); });
+  $('#log-group').addEventListener('change', e => { logGroup = e.target.checked; rerenderLogs(); });
+  $('#log-collapse-btn').addEventListener('click', () => {
+    if (!lastLogRes) return;
+    for (const l of lastLogRes.logs) { if (logGroup && l.rid) logCollapsed.add('g:' + l.rid); if (LOG_FOLDABLE.has(l.level)) logCollapsed.add('e:' + logKey(l)); }
+    rerenderLogs();
+  });
+  $('#log-expand-btn').addEventListener('click', () => { logCollapsed.clear(); rerenderLogs(); });
   $('#log-rid-filter').addEventListener('input', e => { currentLogRid = e.target.value.replace(/^#/, '').trim(); loadLogs(true); });
   $('#logs-view').addEventListener('click', e => {
+    const fold = e.target.closest && e.target.closest('.fold');
+    if (fold) { const k = 'e:' + fold.dataset.fold; if (logCollapsed.has(k)) logCollapsed.delete(k); else logCollapsed.add(k); rerenderLogs(); return; }
+    const head = e.target.closest && e.target.closest('.log-group-head');
+    if (head) { const k = 'g:' + head.dataset.gid; if (logCollapsed.has(k)) logCollapsed.delete(k); else logCollapsed.add(k); rerenderLogs(); return; }
     const chip = e.target.closest && e.target.closest('.rid');
     if (!chip) return;
     const input = $('#log-rid-filter');
@@ -2702,4 +2789,3 @@
 </script>
 </body>
 </html>
-
