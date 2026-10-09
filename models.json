@@ -116,7 +116,7 @@
     "tpm": 250000
   },
   "gemini-flash-g": {
-    "model": "gemini-3-flash",
+    "model": "gemini-3-flash-preview",
     "provider": "google",
     "status": "active",
     "limitType": "rate-limited",
@@ -167,11 +167,19 @@
     "limitType": "rate-limited",
     "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
   },
+  "kimi": {
+    "model": "moonshotai/kimi-k2.6",
+    "provider": "nvidia",
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Literouter fallback removed 2026-09 — Literouter no longer offers any free-tier Kimi model."
+  },
   "kimi-k3-nv": {
     "model": "moonshotai/kimi-k3",
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited",
+    "ignoreCatalog": true,
     "reasoningSchema": "reasoning-effort-select",
     "reasoningFieldOptions": {
       "reasoning_effort": [
@@ -323,6 +331,13 @@
     "status": "active",
     "limitType": "rate-limited"
   },
+  "glm-5.3-flash-lr": {
+    "model": "glm-5.3-flash:free",
+    "provider": "literouter",
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
+  },
   "l3-8b-lunaris-lr": {
     "model": "l3-8b-lunaris:free",
     "provider": "literouter",
@@ -425,6 +440,15 @@
     "status": "active",
     "limitType": "unlimited"
   },
+  "glm-5.3-cheap-free-lr": {
+    "model": "glm-5.3-cheap:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 100
+  },
   "gemini-3.6-flash-g": {
     "model": "models/gemini-3.6-flash",
     "provider": "google",
@@ -435,13 +459,5 @@
     "rpm": 5,
     "tpm": 250000,
     "rpd": 20
-  },
-  "z-ai-glm-5.3-flash-nv": {
-    "model": "z-ai/glm-5.3-flash",
-    "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
   }
 }
