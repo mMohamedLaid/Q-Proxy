@@ -348,6 +348,9 @@
   .hop .hop-order { color: var(--accent); font-size: 10px; }
   .hop .hop-model { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .hop .hop-usage { color: var(--text-faint); font-size: 10px; }
+  .hop .hop-warn-badge { color: #fb7185; font-size: 9.5px; border: 1px solid rgba(251,113,133,.45); border-radius: 4px; padding: 0 5px; white-space: nowrap; cursor: help; }
+  .hop .hop-warn-badge[data-kind="turned-paid"] { color: #f59e0b; border-color: rgba(245,158,11,.45); }
+  .hop .hop-warn-badge[data-kind="limits-changed"] { color: #60a5fa; border-color: rgba(96,165,250,.45); }
   .hop .hop-skip-badge { color: #f59e0b; font-size: 9.5px; border: 1px solid rgba(245,158,11,.35); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
   .hop .hop-keys { color: var(--text-faint); font-size: 9.5px; white-space: normal; word-break: break-word; }
   .chain-arrow { color: var(--text-faint); padding: 0 6px; font-size: 13px; }
@@ -802,9 +805,21 @@
         }
       });
     });
+    // Automatic warnings (one row per provider + kind; the exact models are on each hop's badge).
+    const grouped = {};
+    Object.values(lastHopWarnings).forEach(w => { (grouped[w.provider + '|' + w.kind] = grouped[w.provider + '|' + w.kind] || []).push(w); });
+    const autoRows = Object.entries(grouped).map(([k, ws]) => {
+      const [prov, kind] = k.split('|'); const names = ws.map(w => w.model);
+      const shown = names.slice(0, 6).join(', ') + (names.length > 6 ? ` … +${names.length - 6} more` : '');
+      return { cls: '', id: `${escapeHtml(PROVIDER_LABELS[prov] || prov)} — ${escapeHtml((WARN_KIND[kind] || [kind])[0])} (${ws.length})`, msg: `${(WARN_KIND[kind] || ['', ''])[1]}: ${shown}. Hover the ⚠ on each model for details.` };
+    });
+    items.push(...autoRows);
+    const checkedBits = Object.entries(lastCatalogChecked).map(([p, t]) => `${PROVIDER_LABELS[p] || p} ${timeAgo(t)}`).join(' · ');
+    const checkRow = (autoRows.length || checkedBits) ? `<div class="warn-item"><span>↻</span><div><span class="id">Provider catalogs</span><br><span class="msg">${escapeHtml(checkedBits ? 'Last checked: ' + checkedBits + '.' : 'Not checked yet.')} Checked automatically every 6 hours and whenever you open a Sync panel.</span> <button class="btn-secondary" id="catalog-check-btn" style="margin-left:6px;">Check now</button></div></div>` : '';
     $('#warnings').innerHTML = items.length
       ? items.map(w => `<div class="warn-item ${w.cls}"><span>⚠</span><div><span class="id">${w.id}</span><br><span class="msg">${escapeHtml(w.msg)}</span></div></div>`).join('')
       : '';
+    if (checkRow) $('#warnings').innerHTML += checkRow;
   }
 
   function hopClass(hop) { return (hop.status === 'deprecated') ? 'deprecated' : (hop.status === 'experimental' ? 'experimental' : 'active'); }
@@ -898,6 +913,10 @@
       // trackSkip in server.js) shows a small warning badge with the
       // reason and how long ago, right in the chain, not just in logs.
       const skipBadge = (u && u.skips) ? `<span class="hop-skip-badge" title="${escapeHtml(u.lastSkipReason || '')} · ${u.skips} skip(s) total">⚠ ran out (${escapeHtml(u.lastSkipReason || 'skipped')}) · ${timeAgo(u.lastSkipAt)}</span>` : '';
+      const hw = hopWarnFor(hop);
+      // "limits changed" is about THIS hop's numbers: only show it on a hop that really differs from the table.
+      const limitsDiffer = (hw && hw.table) ? Object.entries(hw.table).some(([f, v]) => f === 'dailyCap' ? (hop.dailyCap ?? null) !== v : (hop[f] != null && hop[f] !== v)) : true;
+      const warnBadge = (hw && limitsDiffer) ? `<span class="hop-warn-badge" data-kind="${escapeHtml(hw.kind)}" title="${escapeHtml(hw.detail)} (${hw.source === 'catalog' ? "from the provider's live list" : hw.source === 'request' ? 'seen in a real request' : 'from the saved table'}${hw.since ? ', since ' + escapeHtml(hw.since.slice(0, 10)) : ''})">⚠ ${escapeHtml((WARN_KIND[hw.kind] || [hw.kind])[0])}</span>` : '';
       const recent = i === mostRecentIdx ? ' hop-active-recent' : '';
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
@@ -905,7 +924,7 @@
         <span class="hop-provider">${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span>
         <span class="hop-model">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
-        ${skipBadge}
+        ${skipBadge}${warnBadge}
         ${renderHopKeyBreakdown(hop)}
         ${showOrder && limitsSummary(hop) ? `<div class="hop-keys">limits: ${escapeHtml(limitsSummary(hop))}</div>` : ''}
       </div>`;
@@ -1073,7 +1092,7 @@
     if (state.error) return `<div class="sync-result" data-sync-result="${provider}">Sync failed: ${escapeHtml(state.error)}</div>`;
     const r = state.data;
     if (!r) return '';
-    const grouped = provider === 'literouter' || provider === 'openrouter';
+    const grouped = ['literouter', 'openrouter', 'google', 'zai'].includes(provider);
     const renderItem = (m) => {
       const st = syncDetectState[syncDetectKey(provider, m)] || {};
       const scanned = st.result && st.result.ok;
@@ -1114,17 +1133,30 @@
     if (!r.newlyAvailable.length) {
       addRows = '<div class="sync-result-note">None found.</div>';
     } else if (grouped) {
-      const groups = { free: [], paid: [], premium: [], inaccessible: [], unknown: [] };
+      // Providers with a free/paid split get their own groups (open = visible by default). Literouter keeps its
+      // Free / Premium Basic groups plus one collapsed "other" group with two nested ones.
+      const tn = r.tierNotes || {};
+      const PROVIDER_TIERS = {
+        openrouter: { order: ['free', 'paid'], meta: {
+          free: { title: 'Free', hint: `free models — ${tn.freePerDayPerKey || 50} requests/day per key`, open: true },
+          paid: { title: 'Paid', hint: 'spends credits — price per million tokens shown on each line', open: false } } },
+        zai: { order: ['free', 'paid'], meta: {
+          free: { title: 'Free', hint: "free on Z.ai's pricing page", open: true },
+          paid: { title: 'Paid', hint: "not on Z.ai's free list", open: false } } },
+        google: { order: ['generous', 'thin', 'paidonly', 'unknown'], meta: {
+          generous: { title: 'Free · generous', hint: `${tn.generousRpd || 500}+ requests/day`, open: true },
+          thin: { title: 'Free · thin ice', hint: `under ${tn.generousRpd || 500} requests/day — you will hit the wall`, open: true },
+          paidonly: { title: 'Paid only', hint: 'AI Studio lists 0 / 0 / 0 on the free tier', open: false },
+          unknown: { title: 'Not in the saved table', hint: 'embeddings, audio, image… or newer than the table', open: false } } }
+      };
+      const pt = PROVIDER_TIERS[provider];
+      const groups = { free: [], paid: [], premium: [], inaccessible: [], unknown: [], generous: [], thin: [], paidonly: [] };
       r.newlyAvailable.forEach(m => {
         const t = (r.modelInfo && r.modelInfo[m] && r.modelInfo[m].tier) || 'unknown';
         (groups[t] || groups.unknown).push(m);
       });
       const tierBlock = (t, inner) => {
-        let meta = SYNC_TIER_META[t];
-        if (provider === 'openrouter') {            // two groups: Free open, Paid collapsed
-          meta = { free: { title: 'Free', hint: `free models — ${(r.tierNotes && r.tierNotes.freePerDayPerKey) || 50} requests/day per key`, open: true },
-                   paid: { title: 'Paid', hint: 'spends credits — price per million tokens shown on each line', open: false } }[t] || meta;
-        }
+        const meta = (pt && pt.meta[t]) || SYNC_TIER_META[t];
         const key = `${provider}:${t}`;
         const isOpen = syncTierOpen[key] !== undefined ? syncTierOpen[key] : meta.open;
         const count = t === 'other' ? groups.inaccessible.length + groups.unknown.length : groups[t].length;
@@ -1134,9 +1166,13 @@
         </details>`;
       };
       const itemsBlock = (t) => `<div class="sync-items">${groups[t].map(renderItem).join('')}</div>`;
-      const up = ['free', 'paid', 'premium'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
-      const nested = ['inaccessible', 'unknown'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
-      addRows = up + (nested ? tierBlock('other', `<div style="margin-left:10px;">${nested}</div>`) : '');
+      if (pt) {
+        addRows = pt.order.filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+      } else {
+        const up = ['free', 'premium'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+        const nested = ['inaccessible', 'unknown'].filter(t => groups[t].length).map(t => tierBlock(t, itemsBlock(t))).join('');
+        addRows = up + (nested ? tierBlock('other', `<div style="margin-left:10px;">${nested}</div>`) : '');
+      }
     } else {
       addRows = `<div class="sync-items">${r.newlyAvailable.map(renderItem).join('')}</div>`;
     }
@@ -1144,8 +1180,13 @@
     const lm = r.limitsMeta;
     const limitsNote = lm
       ? `<div class="${lm.stale ? 'sync-partial-note' : 'sync-result-note'}">${lm.stale ? '⚠ ' : ''}Limits pre-filled on add come from a saved snapshot captured ${escapeHtml(lm.capturedAt)} (${lm.ageDays} day${lm.ageDays === 1 ? '' : 's'} ago)${lm.stale ? ` — older than ${lm.staleAfterDays} days, re-check the provider's dashboard` : ''}.${provider === 'google' ? ' <a href="#" data-open-limits="1">Refresh limits…</a>' : ''}</div>` : '';
+    // Why a configured model is "no longer listed": gone for good, or it just turned paid.
+    const nlKind = (m) => {
+      const k = r.noLongerListedKinds && r.noLongerListedKinds[m]; if (!k) return '';
+      return `<span class="sync-item-info">⚠ ${escapeHtml((WARN_KIND[k.kind] || [k.kind])[0])}${k.instead && k.instead.length ? ' — listed instead: ' + escapeHtml(k.instead.join(', ')) : ''}</span>`;
+    };
     const removeRows = r.noLongerListed.length
-      ? `<div class="sync-items">${r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span><button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')}</div>`
+      ? `<div class="sync-items">${r.noLongerListed.map(m => `<div class="sync-item"><span class="sync-item-code">${escapeHtml(m)}</span>${nlKind(m)}<button class="sync-item-btn remove" data-sync-act="remove" data-provider="${provider}" data-model="${escapeHtml(m)}">Remove from config</button></div>`).join('')}</div>`
       : '<div class="sync-result-note">None found.</div>';
     return `<div class="sync-result" data-sync-result="${provider}">
       <div class="sync-result-head">Live models at ${escapeHtml(PROVIDER_LABELS[provider] || provider)}: ${r.liveCount}</div>
@@ -1415,6 +1456,10 @@
   // ---------- logs ----------
   // ── Google limits: "may be outdated" warning + paste-to-refresh ──
   let limitsStatus = null, limitsPreviewed = '';
+  // Automatic hop warnings from the server: models still configured here that the provider dropped / made paid / changed.
+  let lastHopWarnings = {}, lastCatalogChecked = {};
+  const hopWarnFor = (hop) => lastHopWarnings[`${hop.provider}|${hop.provider === 'google' ? String(hop.model).replace(/^models\//i, '') : hop.model}`];
+  const WARN_KIND = { gone: ['gone', 'No longer exists at the provider'], 'turned-paid': ['turned paid', 'Was free, now costs money (or is paid-only)'], 'limits-changed': ['limits changed', "Our saved limits differ from the provider's current table"] };
   const LIMIT_FIELD = { rpm: 'requests/min', tpm: 'input tokens/min', rpd: 'requests/day' };
   const nfmt = (v) => v === null || v === undefined ? 'not set' : Number(v).toLocaleString();
   async function loadLimitsStatus() {
@@ -1462,6 +1507,7 @@
     else if (e.target.id === 'limits-apply-btn') limitsRequest('apply');
     else if (e.target.id === 'limits-close-btn') $('#limits-panel').hidden = true;
     else if (e.target.id === 'limits-dismiss-btn') api('/admin/api/limits/dismiss', { method: 'POST' }).then(loadLimitsStatus).catch(() => {});
+    else if (e.target.id === 'catalog-check-btn') { e.target.disabled = true; e.target.textContent = 'Checking…'; api('/admin/api/warnings/check', { method: 'POST', body: {} }).then(() => loadAll()).catch(() => { e.target.textContent = 'Check failed'; }); }
   });
   $('#limits-paste').addEventListener('input', () => { if ($('#limits-paste').value !== limitsPreviewed) $('#limits-apply-btn').disabled = true; });   // Apply only what was previewed
 
@@ -2600,10 +2646,13 @@
   let modelPresets = {};
 
   async function loadAll() {
-    const [modelsRes, usageRes, profileRes, githubRes, presetsRes] = await Promise.all([
-      api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status'), api('/admin/api/presets')
+    const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes] = await Promise.all([
+      api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status'), api('/admin/api/presets'),
+      api('/admin/api/warnings').catch(() => ({ hops: [], catalogCheckedAt: {} }))
     ]);
     currentModels = modelsRes.models;
+    lastHopWarnings = Object.fromEntries(((warnRes && warnRes.hops) || []).map(w => [w.key, w]));
+    lastCatalogChecked = (warnRes && warnRes.catalogCheckedAt) || {};
     reasoningSchemas = profileRes.schemas || {};
     modelPresets = presetsRes.presets || {};
     renderSchemaList();
@@ -2653,3 +2702,4 @@
 </script>
 </body>
 </html>
+
