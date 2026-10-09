@@ -2961,10 +2961,11 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // ADMIN: LOGS
 // ============================================================
 app.get('/admin/api/logs', requireAdmin, (req, res) => {
-  const level = (req.query.level || '').toUpperCase();
+  // ?level=ERROR or a comma list (?level=ERROR,WARN,THINK); empty = every level
+  const levels = new Set(String(req.query.level || '').toUpperCase().split(',').map(x => x.trim()).filter(Boolean));
   const ridQ = String(req.query.rid || '').replace(/^#/, '').trim();
   const limit = Math.min(Number(req.query.limit) || RECENT_LOGS_MAX, RECENT_LOGS_MAX);
-  const filtered = recentLogs.filter(l => (!level || l.level === level) && (!ridQ || l.rid === ridQ));
+  const filtered = recentLogs.filter(l => (!levels.size || levels.has(l.level)) && (!ridQ || l.rid === ridQ));
   // recentLogs is newest-first internally (that's what makes capping via
   // recentLogs.length = MAX correctly drop the OLDEST entries) — but
   // that's an implementation detail. Take the most recent `limit`
