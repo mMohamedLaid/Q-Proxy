@@ -858,7 +858,18 @@ function loadUsageStateFromDisk() {
 // Google limit mismatches learned from Google's own 429s (see learnGoogleLimitsFrom429).
 // Persisted with the usage state so the "limits may be outdated" warning survives a restart.
 let googleLimitMismatches = [];
+// Hop warnings learned from the provider (see "Hop warnings" below) and when each provider's live list was last checked.
+let hopWarnings = {};
+let catalogCheckedAt = {};
+// Drops warnings for models no longer configured. An EMPTY config (file missing/blanked) prunes nothing.
+function pruneHopWarnings() {
+  if (!Object.keys(MODEL_MAPPING).length) return;
+  const live = new Set();
+  forEachHop((id, hop) => live.add(hopWarnKey(hop.provider, hop.model)));
+  for (const k of Object.keys(hopWarnings)) if (!live.has(k)) delete hopWarnings[k];
+}
 async function saveUsageState(commitMessage) {
+  pruneHopWarnings();
   const snapshot = {
     savedAt: new Date().toISOString(),
     literouterKeyState,
@@ -873,6 +884,8 @@ async function saveUsageState(commitMessage) {
     googleUsageWindows,
     googleLastResetDay,
     googleLimitMismatches,
+    hopWarnings,
+    catalogCheckedAt,
   };
   const json = JSON.stringify(snapshot, null, 2);
   fs.writeFileSync(USAGE_STATE_PATH, json);
@@ -905,6 +918,8 @@ function hydrateUsageStateFromDisk() {
   if (saved.googleUsageWindows) Object.assign(googleUsageWindows, saved.googleUsageWindows);
   if (typeof saved.googleLastResetDay === 'string') googleLastResetDay = saved.googleLastResetDay;
   if (Array.isArray(saved.googleLimitMismatches)) googleLimitMismatches = saved.googleLimitMismatches.slice(0, 20);
+  if (saved.hopWarnings && typeof saved.hopWarnings === 'object' && !Array.isArray(saved.hopWarnings)) hopWarnings = saved.hopWarnings;
+  if (saved.catalogCheckedAt && typeof saved.catalogCheckedAt === 'object' && !Array.isArray(saved.catalogCheckedAt)) catalogCheckedAt = saved.catalogCheckedAt;
   log('INFO', `[usage-state] restored from ${saved.savedAt || 'unknown time'} — Literouter/OpenRouter counters survive this restart instead of starting at zero.`);
 }
 
@@ -916,6 +931,152 @@ function hydrateUsageStateFromDisk() {
 // silently dropped.
 let usageStateDirty = false;
 function markUsageStateDirty() { usageStateDirty = true; }
+
+// ── Hop warnings ───────────────────────────────────────────────────────
+// Providers change their catalogs without notice (Literouter especially). A hop that is
+// still configured here can be:
+//   gone            the model no longer exists at the provider
+//   turned-paid     it was free; the free version is gone / the table now says paid-only
+//   limits-changed  our saved limits differ from the provider's current table
+// Three sources: "catalog" (the provider's live /models list no longer has it — checked when
+// the Sync panel opens and every 6 hours), "request" (the provider just answered "that model
+// doesn't exist" to a real request; cleared by the next success) and "snapshot" (the pasted
+// tables in provider-limits.json disagree with the hop). A warning never switches a hop off —
+// you decide. Put "ignoreCatalog": true on a hop that is deliberately missing from the list
+// (kimi-k3 on NIM works but is hidden from /models).
+function hopWarnKey(provider, model) { return `${provider}|${provider === 'google' ? normalizeGoogleModelId(model) : model}`; }
+function forEachHop(cb) {
+  for (const [id, entry] of Object.entries(MODEL_MAPPING)) {
+    let i = 0;
+    for (let hop = entry; hop; hop = hop.fallback) cb(id, hop, i++);
+  }
+}
+function similarLiveIds(id, live) {
+  const strip = (x) => x.replace(/:free$/, '').replace(/-preview(-\d[\w-]*)?$/, '');
+  return [...live].filter(l => l !== id && (strip(l) === strip(id) || l.startsWith(id + '-'))).slice(0, 3);
+}
+function catalogDriftFor(provider, live) {
+  const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
+  const out = {};
+  forEachHop((entryId, hop) => {
+    if (hop.provider !== provider || hop.ignoreCatalog === true) return;
+    const id = canon(hop.model), key = hopWarnKey(provider, hop.model);
+    if (live.has(id) || out[key]) return;
+    if (id.endsWith(':free') && live.has(id.slice(0, -5))) {
+      out[key] = { kind: 'turned-paid', detail: `"${id}" is no longer listed, but "${id.slice(0, -5)}" is — it now costs credits` };
+    } else {
+      const instead = similarLiveIds(id, live);
+      out[key] = { kind: 'gone', detail: `no longer in ${provider}'s live model list${instead.length ? ` — listed instead: ${instead.join(', ')}` : ''}`, ...(instead.length ? { instead } : {}) };
+    }
+  });
+  return out;
+}
+function applyCatalogWarnings(provider, drift) {
+  let changed = false;
+  for (const [k, w] of Object.entries(hopWarnings)) {
+    if (w.source === 'catalog' && k.startsWith(provider + '|') && !drift[k]) { delete hopWarnings[k]; changed = true; }
+  }
+  for (const [k, d] of Object.entries(drift)) {
+    const prev = hopWarnings[k];
+    if (prev && prev.source === 'catalog' && prev.kind === d.kind && prev.detail === d.detail) continue;
+    hopWarnings[k] = { ...d, source: 'catalog', since: (prev && prev.source === 'catalog' && prev.kind === d.kind) ? prev.since : new Date().toISOString() };
+    changed = true;
+  }
+  catalogCheckedAt[provider] = new Date().toISOString();
+  if (changed) {
+    markUsageStateDirty();
+    const mine = Object.entries(hopWarnings).filter(([k, w]) => w.source === 'catalog' && k.startsWith(provider + '|'));
+    const by = mine.reduce((a, [, w]) => (a[w.kind] = (a[w.kind] || 0) + 1, a), {});
+    log('WARN', `[catalog] ${provider}: ${mine.length} configured model(s) need attention (${Object.entries(by).map(([k, n]) => `${HOP_WARNING_LABEL[k] || k} ${n}`).join(', ') || 'all clear'}) — see the warnings in the Admin panel`);
+  }
+  return changed;
+}
+const HOP_WARNING_LABEL = { gone: 'gone', 'turned-paid': 'turned paid', 'limits-changed': 'limits changed' };
+function noteHopGone(providerConfig, detail) {
+  const k = hopWarnKey(providerConfig.provider, providerConfig.model);
+  const prev = hopWarnings[k];
+  if (prev && prev.source === 'catalog') return;                       // the live list already says so
+  if (prev && prev.source === 'request') { prev.detail = `the provider answered: ${detail}`; return; }
+  hopWarnings[k] = { kind: 'gone', detail: `the provider answered: ${detail}`, source: 'request', since: new Date().toISOString() };
+  markUsageStateDirty();
+  log('WARN', `[warning] ${hopLabel(providerConfig)} looks gone — ${detail}`);
+}
+function clearRequestWarning(providerConfig) {
+  const k = hopWarnKey(providerConfig.provider, providerConfig.model);
+  if (hopWarnings[k] && hopWarnings[k].source === 'request') { delete hopWarnings[k]; markUsageStateDirty(); }
+}
+// Disagreements between a hop and the saved tables in provider-limits.json (local, no network).
+// "gone"/"turned-paid" are about the MODEL (every hop using it); "limits-changed" is about one hop's
+// own numbers, so it carries the table values and only the entries whose hop actually differs.
+function snapshotWarnings() {
+  const out = {};
+  const googleRows = PROVIDER_LIMITS.google && PROVIDER_LIMITS.google.models;
+  const haveLiterouter = Object.keys(LITEROUTER_KNOWN_MODELS).length > 0;   // an empty table (file missing) must not flag everything
+  const add = (key, w, entryId) => {
+    if (!out[key]) out[key] = { ...w, ...(w.table ? { onlyEntries: [] } : {}) };
+    if (w.table && !out[key].onlyEntries.includes(entryId)) out[key].onlyEntries.push(entryId);
+  };
+  forEachHop((entryId, hop) => {
+    const key = hopWarnKey(hop.provider, hop.model);
+    if (hop.provider === 'google' && googleRows) {
+      const row = googleLimitsFor(hop.model); if (!row) return;
+      if (row.noFreeAccess) { add(key, { kind: 'turned-paid', detail: `AI Studio lists 0 / 0 / 0 for "${row.label}" on the free tier — paid only` }, entryId); return; }
+      const fields = ['rpm', 'tpm', 'rpd'].filter(f => row[f] != null && hop[f] != null && hop[f] !== row[f]);
+      if (fields.length) add(key, { kind: 'limits-changed', detail: fields.map(f => `${f} ${fmtN(hop[f])} here vs ${fmtN(row[f])} in the saved table`).join('; '), table: Object.fromEntries(fields.map(f => [f, row[f]])) }, entryId);
+    } else if (hop.provider === 'literouter' && haveLiterouter) {
+      const { base, variants } = literouterBaseAndVariants(hop.model);
+      if (!variants.includes('free')) return;
+      const row = LITEROUTER_KNOWN_MODELS[base];
+      if (!row) { add(key, { kind: 'gone', detail: 'not in the saved Literouter catalog' }, entryId); return; }
+      if (!row.hasFree) { add(key, { kind: 'turned-paid', detail: 'the saved Literouter catalog lists no free version of this model' }, entryId); return; }
+      if ((row.freeDailyCap ?? null) !== (hop.dailyCap ?? null)) add(key, { kind: 'limits-changed', detail: `${hop.dailyCap == null ? 'no daily cap' : hop.dailyCap + '/day'} here vs ${row.freeDailyCap == null ? 'unlimited' : row.freeDailyCap + '/day'} in the saved catalog`, table: { dailyCap: row.freeDailyCap ?? null } }, entryId);
+    }
+  });
+  return out;
+}
+function allHopWarnings() {
+  const byKey = { ...hopWarnings };
+  for (const [k, w] of Object.entries(snapshotWarnings())) if (!byKey[k]) byKey[k] = { ...w, source: 'snapshot' };
+  const entriesFor = {};
+  forEachHop((id, hop) => { const k = hopWarnKey(hop.provider, hop.model); (entriesFor[k] = entriesFor[k] || new Set()).add(id); });
+  const items = [];
+  for (const [k, w] of Object.entries(byKey)) {
+    if (!entriesFor[k]) continue;                                       // no longer configured
+    const [provider, ...rest] = k.split('|');
+    const { onlyEntries, ...rest2 } = w;
+    items.push({ key: k, provider, model: rest.join('|'), entries: onlyEntries || [...entriesFor[k]], ...rest2 });
+  }
+  return items.sort((a, b) => a.provider.localeCompare(b.provider) || a.kind.localeCompare(b.kind) || a.model.localeCompare(b.model));
+}
+async function runCatalogCheck(onlyProvider) {
+  const results = {};
+  for (const provider of SYNCABLE_PROVIDERS) {
+    if (onlyProvider && provider !== onlyProvider) continue;
+    try {
+      const { base, key } = getProviderConfigReadOnly(provider);
+      if (!key) { results[provider] = 'no key'; continue; }
+      const r = await axios.get(`${base}/models`, { headers: { Authorization: `Bearer ${key}` }, timeout: 15000 });
+      const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
+      const live = new Set((r.data?.data || []).map(m => canon(m.id)));
+      if (!live.size) { results[provider] = 'empty list — ignored'; continue; }   // an odd/empty answer must never flag everything
+      applyCatalogWarnings(provider, catalogDriftFor(provider, live));
+      results[provider] = 'ok';
+    } catch (e) { results[provider] = `failed: ${e.message}`; }
+  }
+  return results;
+}
+function startCatalogWatch() {
+  if (process.env.QP_NO_CATALOG_WATCH) return;                          // tests only
+  const run = () => runCatalogCheck().catch(e => log('WARN', `[catalog] background check failed: ${e.message}`));
+  setTimeout(run, 45 * 1000).unref();
+  setInterval(run, 6 * 3600 * 1000).unref();
+}
+const GOOGLE_GENEROUS_RPD = 500;   // free requests/day: at or above = "generous"; below = "thin ice"; 0/0/0 = paid only
+function tierNotesFor(provider) {
+  if (provider === 'openrouter') return { freePerDayPerKey: OPENROUTER_DAILY_CAP };
+  if (provider === 'google') return { generousRpd: GOOGLE_GENEROUS_RPD };
+  return null;
+}
 
 // ── Learning from Google's own 429s ───────────────────────────────────
 // A Google 429 (RESOURCE_EXHAUSTED) carries QuotaFailure details naming the quota that
@@ -1416,6 +1577,10 @@ const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded you
 // A key problem reported with a non-401/403 status (some gateways answer 500 with
 // "Invalid API key"): retrying can't fix it, so it is classified AUTH like a real 401.
 const AUTH_BODY_PATTERNS = /invalid[_ -]?api[_ -]?key|incorrect api key|api[_ -]?key (is |was )?(invalid|not valid|expired|revoked|missing)|unauthori[sz]ed|authentication (failed|error)|invalid (auth|authorization)|invalid[_ -]?token/i;
+// Providers don't agree on how to say "that model is gone": some use 404, some 400/422 with a
+// message. Either way retrying can't help, and (unlike a malformed request) the next hop may
+// work — so it is NOT_FOUND: stop retrying this hop and fall through.
+const MODEL_GONE_PATTERNS = /model(?:[^.\n]|\.(?=\w)){0,100}(does not exist|doesn['’]t exist|not found|no longer (available|exists?)|has been (removed|retired|deprecated|discontinued))|unknown model|model_not_found|no such model|invalid model(?:\s+(?:id|name|identifier)\b|\s*[:'"`]|\s*$)/i;
 const TRANSIENT_4XX_PATTERNS = /degraded|overloaded|temporarily|try again|capacity|service unavailable|\bbusy\b|cold.?start|warming|queue/i;
 const MODERATION_PATTERNS = /content.?(?:policy|filter)|safety|moderat|flagged/i;
 
@@ -1459,6 +1624,7 @@ function classifyError(err, bodyText = '') {
   if (TOKEN_LIMIT_PATTERNS.test(text))    return mk('CONTEXT_TOO_LONG', 'the request is bigger than this model\'s context window — trim the chat history or lower max tokens', 400, 'invalid_request_error');
   if (QUOTA_EXHAUSTED_PATTERNS.test(text)) return mk('QUOTA', 'the provider says the quota/credits are used up', 429, 'rate_limit_error');
   if (status !== 429 && !(status >= 200 && status < 300) && AUTH_BODY_PATTERNS.test(text)) return mk('AUTH', 'the provider rejected the API key (missing, wrong, or revoked)', 401, 'authentication_error');
+  if ([400, 410, 422].includes(status) && MODEL_GONE_PATTERNS.test(text)) return mk('NOT_FOUND', 'the provider says this model does not exist (removed, renamed or never available)', 404);
   if (status === 429)                      return mk('RATE_LIMIT', 'too many requests to this provider — retry shortly', 429, 'rate_limit_error');
   if (status === 401 || status === 403)    return mk('AUTH', 'the provider rejected the API key (missing, wrong, or revoked)', status, 'authentication_error');
   if (status === 404)                      return mk('NOT_FOUND', 'the provider does not have this model (renamed, deprecated or pulled)', 404, 'invalid_request_error');
@@ -1672,6 +1838,13 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         continue;
       }
     }
+    // Literouter's free tier has a fixed context (5,000 tokens). A longer prompt is NOT rejected: Literouter
+    // summarizes it to fit, so the model answers from a condensed history. Say so in the log (once per hop).
+    const freeCtxCap = literouterFreeContextCap(providerConfig);
+    if (freeCtxCap) {
+      const promptTokens = estimateInputTokens(nimRequest);
+      if (promptTokens > freeCtxCap) log('WARN', `[context] ${hopLabel(providerConfig)} — prompt ≈ ${fmtN(promptTokens)} tokens is over Literouter's free ${fmtN(freeCtxCap)}-token context, so Literouter will summarize it and the model sees a condensed history, not the full chat (set "tpmLimit" on this hop to skip it for long chats instead)`);
+    }
 
     const extraBody = getReasoningBody(providerConfig);
     const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
@@ -1773,6 +1946,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           }
         );
         trackUsage(providerConfig.provider, providerConfig.model, true);
+        clearRequestWarning(providerConfig);   // it answered: whatever the provider said before is out of date
         attempts.push({
           provider: providerConfig.provider, model: providerConfig.model, outcome: 'used',
           ...(attemptNum > 1 ? { retries: attemptNum - 1 } : {})
@@ -1825,6 +1999,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         }
 
         if (NO_RETRY_BUT_FALL_BACK_TAGS.has(cls.tag)) {
+          if (cls.tag === 'NOT_FOUND') noteHopGone(providerConfig, extractProviderMessage(bodyText) || `HTTP ${status}`);
           if (!isLastHop) log('WARN', `[${cls.tag}] ${who} — ${reasonWithMsg}; retrying this hop can't help, moving on`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: reasonStr });
           trackSkip(providerConfig.provider, providerConfig.model, cls.tag);
@@ -2800,6 +2975,18 @@ app.get('/admin/api/logs', requireAdmin, (req, res) => {
   res.json({ logs: mostRecent.reverse(), total: recentLogs.length, capacity: RECENT_LOGS_MAX });
 });
 
+// ── Hop warnings: what is still configured but gone / turned paid / changed ──
+app.get('/admin/api/warnings', requireAdmin, (req, res) => {
+  const hops = allHopWarnings();
+  const counts = hops.reduce((a, w) => (a[w.kind] = (a[w.kind] || 0) + 1, a), {});
+  res.json({ hops, counts, catalogCheckedAt });
+});
+app.post('/admin/api/warnings/check', requireAdmin, async (req, res) => {
+  const results = await runCatalogCheck(req.body && req.body.provider);
+  const hops = allHopWarnings();
+  res.json({ ok: true, results, hops, counts: hops.reduce((a, w) => (a[w.kind] = (a[w.kind] || 0) + 1, a), {}), catalogCheckedAt });
+});
+
 // ── Google limits: status (for the "may be outdated" warning), preview/apply of a pasted
 // AI Studio table, and dismissing the mismatch warning ──────────────────────────────
 app.get('/admin/api/limits/status', requireAdmin, (req, res) => {
@@ -3045,7 +3232,7 @@ function planGoogleHopUpdates(models) {
 }
 // How old a snapshot is, so the Admin panel can warn when it's stale.
 function limitsMeta(provider) {
-  const sec = PROVIDER_LIMITS[provider];
+  const sec = ['google', 'literouter'].includes(provider) ? PROVIDER_LIMITS[provider] : null;   // only these two pre-fill limits on add
   if (!sec || !sec.capturedAt) return null;
   const ageDays = Math.floor((Date.now() - new Date(sec.capturedAt).getTime()) / 86400000);
   const staleAfterDays = sec.staleAfterDays || 30;
@@ -3065,6 +3252,15 @@ function literouterBaseAndVariants(id) {
     base = base.slice(0, -m[0].length);
   }
   return { base, variants };
+}
+
+// The fixed context of Literouter's FREE tier (provider-limits.json "freeContextTokens"), or null when this
+// hop isn't a Literouter :free model / the table has no number.
+function literouterFreeContextCap(pc) {
+  if (!pc || pc.provider !== 'literouter') return null;
+  if (!literouterBaseAndVariants(pc.model).variants.includes('free')) return null;
+  const cap = PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.freeContextTokens;
+  return Number.isFinite(cap) && cap > 0 ? cap : null;
 }
 
 // Sync tiers:
@@ -3446,18 +3642,27 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     } else if (provider === 'google') {
       for (const id of newlyAvailable) {
         const row = googleLimitsFor(id);
-        modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null,
+        const tier = !row ? 'unknown' : row.noFreeAccess ? 'paidonly' : (row.rpd == null || row.rpd >= GOOGLE_GENEROUS_RPD) ? 'generous' : 'thin';
+        modelInfo[id] = { tier, cost: null, uncensored: null,
           limits: row ? { rpm: row.rpm, tpm: row.tpm, rpd: row.rpd, noFreeAccess: !!row.noFreeAccess, label: row.label } : null };
       }
     } else if (provider === 'openrouter') {
       for (const id of newlyAvailable) modelInfo[id] = classifyOpenRouterModel(rawById.get(id) || { id });
       newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
+    } else if (provider === 'zai') {
+      // Z.ai's /models has no prices; the free list is baked into provider-limits.json (from Z.ai's official pricing page).
+      const freeIds = new Set(((PROVIDER_LIMITS.zai && PROVIDER_LIMITS.zai.freeModels) || []).map(x => x.toLowerCase()));
+      for (const id of newlyAvailable) modelInfo[id] = { tier: freeIds.has(id.toLowerCase()) ? 'free' : 'paid', cost: null, uncensored: null };
+      newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
     } else {
       for (const id of newlyAvailable) modelInfo[id] = { tier: 'unknown', cost: null, uncensored: null };
     }
 
+    // Opening the panel is also a fresh catalog check: flag configured hops the provider dropped.
+    applyCatalogWarnings(provider, catalogDriftFor(provider, liveSet));
+    const noLongerListedKinds = Object.fromEntries(noLongerListed.map(id => { const w = hopWarnings[hopWarnKey(provider, id)]; return [id, { kind: w ? w.kind : 'gone', instead: w && w.instead || null }]; }));
     res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
-      tierNotes: provider === 'openrouter' ? { freePerDayPerKey: OPENROUTER_DAILY_CAP } : null });
+      tierNotes: tierNotesFor(provider), noLongerListedKinds });
   } catch (e) {
     res.status(502).json({
       error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
@@ -3618,6 +3823,7 @@ async function bootstrapConfigAndStart() {
 
   app.listen(PORT, () => {
     log('INFO', `Proxy running on port ${PORT} — mode: ${MODE}`);
+    startCatalogWatch();
     // Logged once so the time zone is never a mystery when debugging: every
     // stamp in Render's console is UTC; the Admin panel shows your local time.
     log('INFO', `Server clock: ${new Date().toISOString()} | TZ env: ${process.env.TZ || '(unset → UTC)'} | zone: ${Intl.DateTimeFormat().resolvedOptions().timeZone} — all log stamps are UTC`);
@@ -3632,4 +3838,5 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
 
