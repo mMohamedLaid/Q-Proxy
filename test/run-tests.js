@@ -358,6 +358,12 @@ async function main() {
     r = await fetch(BASE + '/admin/api/logs?rid=' + ridA, { headers: admin2 }); j = await r.json();
     const lv = j.logs.map(l => l.level);
     check('admin logs: ?rid= returns only that request, incl. PROMPT + THINK + REPLY', j.logs.length > 0 && j.logs.every(l => l.rid === ridA) && ['PROMPT', 'THINK', 'REPLY'].every(x => lv.includes(x)), JSON.stringify(lv));
+    r = await fetch(BASE + '/admin/api/logs?rid=' + ridA + '&level=THINK,reply', { headers: admin2 }); j = await r.json();
+    check('admin logs: ?level= takes a comma list, any case (THINK,reply → only those two levels, both present)', j.logs.length >= 2 && j.logs.every(l => ['THINK', 'REPLY'].includes(l.level)) && ['THINK', 'REPLY'].every(x => j.logs.some(l => l.level === x)), JSON.stringify(j.logs.map(l => l.level)));
+    r = await fetch(BASE + '/admin/api/logs?rid=' + ridA + '&level=PROMPT', { headers: admin2 }); j = await r.json();
+    check('admin logs: a single ?level= still works', j.logs.length >= 1 && j.logs.every(l => l.level === 'PROMPT'), JSON.stringify(j.logs.map(l => l.level)));
+    r = await fetch(BASE + '/admin/api/logs?rid=' + ridA + '&level=,,', { headers: admin2 }); j = await r.json();
+    check('admin logs: an empty ?level= list means every level', new Set(j.logs.map(l => l.level)).size >= 3, JSON.stringify(j.logs.map(l => l.level)));
     const promptEntry = j.logs.find(l => l.level === 'PROMPT');
     check('admin logs: PROMPT entry lists every message (system + user)', /\[msg 0\] (system|user): /.test(promptEntry?.msg || '') && /\[msg 1\] user: hi A|\[msg 0\] user: hi A/.test(promptEntry?.msg || ''), promptEntry?.msg);
     check('admin logs: capacity raised to 1000', j.capacity === 1000, String(j.capacity));
