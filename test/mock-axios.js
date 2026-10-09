@@ -44,6 +44,7 @@ const mockAxios = {
   post: async (url, body, config = {}) => {
     if (!/\/chat\/completions$/.test(url)) throw new Error('mock: unexpected POST ' + url);
     const sc = scenario();
+    try { fs.writeFileSync((process.env.MOCK_FILE || 'test/scenario.json') + '.lastbody', JSON.stringify(body)); } catch (_) {}   // what actually reached the provider
     // 'hang': the provider never answers (a request stuck in its queue). Only an
     // abort via config.signal ends it — and that is recorded in <MOCK_FILE>.aborted
     // so a test can prove the proxy really cancelled the upstream call.
@@ -77,7 +78,8 @@ const mockAxios = {
   get: async (url) => {
     if (/\/models$/.test(url)) {
       const sc = scenario();
-      return { status: 200, data: { data: (sc.models || []).map(id => ({ id })) } };
+      // scenario.modelObjects = full model objects (OpenRouter-style: pricing, context_length, supported_parameters); scenario.models = bare ids
+      return { status: 200, data: { data: sc.modelObjects || (sc.models || []).map(id => ({ id })) } };
     }
     throw new Error('mock: unexpected GET ' + url);
   },
