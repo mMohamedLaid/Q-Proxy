@@ -36,7 +36,7 @@ CONFUSING BUT NOT BUGS
 
 STATE (checked 07-10-2026, GitHub HEAD cfd97f1 = a usage snapshot)
 - The last commit batch was PARTIAL (found 07-10): the repo had the newest run-tests.js but NOT reasoning-schemas.json (so the 🧪 fix was not live), NOT the last 4 lines of test/mock-axios.js - the repo's own tests could not pass. (The test/fixtures/ folder that batch also lacked has since been dropped: the tests that needed the pasted AI Studio table were removed.) After committing, ALWAYS byte-compare the repo against the delivered files.
-- PENDING - commit together (9 files): server.js, public/admin.html, models.json, provider-limits.json, reasoning-schemas.json, README.md, handof.md, test/run-tests.js, test/mock-axios.js. Delete this bullet once verified. 151/151 tests pass.
+- PENDING - commit together (9 files): server.js, public/admin.html, models.json, provider-limits.json, reasoning-schemas.json, README.md, handof.md, test/run-tests.js, test/mock-axios.js. Delete this bullet once verified. 154/154 tests pass.
 - package-lock.json is not in the repo (undecided).
 - Not tested: live NIM/Google/Literouter, Node 20, the Admin UI in a browser.
 
