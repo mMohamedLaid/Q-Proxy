@@ -97,5 +97,50 @@
         "description": "Enter request fields that should be merged into the chat-completions body."
       }
     }
+  },
+  "thinking-and-effort": {
+    "label": "Thinking toggle + effort (keys and placement set per model)",
+    "description": "The unified schema the Admin 🧪 detector writes. Two optional fields, each sent ONLY if the hop switches it on: a thinking on/off toggle and an effort level. What the toggle is really called on the wire (thinking / enable_thinking / ...) and where each field goes (inside chat_template_kwargs, or top level) are set per hop, so one schema covers every model.",
+    "transport": "chat_template_kwargs",
+    "fields": {
+      "thinking_toggle": {
+        "label": "Thinking",
+        "type": "boolean",
+        "default": true,
+        "enabledByDefault": false,
+        "keyPerHop": true,
+        "transportPerHop": true,
+        "description": "On/off switch for thinking. Sent only if enabled on the hop, under the key and transport set on the hop."
+      },
+      "reasoning_effort": {
+        "label": "Reasoning effort",
+        "type": "select",
+        "optionsPerHop": true,
+        "defaultOptions": [
+          "low",
+          "high",
+          "max"
+        ],
+        "enabledByDefault": false,
+        "keyPerHop": true,
+        "transportPerHop": true,
+        "description": "Effort level. The allowed values are curated per hop; nothing is sent until a value is picked and the field is enabled on the hop."
+      }
+    }
+  },
+  "raw": {
+    "label": "Raw (detected extra fields, placement set per model)",
+    "description": "Written by the 🧪 detector when an example has reasoning fields that are not a plain on/off toggle or effort level. The whole object is sent as-is in the transport chosen on the hop.",
+    "transport": "chat_template_kwargs",
+    "fields": {
+      "__raw": {
+        "label": "Raw JSON",
+        "type": "json",
+        "default": {},
+        "transportPerHop": true,
+        "description": "Object merged into chat_template_kwargs or the top level of the request, as chosen on the hop."
+      }
+    }
   }
 }
+
