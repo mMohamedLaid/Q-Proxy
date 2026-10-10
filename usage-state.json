@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-10T05:38:58.263Z",
+  "savedAt": "2026-10-10T11:59:33.930Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -96,33 +96,9 @@
       "source": "catalog",
       "since": "2026-10-09T17:18:33.794Z"
     },
-    "literouter|deepseek-v4-flash:free": {
-      "kind": "turned-paid",
-      "detail": "\"deepseek-v4-flash:free\" is no longer listed, but \"deepseek-v4-flash\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.794Z"
-    },
-    "literouter|deepseek-v3.2:free": {
-      "kind": "turned-paid",
-      "detail": "\"deepseek-v3.2:free\" is no longer listed, but \"deepseek-v3.2\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.794Z"
-    },
-    "literouter|minimax-m2.7:free": {
-      "kind": "turned-paid",
-      "detail": "\"minimax-m2.7:free\" is no longer listed, but \"minimax-m2.7\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.794Z"
-    },
     "literouter|gemma-4-31b-it:free": {
       "kind": "gone",
       "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.794Z"
-    },
-    "literouter|glm-4.7-flash:free": {
-      "kind": "turned-paid",
-      "detail": "\"glm-4.7-flash:free\" is no longer listed, but \"glm-4.7-flash\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-10-09T17:18:33.794Z"
     },
@@ -168,12 +144,6 @@
       "source": "catalog",
       "since": "2026-10-09T17:18:33.794Z"
     },
-    "literouter|mistral-large-3:free": {
-      "kind": "gone",
-      "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.794Z"
-    },
     "literouter|mistral-medium-2508:free": {
       "kind": "gone",
       "detail": "no longer in literouter's live model list",
@@ -200,10 +170,10 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-10T05:38:44.949Z",
-    "zai": "2026-10-10T05:38:45.437Z",
-    "google": "2026-10-10T05:38:45.584Z",
-    "openrouter": "2026-10-10T05:38:46.166Z",
-    "literouter": "2026-10-10T05:38:46.360Z"
+    "nvidia": "2026-10-10T11:59:04.545Z",
+    "zai": "2026-10-10T11:59:05.104Z",
+    "google": "2026-10-10T11:59:05.349Z",
+    "openrouter": "2026-10-10T11:59:05.837Z",
+    "literouter": "2026-10-10T11:59:06.034Z"
   }
 }
