@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-09T17:18:45.498Z",
+  "savedAt": "2026-10-10T05:38:58.263Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -191,13 +191,19 @@
       "detail": "\"glm-5.3-cheap:free\" is no longer listed, but \"glm-5.3-cheap\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-10-09T17:18:33.794Z"
+    },
+    "literouter|gpt-oss-20b:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-10-10T05:38:46.360Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-09T17:18:32.195Z",
-    "zai": "2026-10-09T17:18:32.560Z",
-    "google": "2026-10-09T17:18:32.945Z",
-    "openrouter": "2026-10-09T17:18:33.500Z",
-    "literouter": "2026-10-09T17:18:33.794Z"
+    "nvidia": "2026-10-10T05:38:44.949Z",
+    "zai": "2026-10-10T05:38:45.437Z",
+    "google": "2026-10-10T05:38:45.584Z",
+    "openrouter": "2026-10-10T05:38:46.166Z",
+    "literouter": "2026-10-10T05:38:46.360Z"
   }
 }
