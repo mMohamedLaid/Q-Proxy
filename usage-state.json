@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-10T11:59:33.930Z",
+  "savedAt": "2026-10-10T17:59:34.389Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -167,13 +167,19 @@
       "detail": "no longer in literouter's live model list",
       "source": "catalog",
       "since": "2026-10-10T05:38:46.360Z"
+    },
+    "literouter|l3-8b-lunaris:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-10-10T17:59:05.854Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-10T11:59:04.545Z",
-    "zai": "2026-10-10T11:59:05.104Z",
-    "google": "2026-10-10T11:59:05.349Z",
-    "openrouter": "2026-10-10T11:59:05.837Z",
-    "literouter": "2026-10-10T11:59:06.034Z"
+    "nvidia": "2026-10-10T17:59:04.536Z",
+    "zai": "2026-10-10T17:59:04.850Z",
+    "google": "2026-10-10T17:59:05.192Z",
+    "openrouter": "2026-10-10T17:59:05.635Z",
+    "literouter": "2026-10-10T17:59:05.854Z"
   }
 }
