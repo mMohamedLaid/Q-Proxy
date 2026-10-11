@@ -406,6 +406,17 @@
   /* Request id — click to show only that request (parallel requests interleave) */
   .log-line .rid { flex-shrink: 0; font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; cursor: pointer; }
   .log-line .rid:hover { color: var(--text); border-color: var(--text-faint); }
+  /* form controls inside the tester + log toolbar: the browser's default light controls were unreadable on the dark page */
+  .tester-row select, .tester-max input, #log-order { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; color-scheme: dark; }
+  #tester-models, #tester-prompt { color: var(--text); color-scheme: dark; }
+  #tester-models::placeholder, #tester-prompt::placeholder { color: var(--text-faint); }
+  .copyable { cursor: copy; border-radius: 4px; }
+  .copyable:hover { background: rgba(255,255,255,.08); text-decoration: underline dotted; text-underline-offset: 3px; }
+  #toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); background: #1f2937; color: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 9px 18px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 9999; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .stay-label { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; margin: 10px 0 2px; cursor: pointer; }
+  .stay-label input { width: auto; margin: 0; }
+  .signout-btn { margin-left: auto; padding: 5px 11px; font-size: 12px; }
   .tester-help { color: var(--text-dim); font-size: 12.5px; margin: 0 0 10px; line-height: 1.5; }
   .tester-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   .tester-max { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
@@ -476,11 +487,13 @@
 </head>
 <body>
 
+<div id="toast" role="status" aria-live="polite"></div>
 <div id="login-gate">
   <div class="login-card">
     <h1>Q</h1>
     <p>Enter your admin key to open the dashboard. Set the same value as <code>ADMIN_KEY</code> in your Render environment.</p>
     <input type="password" id="key-input" placeholder="Admin key" autocomplete="off">
+    <label class="stay-label"><input type="checkbox" id="stay-signed-in" checked> Stay signed in on this device</label>
     <button id="key-submit" class="btn-primary">Unlock</button>
     <div class="login-error" id="login-error"></div>
   </div>
@@ -490,6 +503,7 @@
   <header class="top">
     <h1><span class="pulse-dot"></span> Q</h1>
     <span class="meta" id="header-meta">—</span>
+    <button type="button" class="btn-secondary signout-btn" id="signout-btn" title="Forget the saved admin key on this device">Sign out</button>
   </header>
 
   <div class="stats" id="stats"></div>
@@ -569,7 +583,7 @@
       <button type="button" class="btn-secondary" id="tester-load" title="Fill the box with the models you have configured for this provider">Load my configured models</button>
       <label class="tester-max">Max tokens <input type="number" id="tester-max" value="256" min="16" max="2000"></label>
     </div>
-    <textarea id="tester-models" rows="4" placeholder="One model id per line, e.g. glm-4.7-flash — works for models that aren't in your config or in the provider's list too"></textarea>
+    <textarea id="tester-models" rows="4" placeholder="One per line. Either a provider's own model id (glm-4.7-flash — tested on the provider selected above) or one of your own model names from models.json (kimi, glm-5.3-flash-lr — every hop of it is tested). To force a provider's id when it is also one of your names, write provider:id (zai:glm-5.3)."></textarea>
     <input type="text" id="tester-prompt" placeholder="Prompt (optional — default: Reply with exactly one word: ok)">
     <div class="tester-row">
       <button type="button" class="btn-primary" id="tester-run">Test</button>
@@ -626,7 +640,8 @@
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
-  let ADMIN_KEY = params.get('key') || '';
+  const SAVED_KEY = (() => { try { return localStorage.getItem('qproxy-admin-key') || ''; } catch (_) { return ''; } })();
+  let ADMIN_KEY = params.get('key') || SAVED_KEY;
 
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -635,7 +650,11 @@
   const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
   let currentModels = {};
   let providerTab = '';
-  let quickUsageTab = 'used';
+  // ── remembered view settings (kept in this browser; the admin key is stored separately, see "Stay signed in") ──
+  const PREFS_KEY = 'qproxy-ui';
+  function loadPrefs() { try { const v = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
+  const savedPrefs = loadPrefs();
+  let quickUsageTab = savedPrefs.quickTab === 'recent' ? 'recent' : 'used';
   let reasoningSchemas = {};
   const syncState = {};
   // Which Literouter tier groups are expanded, remembered across re-renders
@@ -983,7 +1002,7 @@
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
         ${showOrder ? `<span class="hop-order">#${i + 1}</span>` : ''}
         <span class="hop-provider">${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span>
-        <span class="hop-model">${escapeHtml(hop.model)}</span>
+        <span class="hop-model copyable" data-copy="${escapeHtml(hop.model)}" title="Click to copy">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
         ${skipBadge}${warnBadge}
         ${renderHopKeyBreakdown(hop)}
@@ -1011,6 +1030,16 @@
       limitSelect.innerHTML = '<option value="all">All limits</option>' + limits.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
       familySelect.innerHTML = '<option value="all">All families</option>' + families.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
       providerSelect.dataset.ready = statusSelect.dataset.ready = limitSelect.dataset.ready = familySelect.dataset.ready = '1';
+      {   // put the filters back the way they were last time (an option that no longer exists is simply ignored)
+        const sf = savedPrefs.filters || {};
+        const pick = (el, v) => { if (v && [...el.options].some(o => o.value === v)) el.value = v; };
+        pick(providerSelect, sf.provider); pick(statusSelect, sf.status); pick(limitSelect, sf.limitType); pick(familySelect, sf.family);
+        if (typeof sf.search === 'string') $('#filter-search').value = sf.search;
+        if (typeof sf.include === 'string') $('#filter-include').value = sf.include;
+        if (typeof sf.exclude === 'string') $('#filter-exclude').value = sf.exclude;
+        refreshFilterState();
+        if (Array.isArray(sf.tags)) sf.tags.forEach(t => filterState.tags.add(String(t)));
+      }
 
       ['#filter-search', '#filter-provider', '#filter-status', '#filter-limit', '#filter-family', '#filter-include', '#filter-exclude'].forEach(sel => {
         $(sel).addEventListener('input', () => { refreshFilterState(); renderProviders(currentModels, buildUsageIndex(lastUsageList)); });
@@ -1085,7 +1114,7 @@
       const meta = quickUsageTab === 'recent'
         ? `${timeAgo(u.lastUsed)} · ${u.count} ok${u.errors ? `, ${u.errors} err` : ''}${idsText}`
         : `${u.count} ok${u.errors ? `, ${u.errors} err` : ''} · ${timeAgo(u.lastUsed)}${idsText}`;
-      return `<div class="quick-usage-item"><div class="quick-usage-main">${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • ${escapeHtml(u.model)}</div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
+      return `<div class="quick-usage-item"><div class="quick-usage-main">${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • <span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
     }).join('') : '<div class="sync-result-note">No usage data yet. These lists appear after requests start flowing.</div>';
 
     $('#quick-usage').innerHTML = `
@@ -1287,7 +1316,7 @@
     const tags = item.tags.map(tag => `<button class="model-tag ${filterState.tags.has(tag) ? 'active' : ''}" type="button" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('');
     return `<div class="model-card" data-id="${escapeHtml(id)}">
       <div class="model-card-top">
-        <span class="model-id">${escapeHtml(id)}</span>
+        <span class="model-id copyable" data-copy="${escapeHtml(id)}" title="Click to copy">${escapeHtml(id)}</span>
         <span class="badge ${entry.status || 'active'}">${entry.status || 'active'}</span>
         <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
         ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
@@ -1510,7 +1539,7 @@
     $('#usage-grid').innerHTML = cards.join('');
 
     const tbody = $('#usage-table tbody');
-    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td>${escapeHtml(u.model)}</td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
+    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td><span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
     tbody.innerHTML = rows || '<tr><td colspan="6" class="sync-result-note">No requests recorded yet.</td></tr>';
   }
 
@@ -1624,33 +1653,41 @@
     $('#tester-load').addEventListener('click', async () => {
       try {
         const r = await api('/admin/api/test-model/configured?provider=' + encodeURIComponent(sel.value));
-        $('#tester-models').value = r.models.join('\n');
+        $('#tester-models').value = (r.lines || r.models).join('\n');
         $('#tester-count').textContent = r.models.length ? `${r.models.length} configured` : 'none configured for this provider';
       } catch (e) { $('#tester-count').textContent = e.message; }
     });
     $('#tester-clear').addEventListener('click', () => { $('#tester-results').innerHTML = ''; $('#tester-count').textContent = ''; });
     $('#tester-stop').addEventListener('click', () => { stopFlag = true; });
     $('#tester-run').addEventListener('click', async () => {
-      const models = [...new Set($('#tester-models').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean))].slice(0, 25);
-      if (!models.length) { $('#tester-count').textContent = 'Type at least one model id.'; return; }
+      const lines = [...new Set($('#tester-models').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean))].slice(0, 60);
+      if (!lines.length) { $('#tester-count').textContent = 'Type at least one model id.'; return; }
       const provider = sel.value, prompt = $('#tester-prompt').value, maxTokens = $('#tester-max').value;
       stopFlag = false; $('#tester-run').disabled = true; $('#tester-stop').hidden = false;
       const box = $('#tester-results');
+      let targets = [];
+      try {
+        const rr = await api('/admin/api/test-model/resolve', { method: 'POST', body: { provider, lines } });
+        targets = rr.targets || [];
+        if (rr.truncated) $('#tester-count').textContent = 'only the first 40 are tested';
+      } catch (e) { $('#tester-count').textContent = e.message; $('#tester-run').disabled = false; $('#tester-stop').hidden = true; return; }
       let done = 0;
-      for (const model of models) {
+      const cp = t => `<span class="copyable" data-copy="${escapeHtml(t)}" title="Click to copy">${escapeHtml(t)}</span>`;
+      for (const t of targets) {
         if (stopFlag) break;
+        const nameHtml = (t.via ? `${cp(t.via)} → ` : '') + cp(t.model) + (t.note ? ` <span class="tx">(${escapeHtml(t.note)})</span>` : '');
         const row = document.createElement('div'); row.className = 'tester-line';
-        row.innerHTML = `<span class="tm">${escapeHtml(model)}</span><span class="tv tv-pending">testing…</span><span></span><span></span><span class="tx"></span>`;
+        row.innerHTML = `<span class="tm">${nameHtml}</span><span class="tv tv-pending">testing…</span><span></span><span></span><span class="tx"></span>`;
         box.prepend(row);
-        $('#tester-count').textContent = `testing ${done + 1} of ${models.length}…`;
+        $('#tester-count').textContent = `testing ${done + 1} of ${targets.length}…`;
         let out;
-        try { out = await api('/admin/api/test-model', { method: 'POST', body: { provider, model, prompt, maxTokens } }); }
+        try { out = await api('/admin/api/test-model', { method: 'POST', body: { provider: t.provider, model: t.model, prompt, maxTokens } }); }
         catch (e) { out = { verdict: 'error', label: 'error', message: e.message }; }
         const detail = out.reply || out.message || '';
-        row.innerHTML = `<span class="tm">${escapeHtml(model)}</span><span class="tv tv-${escapeHtml(out.verdict)}">${escapeHtml(out.label || out.verdict)}</span><span>${escapeHtml(PROVIDER_LABELS[provider] || provider)}${out.status ? ' · HTTP ' + out.status : ''}</span><span>${out.ms != null ? out.ms + ' ms' : ''}</span><span class="tx" title="${escapeHtml(detail)}">${escapeHtml(detail.slice(0, 160))}</span>`;
+        row.innerHTML = `<span class="tm">${nameHtml}</span><span class="tv tv-${escapeHtml(out.verdict)}">${escapeHtml(out.label || out.verdict)}</span><span>${escapeHtml(PROVIDER_LABELS[t.provider] || t.provider)}${out.status ? ' · HTTP ' + out.status : ''}</span><span>${out.ms != null ? out.ms + ' ms' : ''}</span><span class="tx" title="${escapeHtml(detail)}">${escapeHtml(detail.slice(0, 160))}</span>`;
         done++;
       }
-      $('#tester-count').textContent = stopFlag ? `stopped after ${done} of ${models.length}` : `${done} tested`;
+      $('#tester-count').textContent = stopFlag ? `stopped after ${done} of ${targets.length}` : `${done} tested`;
       $('#tester-run').disabled = false; $('#tester-stop').hidden = true;
     });
   })();
@@ -2834,7 +2871,20 @@
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
 
-  async function tryUnlock(key) {
+  // Stay signed in: the admin key is kept in THIS browser's localStorage (plain text — anyone using this browser profile can open the panel;
+  // "Sign out" removes it). Unchecking the box on the login screen stops it being saved.
+  function persistKey(key) {
+    try {
+      if ($('#stay-signed-in').checked) localStorage.setItem('qproxy-admin-key', key); else localStorage.removeItem('qproxy-admin-key');
+    } catch (_) { /* storage blocked: you just sign in each time */ }
+  }
+  function stripKeyFromUrl() {   // don't leave the key sitting in the address bar / history
+    if (!params.has('key')) return;
+    params.delete('key');
+    try { history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash); } catch (_) {}
+  }
+
+  async function tryUnlock(key, auto) {
     ADMIN_KEY = key;
     try {
       await api('/admin/api/models');
@@ -2844,21 +2894,85 @@
       // visible instead of hiding it behind an already-dismissed gate.
       $('#login-gate').style.display = 'none';
       $('#dashboard').hidden = false;
+      persistKey(key);
+      stripKeyFromUrl();
     } catch (err) {
       $('#login-gate').style.display = '';
       $('#dashboard').hidden = true;
-      $('#login-error').textContent = err.message;
+      if (auto && /admin key/i.test(err.message)) {   // the saved key no longer works (changed on Render): forget it, ask again
+        try { localStorage.removeItem('qproxy-admin-key'); } catch (_) {}
+        $('#key-input').value = '';
+        $('#login-error').textContent = 'Your saved admin key was rejected — enter the current one.';
+      } else $('#login-error').textContent = err.message;
     }
   }
 
   $('#key-submit').addEventListener('click', () => tryUnlock($('#key-input').value.trim()));
   $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock($('#key-input').value.trim()); });
+  $('#signout-btn').addEventListener('click', () => {
+    try { localStorage.removeItem('qproxy-admin-key'); } catch (_) {}
+    location.href = location.pathname;
+  });
+
+  // ── click-to-copy for model names ──
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (_) { /* fall back below (http pages / blocked permission) */ }
+    try {
+      const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return !!ok;
+    } catch (_) { return false; }
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+  document.addEventListener('click', async e => {
+    const el = e.target.closest && e.target.closest('[data-copy]');
+    if (!el) return;
+    const ok = await copyText(el.getAttribute('data-copy'));
+    toast(ok ? 'Copied to clipboard' : "Couldn't copy — select the text and press Ctrl+C");
+  });
+
+  // ── remember how the page was left ──
+  function collectPrefs() {
+    return {
+      quickTab: quickUsageTab,
+      logs: { levels: [...logLevels], order: logOrder, group: logGroup, auto: $('#log-auto-refresh').checked },
+      tester: { provider: $('#tester-provider').value, max: $('#tester-max').value, prompt: $('#tester-prompt').value, models: $('#tester-models').value },
+      filters: { search: $('#filter-search').value, provider: $('#filter-provider').value, status: $('#filter-status').value, limitType: $('#filter-limit').value, family: $('#filter-family').value, include: $('#filter-include').value, exclude: $('#filter-exclude').value, tags: [...filterState.tags] },
+    };
+  }
+  let prefsTimer = null;
+  function schedulePrefsSave() {
+    clearTimeout(prefsTimer);
+    prefsTimer = setTimeout(() => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(collectPrefs())); } catch (_) {} }, 300);
+  }
+  ['input', 'change', 'click'].forEach(ev => document.addEventListener(ev, schedulePrefsSave, true));
+  (function applySavedPrefs() {
+    const sp = savedPrefs;
+    if (sp.logs) {
+      (Array.isArray(sp.logs.levels) ? sp.logs.levels : []).forEach(l => { if (['ERROR', 'WARN', 'INFO', 'THINK', 'REPLY', 'PROMPT'].includes(l)) logLevels.add(l); });
+      if (sp.logs.order === 'desc') { logOrder = 'desc'; $('#log-order').value = 'desc'; }
+      if (sp.logs.group) { logGroup = true; $('#log-group').checked = true; }
+      if (typeof sp.logs.auto === 'boolean') $('#log-auto-refresh').checked = sp.logs.auto;
+      syncLogChips();
+    }
+    if (sp.tester) {
+      if ([...$('#tester-provider').options].some(o => o.value === sp.tester.provider)) $('#tester-provider').value = sp.tester.provider;
+      if (sp.tester.max) $('#tester-max').value = sp.tester.max;
+      if (typeof sp.tester.prompt === 'string') $('#tester-prompt').value = sp.tester.prompt;
+      if (typeof sp.tester.models === 'string') $('#tester-models').value = sp.tester.models;
+    }
+  })();
 
   if (ADMIN_KEY) {
     $('#key-input').value = ADMIN_KEY;
-    tryUnlock(ADMIN_KEY);
+    if (SAVED_KEY && !params.get('key')) $('#stay-signed-in').checked = true;
+    tryUnlock(ADMIN_KEY, !params.get('key'));
   }
 })();
 </script>
 </body>
 </html>
+
