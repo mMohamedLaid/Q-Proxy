@@ -808,6 +808,22 @@ async function main() {
     r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
     check('tester names: "Load my configured models" prefixes a slug that is also one of your names (zai:zz-slug) so it is read as the slug, and leaves normal ones plain', j.lines.includes('zai:zz-slug') && j.lines.includes('glm-4.7-flash') && j.models.includes('zz-slug'), JSON.stringify(j.lines));
     for (const id of ['zz-chain', 'zz-slug']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+    // ══ "API call" behind the update check: describe it, then send it and show the raw answer ══
+    const rawCall = async (p, send, headers = admin2) => { const rr = await fetch(BASE + '/admin/api/sync/' + p + '/raw' + (send ? '?send=1' : ''), { headers }); return { s: rr.status, j: await rr.json() }; };
+    let rw = await rawCall('zai', false);
+    check('api call: describes the exact call (method, URL, a curl line with a PLACEHOLDER key) without sending anything', rw.j.method === 'GET' && rw.j.url === 'https://api.z.ai/api/paas/v4/models' && /Bearer YOUR_ZAI_API_KEY/.test(rw.j.curl) && rw.j.hasKey === true && rw.j.sent === undefined, JSON.stringify(rw.j));
+    setScenario({ mode: 'nonstream', models: ['glm-5.2', 'glm-5.3'] });
+    rw = await rawCall('zai', true);
+    check('api call: ?send=1 makes the call and returns status, timing, model count, ids and the raw JSON', rw.j.sent === true && rw.j.ok === true && rw.j.status === 200 && rw.j.count === 2 && rw.j.ids.join() === 'glm-5.2,glm-5.3' && /"id": "glm-5.3"/.test(rw.j.raw) && typeof rw.j.ms === 'number', JSON.stringify(rw.j));
+    check('api call: the real key is never in the answer (not in the curl line, not in the raw text)', !JSON.stringify(rw.j).includes('"z1"') && !/Bearer z1/.test(JSON.stringify(rw.j)), JSON.stringify(rw.j).slice(0, 300));
+    setScenario({ mode: 'nonstream', modelsStatus: 401, modelsBody: { error: { message: 'Invalid API key' } } });
+    rw = await rawCall('google', true);
+    check('api call: a provider error comes back as ok:false with its status and its own message (still HTTP 200 from us, so the page can show it)', rw.s === 200 && rw.j.ok === false && rw.j.status === 401 && /Invalid API key/.test(rw.j.message) && /Invalid API key/.test(rw.j.raw), JSON.stringify(rw.j));
+    setScenario({ mode: 'nonstream', models: [] });
+    rw = await rawCall('deepseek', false);
+    check('api call: a provider with no live list is a 400', rw.s === 400);
+    rw = await rawCall('zai', true, { 'Content-Type': 'application/json' });
+    check('api call: needs the admin key', rw.s === 401 || rw.s === 403, String(rw.s));
     setScenario({ mode: 'nonstream', models: ['org/some-nim-model'] });
     r = await fetch(BASE + '/admin/api/sync/nvidia', { headers: admin2 }); j = await r.json();
     check('nvidia: free-only, so no free/paid grouping (everything stays "unknown")', Object.values(j.modelInfo || {}).every(v => v.tier === 'unknown') && !j.tierNotes, JSON.stringify(j.modelInfo));
