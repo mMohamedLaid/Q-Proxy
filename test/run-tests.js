@@ -269,10 +269,10 @@ async function main() {
     a = await addSync('literouter', 'glm-5.1:free');
     check('literouter add: :free model with a 100/day cap gets dailyCap 100', a.j.entry?.dailyCap === 100, JSON.stringify(a.j.entry));
     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
-    a = await addSync('literouter', 'qwen3.6-27b:free');
+    a = await addSync('literouter', 'l3-8b-lunaris:free');
     check('literouter add: unlimited :free model gets NO dailyCap', a.j.entry && a.j.entry.dailyCap === undefined, JSON.stringify(a.j.entry));
     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
-    a = await addSync('literouter', 'command-a');
+    a = await addSync('literouter', 'qwen3-32b');
     check('literouter add: premium model notes its credit multiplier, no dailyCap', a.j.entry && a.j.entry.dailyCap === undefined && /1x/.test(a.j.entry.notes || ''), JSON.stringify(a.j.entry));
     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
 
@@ -283,10 +283,10 @@ async function main() {
       Array.isArray(j.newlyAvailable) && j.newlyAvailable.length === 1 && j.newlyAvailable[0] === 'gemini-2.5-flash-lite', JSON.stringify(j.newlyAvailable));
     check('google sync: offered model carries its limits preview', j.modelInfo?.['gemini-2.5-flash-lite']?.limits?.rpm === 10, JSON.stringify(j.modelInfo));
     check('sync: limits snapshot age is reported', j.limitsMeta && j.limitsMeta.capturedAt && typeof j.limitsMeta.stale === 'boolean', JSON.stringify(j.limitsMeta));
-    setScenario({ mode: 'nonstream', models: ['glm-5.2', 'command-a', 'totally-unknown-model', 'qwen3.6-27b:free'] });
+    setScenario({ mode: 'nonstream', models: ['llama-3-8b-instruct', 'qwen3-32b', 'totally-unknown-model', 'glm-5.1:free'] });
     r = await fetch(BASE + '/admin/api/sync/literouter', { headers: admin2 }); j = await r.json();
     const tierOf = id => j.modelInfo?.[id]?.tier;
-    check('literouter sync: nothing dropped, tiers correct', j.newlyAvailable?.length === 4 && tierOf('glm-5.2') === 'inaccessible' && tierOf('command-a') === 'premium' && tierOf('totally-unknown-model') === 'unknown' && tierOf('qwen3.6-27b:free') === 'free', JSON.stringify(j.modelInfo));
+    check('literouter sync: nothing dropped, tiers correct', j.newlyAvailable?.length === 4 && tierOf('llama-3-8b-instruct') === 'inaccessible' && tierOf('qwen3-32b') === 'premium' && tierOf('totally-unknown-model') === 'unknown' && tierOf('glm-5.1:free') === 'free', JSON.stringify(j.modelInfo));
     check('literouter sync: no more "hiddenInaccessible" count', !('hiddenInaccessible' in j));
 
     // ── rpm: hit the per-minute request limit -> "try again in ~Ns" ──
@@ -583,11 +583,11 @@ async function main() {
 
     // ══ "model is gone" is recognised however the provider says it ══
     const okReply = { mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } };
-    await addHop('zz-gone', { provider: 'literouter', model: 'glm-4.6:free', dailyCap: 100 });
-    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model `glm-4.6:free` does not exist or you do not have access to it.","type":"invalid_request_error"}}' });
+    await addHop('zz-gone', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 100 });
+    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model `glm-5.1:free` does not exist or you do not have access to it.","type":"invalid_request_error"}}' });
     w = await timedChat('zz-gone', 4000);
     check('gone: a 400 "model does not exist" is NOT_FOUND (it used to be a hard BAD_REQUEST that never falls back)', w.status === 400 && w.tag === 'NOT_FOUND' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms }));
-    setScenario({ mode: 'upstream-error', status: 422, body: '{"detail":"unknown model glm-4.6:free"}' });
+    setScenario({ mode: 'upstream-error', status: 422, body: '{"detail":"unknown model glm-5.1:free"}' });
     w = await timedChat('zz-gone', 4000);
     check('gone: a 422 "unknown model" is NOT_FOUND too', w.tag === 'NOT_FOUND', JSON.stringify({ s: w.status, t: w.tag }));
     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid value for temperature: must be between 0 and 2"}}' });
@@ -602,10 +602,10 @@ async function main() {
     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model parameter: top_k is not supported"}}' });
     w = await timedChat('zz-gone', 4000);
     check('gone: "Invalid model parameter ..." (a bad field, not a missing model) stays BAD_REQUEST', w.tag === 'BAD_REQUEST', JSON.stringify({ s: w.status, t: w.tag }));
-    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model: glm-4.6:free"}}' });
+    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model: glm-5.1:free"}}' });
     w = await timedChat('zz-gone', 4000);
     check('gone: "Invalid model: <id>" is still NOT_FOUND', w.tag === 'NOT_FOUND', JSON.stringify({ s: w.status, t: w.tag }));
-    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-gone-chain', entry: { provider: 'literouter', model: 'glm-4.6:free', status: 'active', limitType: 'rate-limited', dailyCap: 100,
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-gone-chain', entry: { provider: 'literouter', model: 'glm-5.1:free', status: 'active', limitType: 'rate-limited', dailyCap: 100,
       fallback: { provider: 'nvidia', model: 'org/alive', status: 'active', limitType: 'unlimited' } } }) }); await r.text();
     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model does not exist"}}' });
     w = await timedChat('zz-gone-chain', 4000);
@@ -617,11 +617,11 @@ async function main() {
     const warnFor = (ww, provider, model) => ww.hops.find(x => x.provider === provider && x.model === model);
     let ww = await getWarn();
     check('warnings: the endpoint answers with hops, counts and the last-check times', Array.isArray(ww.hops) && typeof ww.counts === 'object' && typeof ww.catalogCheckedAt === 'object', JSON.stringify(Object.keys(ww)));
-    const gone1 = warnFor(ww, 'literouter', 'glm-4.6:free');
+    const gone1 = warnFor(ww, 'literouter', 'glm-5.1:free');
     check('warnings (request): a real request that got "does not exist" flags the hop as gone, and says it was seen in a request', gone1 && gone1.kind === 'gone' && gone1.source === 'request' && gone1.entries.includes('zz-gone') && /does not exist/.test(gone1.detail), JSON.stringify(gone1));
     setScenario(okReply);
     await (await chat({ model: 'zz-gone', messages: [{ role: 'user', content: 'hi' }] })).text();
-    check('warnings (request): a later success clears it (the provider answered, so it is not gone)', !warnFor(await getWarn(), 'literouter', 'glm-4.6:free'));
+    check('warnings (request): a later success clears it (the provider answered, so it is not gone)', !warnFor(await getWarn(), 'literouter', 'glm-5.1:free'));
     r = await fetch(BASE + '/admin/api/models/zz-gone', { method: 'DELETE', headers: admin2 }); await r.text();
 
     // ══ Literouter free tier: prompts over its fixed context get summarized by Literouter — the log says so ══
@@ -657,44 +657,74 @@ async function main() {
     check('warnings (saved table): putting the numbers back in line with the table clears it — and the real config has no saved-table warnings', ww.hops.filter(x => x.source === 'snapshot').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot')));
     await addHop('zz-w-gpaid', { provider: 'google', model: 'gemini-2.5-pro' });
     await addHop('zz-w-glim', { provider: 'google', model: 'gemma-4-26b-a4b-it', rpd: 99999 });
-    await addHop('zz-w-lnofree', { provider: 'literouter', model: 'command-a:free' });
+    await addHop('zz-w-lnofree', { provider: 'literouter', model: 'deepseek-v3.1:free' });
     await addHop('zz-w-lcap', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 30 });
     await addHop('zz-w-lnone', { provider: 'literouter', model: 'brand-new-thing:free' });
     ww = await getWarn();
     check('warnings (saved table): a Google model the table lists 0/0/0 is "turned paid"', warnFor(ww, 'google', 'gemini-2.5-pro')?.kind === 'turned-paid', JSON.stringify(warnFor(ww, 'google', 'gemini-2.5-pro')));
     const gl = warnFor(ww, 'google', 'gemma-4-26b-a4b-it');
     check('warnings (saved table): "limits changed" marks ONLY the hop that differs, not the other hops on the same model', gl?.kind === 'limits-changed' && JSON.stringify(gl.entries) === JSON.stringify(['zz-w-glim']) && gl.table?.rpd === 14400, JSON.stringify(gl));
-    check('warnings (saved table): a Literouter free model with no free version in the catalog is "turned paid"', warnFor(ww, 'literouter', 'command-a:free')?.kind === 'turned-paid');
+    check('warnings (saved table): a Literouter free model with no free version in the catalog is "turned paid"', warnFor(ww, 'literouter', 'deepseek-v3.1:free')?.kind === 'turned-paid');
     check('warnings (saved table): a Literouter cap that differs from the catalog is "limits changed" (30/day vs 100/day)', /30\/day here vs 100\/day/.test(warnFor(ww, 'literouter', 'glm-5.1:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'glm-5.1:free')));
     check('warnings (saved table): a Literouter model that is not in the catalog at all is "gone"', warnFor(ww, 'literouter', 'brand-new-thing:free')?.kind === 'gone');
     for (const id of ['zz-w-gpaid', 'zz-w-glim', 'zz-w-lnofree', 'zz-w-lcap', 'zz-w-lnone']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
 
     // live-catalog warnings, from the provider's /models list
-    await addHop('zz-c-ok', { provider: 'literouter', model: 'glm-4.6:free', dailyCap: 100 });
-    await addHop('zz-c-gone', { provider: 'literouter', model: 'glm-4.7:free', dailyCap: 100 });
+    await addHop('zz-c-ok', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 100 });
+    await addHop('zz-c-gone', { provider: 'literouter', model: 'gpt-oss-20b:free' });
     await addHop('zz-c-paid', { provider: 'literouter', model: 'glm-5:free', dailyCap: 100 });
-    await addHop('zz-c-ign', { provider: 'literouter', model: 'kimi-k2.7-code-cheap:free', dailyCap: 30, ignoreCatalog: true });
+    await addHop('zz-c-ign', { provider: 'literouter', model: 'qwen3-32b', ignoreCatalog: true });
     await addHop('zz-c-g', { provider: 'google', model: 'gemini-9-flash' });
-    setScenario({ mode: 'nonstream', models: ['glm-4.6:free', 'glm-5', 'something-else'] });
+    setScenario({ mode: 'nonstream', models: ['glm-5.1:free', 'glm-5', 'something-else'] });
     r = await fetch(BASE + '/admin/api/sync/literouter', { headers: admin2 }); j = await r.json();
     ww = await getWarn();
-    check('catalog: a configured model the provider no longer lists is "gone"', warnFor(ww, 'literouter', 'glm-4.7:free')?.kind === 'gone' && warnFor(ww, 'literouter', 'glm-4.7:free')?.source === 'catalog', JSON.stringify(warnFor(ww, 'literouter', 'glm-4.7:free')));
+    check('catalog: a configured model the provider no longer lists is "gone"', warnFor(ww, 'literouter', 'gpt-oss-20b:free')?.kind === 'gone' && warnFor(ww, 'literouter', 'gpt-oss-20b:free')?.source === 'catalog', JSON.stringify(warnFor(ww, 'literouter', 'gpt-oss-20b:free')));
     check('catalog: a ":free" model whose paid twin is still listed is "turned paid" (and the warning says so)', warnFor(ww, 'literouter', 'glm-5:free')?.kind === 'turned-paid' && /"glm-5" is/.test(warnFor(ww, 'literouter', 'glm-5:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'glm-5:free')));
-    check('catalog: a model that is still listed has no warning; ignoreCatalog suppresses it', !warnFor(ww, 'literouter', 'glm-4.6:free') && !warnFor(ww, 'literouter', 'kimi-k2.7-code-cheap:free'));
-    check('catalog: the sync panel tells "gone" and "turned paid" apart in its no-longer-listed rows', j.noLongerListedKinds?.['glm-4.7:free']?.kind === 'gone' && j.noLongerListedKinds?.['glm-5:free']?.kind === 'turned-paid', JSON.stringify(j.noLongerListedKinds).slice(0, 300));
+    check('catalog: a model that is still listed has no warning; ignoreCatalog suppresses it', !warnFor(ww, 'literouter', 'glm-5.1:free') && !warnFor(ww, 'literouter', 'qwen3-32b'));
+    check('catalog: the sync panel tells "gone" and "turned paid" apart in its no-longer-listed rows', j.noLongerListedKinds?.['gpt-oss-20b:free']?.kind === 'gone' && j.noLongerListedKinds?.['glm-5:free']?.kind === 'turned-paid', JSON.stringify(j.noLongerListedKinds).slice(0, 300));
     const litBefore2 = ww.hops.filter(x => x.provider === 'literouter' && x.source === 'catalog').length;
     setScenario({ mode: 'nonstream', modelObjects: [] });
     r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
     check('catalog: an EMPTY list from the provider is ignored — it never flags everything as gone', /empty list/.test(j.results?.literouter || '') && j.hops.filter(x => x.provider === 'literouter' && x.source === 'catalog').length === litBefore2, JSON.stringify(j.results));
-    setScenario({ mode: 'nonstream', models: ['glm-4.6:free', 'glm-4.7:free', 'glm-5:free'] });
+    setScenario({ mode: 'nonstream', models: ['glm-5.1:free', 'gpt-oss-20b:free', 'glm-5:free'] });
     r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
-    check('catalog: when a model comes back it is cleared (the "Check now" button works)', j.results?.literouter === 'ok' && !warnFor(j, 'literouter', 'glm-4.7:free') && !warnFor(j, 'literouter', 'glm-5:free') && typeof j.catalogCheckedAt?.literouter === 'string', JSON.stringify(j.results));
+    check('catalog: when a model comes back it is cleared (the "Check now" button works)', j.results?.literouter === 'ok' && !warnFor(j, 'literouter', 'gpt-oss-20b:free') && !warnFor(j, 'literouter', 'glm-5:free') && typeof j.catalogCheckedAt?.literouter === 'string', JSON.stringify(j.results));
     setScenario({ mode: 'nonstream', modelObjects: [{ id: 'models/gemini-9-flash-preview' }, { id: 'models/gemini-2.5-flash' }] });
     r = await fetch(BASE + '/admin/api/sync/google', { headers: admin2 }); j = await r.json();
     ww = await getWarn(); const gren = warnFor(ww, 'google', 'gemini-9-flash');
     check('catalog (Google): a renamed model is "gone" and the warning says what is listed instead', gren?.kind === 'gone' && JSON.stringify(gren.instead) === JSON.stringify(['gemini-9-flash-preview']) && j.noLongerListedKinds?.['gemini-9-flash']?.instead?.[0] === 'gemini-9-flash-preview', JSON.stringify({ gren, k: j.noLongerListedKinds?.['gemini-9-flash'] }));
     for (const id of ['zz-c-ok', 'zz-c-gone', 'zz-c-paid', 'zz-c-ign', 'zz-c-g']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
-    check('warnings: removing the hop removes its warning', !warnFor(await getWarn(), 'google', 'gemini-9-flash') && !warnFor(await getWarn(), 'literouter', 'glm-4.7:free'));
+    check('warnings: removing the hop removes its warning', !warnFor(await getWarn(), 'google', 'gemini-9-flash') && !warnFor(await getWarn(), 'literouter', 'gpt-oss-20b:free'));
+
+    // ══ Z.ai: "insufficient balance" is a billing answer; its /models list leaves out the free flash models ══
+    await addHop('zz-zpay', { provider: 'zai', model: 'zz-zai-paywalled', limitType: 'rate-limited' });
+    setScenario({ mode: 'upstream-error', status: 429, body: '{"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}}' });
+    w = await timedChat('zz-zpay', 4000);
+    check('zai: HTTP 429 code 1113 "Insufficient balance..." is QUOTA, not a retryable rate limit (and it comes back fast)', w.tag === 'QUOTA' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms }));
+    const zp = warnFor(await getWarn(), 'zai', 'zz-zai-paywalled');
+    check('zai: a free hop that answers "insufficient balance" is flagged "turned paid", seen in a request', zp && zp.kind === 'turned-paid' && zp.source === 'request' && /Insufficient balance/.test(zp.detail), JSON.stringify(zp));
+    setScenario(okReply);
+    await (await chat({ model: 'zz-zpay', messages: [{ role: 'user', content: 'hi' }] })).text();
+    check('zai: a later success clears the "turned paid" warning', !warnFor(await getWarn(), 'zai', 'zz-zai-paywalled'));
+    setScenario({ mode: 'upstream-error', status: 429, body: '{"error":{"message":"You exceeded your current quota, please check your plan and billing details."}}' });
+    w = await timedChat('zz-zpay', 4000);
+    check('billing: an ordinary daily-quota message that merely mentions "billing" is QUOTA but NOT a "turned paid" flag', w.tag === 'QUOTA' && !warnFor(await getWarn(), 'zai', 'zz-zai-paywalled'), JSON.stringify({ t: w.tag }));
+    await addHop('zz-zfree', { provider: 'zai', model: 'glm-4.5-flash', limitType: 'rate-limited' });
+    await addHop('zz-zgone', { provider: 'zai', model: 'glm-9-turbo', limitType: 'rate-limited' });
+    setScenario({ mode: 'nonstream', models: ['glm-5.2', 'glm-5.3'] });         // like Z.ai's real list: no flash models in it
+    r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'zai' }) }); j = await r.json();
+    check('zai catalog: the free flash models are NOT called gone just because /models leaves them out (they are in the saved free list)', !warnFor(j, 'zai', 'glm-4.5-flash') && !warnFor(j, 'zai', 'glm-4.7-flash'), JSON.stringify(j.hops.filter(x => x.provider === 'zai')));
+    check('zai catalog: a Z.ai model that is neither listed nor in the free list is still "gone"', warnFor(j, 'zai', 'glm-9-turbo')?.kind === 'gone', JSON.stringify(warnFor(j, 'zai', 'glm-9-turbo')));
+    for (const id of ['zz-zpay', 'zz-zfree', 'zz-zgone']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+
+    // ══ a hop that is already switched off (status not "active") needs no warning ══
+    await addHop('zz-dep', { provider: 'literouter', model: 'brand-new-thing2:free', status: 'deprecated' });
+    setScenario({ mode: 'nonstream', models: ['glm-5.1:free'] });
+    r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
+    check('warnings: a deprecated hop gets no warning, neither from the saved table nor from the live list', !warnFor(await getWarn(), 'literouter', 'brand-new-thing2:free') && !warnFor(j, 'literouter', 'brand-new-thing2:free'), JSON.stringify(warnFor(j, 'literouter', 'brand-new-thing2:free')));
+    await addHop('zz-dep', { provider: 'literouter', model: 'brand-new-thing2:free', status: 'active' });
+    check('warnings: the same hop set back to active is flagged again', warnFor(await getWarn(), 'literouter', 'brand-new-thing2:free')?.kind === 'gone');
+    r = await fetch(BASE + '/admin/api/models/zz-dep', { method: 'DELETE', headers: admin2 }); await r.text();
 
     await resetCatalog();
 
@@ -708,6 +738,53 @@ async function main() {
     setScenario({ mode: 'nonstream', models: ['glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6v-flash', 'glm-5.2'] });
     r = await fetch(BASE + '/admin/api/sync/zai', { headers: admin2 }); j = await r.json();
     check('zai tiers: the vision flash model is free, glm-5.2 is paid (the free list comes from Z.ai\'s pricing page); Z.ai has no limits snapshot to show', j.modelInfo?.['glm-4.6v-flash']?.tier === 'free' && j.modelInfo?.['glm-5.2']?.tier === 'paid' && j.limitsMeta === null, JSON.stringify({ m: j.modelInfo, l: j.limitsMeta }));
+    setScenario({ mode: 'nonstream', models: ['glm-5.2', 'glm-5.3'] });      // what Z.ai really lists: no free flash models in it
+    r = await fetch(BASE + '/admin/api/sync/zai', { headers: admin2 }); j = await r.json();
+    check('zai sync: the free flash hops are NOT shown as "no longer listed" just because /models leaves them out', !(j.noLongerListed || []).includes('glm-4.7-flash') && !(j.noLongerListed || []).includes('glm-4.5-flash'), JSON.stringify(j.noLongerListed));
+    check('zai sync: a free model that is not configured yet is still offered (as free), and the live count stays the real 2', (j.newlyAvailable || []).includes('glm-4.6v-flash') && j.modelInfo?.['glm-4.6v-flash']?.tier === 'free' && j.liveCount === 2, JSON.stringify({ n: j.newlyAvailable, c: j.liveCount }));
+    // ══ Model tester: one tiny direct request, and what the answer means ══
+    const tm = async (body, headers = admin2) => { const rr = await fetch(BASE + '/admin/api/test-model', { method: 'POST', headers, body: JSON.stringify(body) }); return { s: rr.status, j: await rr.json() }; };
+    const errSc = (status, body) => setScenario({ mode: 'upstream-error', status, body });
+    setScenario(okReply);
+    let tt = await tm({ provider: 'zai', model: 'glm-4.7-flash' });
+    check('tester: a model that answers is "works", with its reply, HTTP 200 and a timing', tt.j.verdict === 'works' && tt.j.ok === true && tt.j.reply === 'ok' && tt.j.status === 200 && typeof tt.j.ms === 'number', JSON.stringify(tt));
+    const sent = JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
+    check('tester: what reaches the provider is one small non-streaming request for exactly that model (256 max tokens by default)', sent.model === 'glm-4.7-flash' && sent.stream === false && sent.max_tokens === 256 && sent.messages.length === 1 && /one word/i.test(sent.messages[0].content), JSON.stringify(sent));
+    tt = await tm({ provider: 'zai', model: 'x', prompt: 'say hi', maxTokens: 99999 });
+    const sent2 = JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
+    check('tester: a custom prompt is used and max tokens is capped at 2000', sent2.messages[0].content === 'say hi' && sent2.max_tokens === 2000, JSON.stringify(sent2));
+    setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: '', reasoning_content: 'let me think...' }, finish_reason: 'length' }] } });
+    tt = await tm({ provider: 'zai', model: 'glm-4.7-flash', maxTokens: 16 });
+    check('tester: HTTP 200 with only reasoning is "works (no text)" and says the tokens went into thinking (not "broken")', tt.j.verdict === 'works-empty' && tt.j.ok === true && /thinking/.test(tt.j.message), JSON.stringify(tt.j));
+    errSc(429, '{"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}}');
+    tt = await tm({ provider: 'zai', model: 'glm-5.3' });
+    check('tester: Z.ai 429 code 1113 is "paid — needs balance"', tt.j.verdict === 'paid' && tt.j.ok === false && tt.j.status === 429 && /Insufficient balance/.test(tt.j.message), JSON.stringify(tt.j));
+    errSc(404, '{"error":{"message":"The model `nope` does not exist"}}');
+    tt = await tm({ provider: 'nvidia', model: 'nope/nope' });
+    check('tester: a missing model is "model not found"', tt.j.verdict === 'gone', JSON.stringify(tt.j));
+    errSc(401, '{"error":{"message":"Invalid API key"}}');
+    tt = await tm({ provider: 'google', model: 'gemini-x' });
+    check('tester: a rejected key is "key rejected"', tt.j.verdict === 'auth', JSON.stringify(tt.j));
+    errSc(429, '{"error":{"message":"Too many requests, slow down"}}');
+    tt = await tm({ provider: 'openrouter', model: 'x/y:free' });
+    check('tester: a plain 429 is "rate limited (alive)", not dead and not paid', tt.j.verdict === 'rate-limited', JSON.stringify(tt.j));
+    errSc(429, '{"error":{"message":"You exceeded your current quota"}}');
+    tt = await tm({ provider: 'google', model: 'gemini-x' });
+    check('tester: "quota exceeded" is its own verdict (used up for now)', tt.j.verdict === 'quota', JSON.stringify(tt.j));
+    errSc(400, '{"error":{"message":"Invalid model parameter: top_k is not supported"}}');
+    tt = await tm({ provider: 'nvidia', model: 'a/b' });
+    check('tester: a 400 about a bad field is "request rejected", not "model not found"', tt.j.verdict === 'rejected', JSON.stringify(tt.j));
+    setScenario(okReply);
+    tt = await tm({ provider: 'deepseek', model: 'deepseek-chat' });
+    check('tester: a provider with no key on the server says so instead of sending anything', tt.j.verdict === 'no-key' && tt.j.ok === false, JSON.stringify(tt.j));
+    tt = await tm({ provider: 'bogus', model: 'x' });
+    check('tester: an unknown provider is a 400', tt.s === 400, JSON.stringify(tt));
+    tt = await tm({ provider: 'zai', model: '   ' });
+    check('tester: an empty model id is a 400', tt.s === 400, JSON.stringify(tt));
+    tt = await tm({ provider: 'zai', model: 'glm-4.7-flash' }, { 'Content-Type': 'application/json' });
+    check('tester: needs the admin key', tt.s === 401 || tt.s === 403, String(tt.s));
+    r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
+    check('tester: "load my configured models" lists the Z.ai models from models.json', Array.isArray(j.models) && j.models.includes('glm-4.7-flash') && j.models.includes('glm-4.5-flash'), JSON.stringify(j));
     setScenario({ mode: 'nonstream', models: ['org/some-nim-model'] });
     r = await fetch(BASE + '/admin/api/sync/nvidia', { headers: admin2 }); j = await r.json();
     check('nvidia: free-only, so no free/paid grouping (everything stays "unknown")', Object.values(j.modelInfo || {}).every(v => v.tier === 'unknown') && !j.tierNotes, JSON.stringify(j.modelInfo));
