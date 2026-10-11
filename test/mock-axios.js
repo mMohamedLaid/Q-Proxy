@@ -90,3 +90,4 @@ const origLoad = Module._load;
 Module._load = function (request, parent, isMain) {
   if (request === 'axios') return mockAxios;
   return origLoad.apply(this, arguments);
+};
