@@ -57,7 +57,11 @@ Providers change their catalogs without notice. A model that is still configured
 - **A real request:** the provider answered "that model doesn't exist". Cleared by the next successful request.
 - **The saved tables** (`provider-limits.json`): Google shows 0/0/0 for it (turned paid), a Literouter free model has no free version or isn't in the catalog any more, or this hop's numbers differ from the table (limits changed — only the hop that differs gets the ⚠).
 
-A warning never switches a hop off; you decide. A model that works but is deliberately missing from the provider's list (Kimi-K3 on NIM) gets `"ignoreCatalog": true` on its hop to silence the list check.
+A warning never switches a hop off; you decide. To switch one off yourself, set its `"status": "deprecated"` (the proxy then skips it, and a deprecated hop no longer shows warnings).
+
+**Z.ai quirks.** Z.ai's `/models` list leaves out its free flash models (`glm-4.7-flash`, `glm-4.5-flash`) although they work, so for Z.ai the saved free list in `provider-limits.json` counts as "listed". And when a Z.ai model needs money it answers **HTTP 429, code 1113, "Insufficient balance or no resource package"** — that looks like a rate limit but isn't: it is treated as `QUOTA` (no retries, falls through to the next hop) and a free hop that gets it is flagged *turned paid* until a later request succeeds.
+
+ A model that works but is deliberately missing from the provider's list (Kimi-K3 on NIM) gets `"ignoreCatalog": true` on its hop to silence the list check.
 
 ## Literouter free tier: the 5,000-token context
 
@@ -151,6 +155,14 @@ It also stops retrying as soon as the client disconnects (`CLIENT_GONE`). Retrie
 | `CLIENT_GONE` | the client disconnected first |
 
 **Error messages are short on purpose.** The provider's own message is reduced to one line (Google wraps its errors in an array, which is unwrapped). A model with a single hop never mentions hops, chains or attempts; a multi-hop chain keeps the `attempts` trail and `X-QProxy-Fallback-Path`. A skipped hop says exactly why, with the numbers (e.g. `request ≈ 15,000 input tokens is over the max request size of 14,000 set for this model`, or `tpm limit: 12,000 of 16,000 input tokens already used this minute and this request needs ≈ 6,000 — try again in ~34s`). `try again in ~Ns` (also the `retry_after_s` field and a `Retry-After` header) is only given when waiting would actually help: the per-minute request limit was hit, or the per-minute token limit was already part-used but the request would fit in an empty minute. A request bigger than the whole per-minute limit, or a used-up daily limit, gets no countdown.
+
+## Model tester
+
+The Admin panel's **Model tester** sends one tiny real request straight to a provider and tells you what the answer means: **works**, **works (no text)** (it answered but spent every token thinking — raise max tokens), **paid — needs balance**, **model not found**, **key rejected**, **quota / credits used up**, **rate limited (alive)**, **request rejected**, or **no API key set**. Pick a provider, type model ids one per line (or press *Load my configured models*), optionally change the prompt or max tokens, press *Test*. Up to 25 models per run, tested one after another; *Stop* ends a run early.
+
+- It works for any model id, including ones that are not in your `models.json` or in the provider's `/models` list (that is how you check a model that looks gone but isn't).
+- It goes straight to the provider: no routing, no fallbacks, no retries, and nothing is counted in usage, cooldowns or warnings, so a test never changes how the proxy behaves. It does spend one real request of that provider's quota, and it uses the provider's first key when there are several.
+- API: `POST /admin/api/test-model {provider, model, prompt?, maxTokens?}`; `GET /admin/api/test-model/configured?provider=zai`.
 
 ## Logs
 
