@@ -956,10 +956,13 @@ function similarLiveIds(id, live) {
   return [...live].filter(l => l !== id && (strip(l) === strip(id) || l.startsWith(id + '-'))).slice(0, 3);
 }
 function catalogDriftFor(provider, live) {
+  // Z.ai's /models list leaves out its free flash models (glm-4.7-flash, glm-4.5-flash) although they answer fine
+  // (checked 2026-10-09), so for Z.ai the saved free list counts as "listed" too.
+  if (provider === 'zai') live = new Set([...live, ...((PROVIDER_LIMITS.zai && PROVIDER_LIMITS.zai.freeModels) || []).map(x => String(x).toLowerCase())]);
   const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
   const out = {};
   forEachHop((entryId, hop) => {
-    if (hop.provider !== provider || hop.ignoreCatalog === true) return;
+    if (hop.provider !== provider || hop.ignoreCatalog === true || (hop.status && hop.status !== 'active')) return;
     const id = canon(hop.model), key = hopWarnKey(provider, hop.model);
     if (live.has(id) || out[key]) return;
     if (id.endsWith(':free') && live.has(id.slice(0, -5))) {
@@ -992,6 +995,19 @@ function applyCatalogWarnings(provider, drift) {
   return changed;
 }
 const HOP_WARNING_LABEL = { gone: 'gone', 'turned-paid': 'turned paid', 'limits-changed': 'limits changed' };
+// A provider answering "insufficient balance / no resource package / please recharge" (Z.ai sends it as HTTP 429, code 1113)
+// is not rate limiting: the model now needs money. ("billing" is NOT in this list: Google/OpenAI quote it in ordinary
+// daily-quota messages.)
+const BILLING_PATTERNS = /insufficient balance|insufficient funds|no resource package|please recharge/i;
+function noteHopPaid(providerConfig, detail) {
+  const k = hopWarnKey(providerConfig.provider, providerConfig.model);
+  const prev = hopWarnings[k];
+  if (prev && prev.source === 'catalog') return;                       // the live list already says so
+  if (prev && prev.source === 'request' && prev.kind === 'turned-paid') { prev.detail = `the provider answered: ${detail}`; return; }
+  hopWarnings[k] = { kind: 'turned-paid', detail: `the provider answered: ${detail}`, source: 'request', since: new Date().toISOString() };
+  markUsageStateDirty();
+  log('WARN', `[warning] ${hopLabel(providerConfig)} looks like it turned paid — ${detail}`);
+}
 function noteHopGone(providerConfig, detail) {
   const k = hopWarnKey(providerConfig.provider, providerConfig.model);
   const prev = hopWarnings[k];
@@ -1017,6 +1033,7 @@ function snapshotWarnings() {
     if (w.table && !out[key].onlyEntries.includes(entryId)) out[key].onlyEntries.push(entryId);
   };
   forEachHop((entryId, hop) => {
+    if (hop.status && hop.status !== 'active') return;                  // already switched off (skipped at request time): nothing to warn about
     const key = hopWarnKey(hop.provider, hop.model);
     if (hop.provider === 'google' && googleRows) {
       const row = googleLimitsFor(hop.model); if (!row) return;
@@ -1568,7 +1585,7 @@ function resolveModelChain(modelId, mapping = MODEL_MAPPING) {
 //    loop even looks at limitType.
 // ============================================================
 const TOKEN_LIMIT_PATTERNS = /context.?length|context_length_exceeded|maximum context|max(?:imum)? tokens?|too many tokens|token limit|reduce the length|input is too long|prompt is too long|exceeds? the (?:model|context)|maximum number of tokens/i;
-const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded your current quota|daily limit|requests per day\b|resource_exhausted|out of credits|no credits remaining|insufficient credits|billing/i;
+const QUOTA_EXHAUSTED_PATTERNS = /insufficient_quota|quota exceeded|exceeded your current quota|daily limit|requests per day\b|resource_exhausted|out of credits|no credits remaining|insufficient credits|billing|insufficient balance|insufficient funds|no resource package|please recharge/i;
 
 // Bodies that say "try again later" even though the status is a 4xx. NIM
 // is believed to report a degraded / cold endpoint this way, so on hops
@@ -1992,6 +2009,8 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           break;
         }
         if (cls.tag === 'QUOTA') {
+          // a FREE hop answered with a billing message (not "daily limit reached"): the model needs money now
+          if (providerConfig.limitType === 'rate-limited' && BILLING_PATTERNS.test(`${bodyText} ${err.message || ''}`)) noteHopPaid(providerConfig, extractProviderMessage(bodyText) || `HTTP ${status}`);
           if (!isLastHop) log('WARN', `[QUOTA] ${who} — quota/credits actually exhausted (even though limitType is "${providerConfig.limitType}"), not retrying: ${err.message}`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'QUOTA' });
           trackSkip(providerConfig.provider, providerConfig.model, 'QUOTA');
@@ -2960,6 +2979,67 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // ============================================================
 // ADMIN: LOGS
 // ============================================================
+// ── Model tester ────────────────────────────────────────────────────────────────
+// Sends ONE tiny real chat request straight to a provider (no routing, no fallbacks, no retries) and says what happened:
+// works / paid (needs balance) / gone / key rejected / daily quota used up / rate limited / rejected / error.
+// It does not touch usage counters, cooldowns or warnings, so testing never changes how the proxy behaves.
+// It does use one real request of the provider's quota, and the provider's FIRST key when there are several.
+const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'deepseek']);
+const TEST_VERDICT_LABEL = {
+  'works': 'works', 'works-empty': 'works (no text)', 'paid': 'paid — needs balance', 'gone': 'model not found',
+  'auth': 'key rejected', 'quota': 'quota / credits used up', 'rate-limited': 'rate limited (alive)',
+  'rejected': 'request rejected', 'error': 'error', 'no-key': 'no API key set'
+};
+app.get('/admin/api/test-model/configured', requireAdmin, (req, res) => {
+  const provider = String(req.query.provider || '').toLowerCase();
+  if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
+  const models = new Set();
+  forEachHop((id, hop) => { if (hop.provider === provider && hop.model && hop.status !== 'deprecated') models.add(hop.model); });
+  res.json({ provider, models: [...models].sort((a, b) => a.localeCompare(b)) });
+});
+app.post('/admin/api/test-model', requireAdmin, async (req, res) => {
+  const provider = String(req.body?.provider || '').toLowerCase();
+  const model = String(req.body?.model || '').trim();
+  if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
+  if (!model || model.length > 200) return res.status(400).json({ error: { message: 'Give a model id (max 200 characters).', type: 'invalid_request_error', code: 400 } });
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 2000) || 'Reply with exactly one word: ok';
+  const maxTokens = Math.min(2000, Math.max(16, parseInt(req.body?.maxTokens, 10) || 256));
+  const base = { provider, model };
+  const { base: baseUrl, key } = getProviderConfigReadOnly(provider);
+  if (!key) return res.json({ ...base, ok: false, verdict: 'no-key', label: TEST_VERDICT_LABEL['no-key'], message: `No API key is set for ${provider} on the server.` });
+  const t0 = Date.now();
+  try {
+    const r = await axios.post(`${baseUrl}/chat/completions`,
+      { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, stream: false },
+      { headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 45000 });
+    const choice = r.data?.choices?.[0] || {};
+    const m = choice.message || {};
+    const content = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.map(part => part?.text || '').join('') : '');
+    const reasoning = String(m.reasoning_content || m.reasoning || '');
+    const ms = Date.now() - t0;
+    if (content.trim()) return res.json({ ...base, ok: true, verdict: 'works', label: TEST_VERDICT_LABEL.works, status: r.status, ms, reply: content.trim().slice(0, 300), finishReason: choice.finish_reason || null });
+    const why = reasoning.trim() ? 'it answered, but every token went into thinking — raise max tokens to see text'
+      : choice.finish_reason === 'length' ? 'it answered, but hit the token limit before any text — raise max tokens'
+      : 'it answered with empty text';
+    return res.json({ ...base, ok: true, verdict: 'works-empty', label: TEST_VERDICT_LABEL['works-empty'], status: r.status, ms, reply: '', message: why, finishReason: choice.finish_reason || null, reasoningChars: reasoning.length });
+  } catch (err) {
+    const ms = Date.now() - t0;
+    const raw = err.response?.data;
+    const bodyText = typeof raw === 'string' ? raw : (raw ? JSON.stringify(raw) : '');
+    const cls = classifyError(err, bodyText);
+    const providerMsg = extractProviderMessage(bodyText) || err.message || '';
+    const status = err.response?.status || null;
+    let verdict = 'error';
+    if (BILLING_PATTERNS.test(`${bodyText} ${err.message || ''}`)) verdict = 'paid';
+    else if (cls.tag === 'NOT_FOUND') verdict = 'gone';
+    else if (cls.tag === 'AUTH') verdict = 'auth';
+    else if (cls.tag === 'QUOTA') verdict = 'quota';
+    else if (cls.tag === 'RATE_LIMIT') verdict = 'rate-limited';
+    else if (cls.tag === 'BAD_REQUEST') verdict = 'rejected';
+    return res.json({ ...base, ok: false, verdict, label: TEST_VERDICT_LABEL[verdict], status, tag: cls.tag, ms, message: String(providerMsg).slice(0, 400) });
+  }
+});
+
 app.get('/admin/api/logs', requireAdmin, (req, res) => {
   // ?level=ERROR or a comma list (?level=ERROR,WARN,THINK); empty = every level
   const levels = new Set(String(req.query.level || '').toUpperCase().split(',').map(x => x.trim()).filter(Boolean));
@@ -3607,6 +3687,12 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     // model isn't offered again as "new" under the other spelling.
     const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
     const liveIds = [...new Set((r.data?.data || []).map(m => canon(m.id)))];
+    const liveCount = liveIds.length;                         // what the provider actually listed
+    if (provider === 'zai') {
+      // Z.ai's /models leaves out its free flash models although they answer fine (probed 2026-10-09), so the saved free
+      // list counts as "listed": they are not shown as "no longer listed", and a free one you haven't added can still be offered.
+      for (const id of ((PROVIDER_LIMITS.zai && PROVIDER_LIMITS.zai.freeModels) || [])) if (!liveIds.includes(id)) liveIds.push(id);
+    }
     const liveSet = new Set(liveIds);
     const rawById = new Map((r.data?.data || []).map(m => [canon(m.id), m]));
 
@@ -3662,7 +3748,7 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     // Opening the panel is also a fresh catalog check: flag configured hops the provider dropped.
     applyCatalogWarnings(provider, catalogDriftFor(provider, liveSet));
     const noLongerListedKinds = Object.fromEntries(noLongerListed.map(id => { const w = hopWarnings[hopWarnKey(provider, id)]; return [id, { kind: w ? w.kind : 'gone', instead: w && w.instead || null }]; }));
-    res.json({ provider, liveCount: liveIds.length, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
+    res.json({ provider, liveCount, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
       tierNotes: tierNotesFor(provider), noLongerListedKinds });
   } catch (e) {
     res.status(502).json({
@@ -3839,5 +3925,3 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
-
-
