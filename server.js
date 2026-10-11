@@ -3731,6 +3731,31 @@ function classifyOpenRouterModel(m) {
     context: Number(m.context_length) > 0 ? Number(m.context_length) : null,
     tools: sp ? sp.includes('tools') : null, reasoning: sp ? sp.includes('reasoning') : null };
 }
+// The exact call behind "Check <provider> for updates", for testing it by hand. Without ?send=1 it only describes the call
+// (URL + a curl line with a placeholder key). With ?send=1 it makes the call from the server (the real key never leaves
+// the server and is not echoed) and returns the provider's raw answer.
+const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY' };
+app.get('/admin/api/sync/:provider/raw', requireAdmin, async (req, res) => {
+  const provider = req.params.provider;
+  if (!SYNCABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: `No live catalog check for "${provider}".`, type: 'invalid_request_error', code: 400 } });
+  const { base, key } = getProviderConfigReadOnly(provider);
+  const url = `${base}/models`;
+  const meta = { provider, method: 'GET', url, hasKey: !!key, curl: `curl -s -H "Authorization: Bearer ${SYNC_KEY_HINT[provider] || 'YOUR_KEY'}" ${url}` };
+  if (req.query.send !== '1') return res.json(meta);
+  const t0 = Date.now();
+  const pack = (data) => {
+    let text = ''; try { text = typeof data === 'string' ? data : JSON.stringify(data, null, 2); } catch (_) { text = String(data); }
+    const cap = 60000;
+    return { raw: text.slice(0, cap), truncated: text.length > cap };
+  };
+  try {
+    const r = await axios.get(url, { headers: { Authorization: `Bearer ${key}` }, timeout: 15000 });
+    const list = Array.isArray(r.data?.data) ? r.data.data : null;
+    return res.json({ ...meta, sent: true, ok: true, status: r.status, ms: Date.now() - t0, count: list ? list.length : null, ids: list ? list.map(m => m && m.id).filter(Boolean).slice(0, 500) : [], ...pack(r.data) });
+  } catch (err) {
+    return res.json({ ...meta, sent: true, ok: false, status: err.response?.status || null, ms: Date.now() - t0, count: null, ids: [], message: String(extractProviderMessage(typeof err.response?.data === 'string' ? err.response.data : JSON.stringify(err.response?.data || '')) || err.message || '').slice(0, 400), ...pack(err.response?.data ?? err.message) });
+  }
+});
 app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) {
