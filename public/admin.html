@@ -406,6 +406,22 @@
   /* Request id — click to show only that request (parallel requests interleave) */
   .log-line .rid { flex-shrink: 0; font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; cursor: pointer; }
   .log-line .rid:hover { color: var(--text); border-color: var(--text-faint); }
+  .tester-help { color: var(--text-dim); font-size: 12.5px; margin: 0 0 10px; line-height: 1.5; }
+  .tester-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .tester-max { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .tester-max input { width: 74px; }
+  #tester-models, #tester-prompt { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  #tester-models { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  #tester-prompt { margin-top: 8px; }
+  .tester-results { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .tester-line { display: grid; grid-template-columns: minmax(130px, 1.2fr) minmax(130px, 1fr) 90px 60px 3fr; gap: 8px; align-items: baseline; padding: 6px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
+  .tester-line .tm { font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+  .tester-line .tv { font-weight: 600; }
+  .tester-line .tx { color: var(--text-dim); word-break: break-word; }
+  .tv-works { color: #4ADE80; } .tv-works-empty { color: #A3E635; }
+  .tv-paid, .tv-rate-limited, .tv-quota { color: #E6A028; } .tv-pending { color: var(--text-faint); }
+  .tv-gone, .tv-auth, .tv-error, .tv-rejected, .tv-no-key { color: var(--broken); }
+  @media (max-width: 720px) { .tester-line { grid-template-columns: 1fr 1fr; } .tester-line .tx { grid-column: 1 / -1; } }
   .log-chips { display: flex; gap: 4px; flex-wrap: wrap; }
   .log-chip { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-faint); border-radius: 999px; padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
   .log-chip:hover { color: var(--text); }
@@ -543,6 +559,24 @@
       <summary>Full per-provider/model request log (self-tracked, resets on restart)</summary>
       <table class="usage-table" id="usage-table"><thead><tr><th>Provider</th><th>Model</th><th>OK</th><th>Errors</th><th>Last used</th><th>Last status</th></tr></thead><tbody></tbody></table>
     </details>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Model tester</h2><span class="count" id="tester-count"></span></div>
+    <p class="tester-help">Sends one tiny real request straight to the provider and tells you whether the model answers, needs money, or is gone. It skips your routing and fallbacks and isn't counted in your usage, but it does use one real request of that provider's quota (and its first key).</p>
+    <div class="tester-row">
+      <select id="tester-provider"></select>
+      <button type="button" class="btn-secondary" id="tester-load" title="Fill the box with the models you have configured for this provider">Load my configured models</button>
+      <label class="tester-max">Max tokens <input type="number" id="tester-max" value="256" min="16" max="2000"></label>
+    </div>
+    <textarea id="tester-models" rows="4" placeholder="One model id per line, e.g. glm-4.7-flash — works for models that aren't in your config or in the provider's list too"></textarea>
+    <input type="text" id="tester-prompt" placeholder="Prompt (optional — default: Reply with exactly one word: ok)">
+    <div class="tester-row">
+      <button type="button" class="btn-primary" id="tester-run">Test</button>
+      <button type="button" class="btn-secondary" id="tester-stop" hidden>Stop</button>
+      <button type="button" class="btn-secondary" id="tester-clear">Clear results</button>
+    </div>
+    <div class="tester-results" id="tester-results"></div>
   </section>
 
   <section>
@@ -1581,6 +1615,45 @@
       $('#logs-view').innerHTML = `<div class="logs-empty">Couldn't load logs: ${escapeHtml(err.message)}</div>`;
     }
   }
+
+  // ── Model tester ──
+  (function () {
+    const sel = $('#tester-provider');
+    sel.innerHTML = Object.entries(PROVIDER_LABELS).map(([k, v]) => `<option value="${escapeHtml(k)}">${escapeHtml(v)}</option>`).join('');
+    let stopFlag = false;
+    $('#tester-load').addEventListener('click', async () => {
+      try {
+        const r = await api('/admin/api/test-model/configured?provider=' + encodeURIComponent(sel.value));
+        $('#tester-models').value = r.models.join('\n');
+        $('#tester-count').textContent = r.models.length ? `${r.models.length} configured` : 'none configured for this provider';
+      } catch (e) { $('#tester-count').textContent = e.message; }
+    });
+    $('#tester-clear').addEventListener('click', () => { $('#tester-results').innerHTML = ''; $('#tester-count').textContent = ''; });
+    $('#tester-stop').addEventListener('click', () => { stopFlag = true; });
+    $('#tester-run').addEventListener('click', async () => {
+      const models = [...new Set($('#tester-models').value.split(/\r?\n/).map(x => x.trim()).filter(Boolean))].slice(0, 25);
+      if (!models.length) { $('#tester-count').textContent = 'Type at least one model id.'; return; }
+      const provider = sel.value, prompt = $('#tester-prompt').value, maxTokens = $('#tester-max').value;
+      stopFlag = false; $('#tester-run').disabled = true; $('#tester-stop').hidden = false;
+      const box = $('#tester-results');
+      let done = 0;
+      for (const model of models) {
+        if (stopFlag) break;
+        const row = document.createElement('div'); row.className = 'tester-line';
+        row.innerHTML = `<span class="tm">${escapeHtml(model)}</span><span class="tv tv-pending">testing…</span><span></span><span></span><span class="tx"></span>`;
+        box.prepend(row);
+        $('#tester-count').textContent = `testing ${done + 1} of ${models.length}…`;
+        let out;
+        try { out = await api('/admin/api/test-model', { method: 'POST', body: { provider, model, prompt, maxTokens } }); }
+        catch (e) { out = { verdict: 'error', label: 'error', message: e.message }; }
+        const detail = out.reply || out.message || '';
+        row.innerHTML = `<span class="tm">${escapeHtml(model)}</span><span class="tv tv-${escapeHtml(out.verdict)}">${escapeHtml(out.label || out.verdict)}</span><span>${escapeHtml(PROVIDER_LABELS[provider] || provider)}${out.status ? ' · HTTP ' + out.status : ''}</span><span>${out.ms != null ? out.ms + ' ms' : ''}</span><span class="tx" title="${escapeHtml(detail)}">${escapeHtml(detail.slice(0, 160))}</span>`;
+        done++;
+      }
+      $('#tester-count').textContent = stopFlag ? `stopped after ${done} of ${models.length}` : `${done} tested`;
+      $('#tester-run').disabled = false; $('#tester-stop').hidden = true;
+    });
+  })();
 
   const LOG_FOLDABLE = new Set(['THINK', 'REPLY', 'PROMPT']);
   const logKey = l => `${l.rid || ''}|${l.level}|${l.ts}`;
