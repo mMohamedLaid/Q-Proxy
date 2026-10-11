@@ -78,6 +78,11 @@ const mockAxios = {
   get: async (url) => {
     if (/\/models$/.test(url)) {
       const sc = scenario();
+      if (sc.modelsStatus) {   // scenario.modelsStatus (+ modelsBody) = the provider's /models answers with an error
+        const err = new Error('Request failed with status code ' + sc.modelsStatus);
+        err.response = { status: sc.modelsStatus, data: sc.modelsBody || 'mock error' };
+        throw err;
+      }
       // scenario.modelObjects = full model objects (OpenRouter-style: pricing, context_length, supported_parameters); scenario.models = bare ids
       return { status: 200, data: { data: sc.modelObjects || (sc.models || []).map(id => ({ id })) } };
     }
