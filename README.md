@@ -159,9 +159,14 @@ It also stops retrying as soon as the client disconnects (`CLIENT_GONE`). Retrie
 ## Admin panel: staying signed in and remembered settings
 
 - **Stay signed in.** The login screen has a *Stay signed in on this device* box (on by default). It keeps the admin key in this browser's `localStorage` (plain text, so anyone who can use this browser profile can open the panel), and the next visit goes straight in. **Sign out** (top right) forgets it. If you change `ADMIN_KEY` on Render, the saved key is rejected once, forgotten, and you are asked again. A `?key=` in the address is used and then removed from the address bar.
-- **Remembered view.** The page remembers, per browser: the *Most used / Most recent* tab, the log's level chips, order, grouping and auto-refresh, the model-list filters, and the Model tester's provider, models, prompt and max tokens. A remembered value that no longer exists (a removed provider, say) is ignored.
+- **Remembered view.** The page remembers, per browser: the *Most used / Most recent* tab, the provider tab you were on (All, Literouter, …), which warning categories are open, the log's level chips, order, grouping and auto-refresh, the model-list filters, and the Model tester's provider, models, prompt and max tokens. A remembered value that no longer exists (a removed provider, say) is ignored.
 - **Click to copy.** Model names (on the cards, in the usage lists and table, and in tester results) copy on click, with a *Copied to clipboard* popup that goes away by itself.
 - **"Most used" is kept across restarts.** The per-model counts (requests, errors, last used, skips) are saved in `usage-state.json` and read back at boot. They are written at most every 5 minutes while requests flow, and once more when the service shuts down (Render sends SIGTERM when it sleeps or redeploys), so a hard crash can lose up to 5 minutes of counts. They are all-time totals; delete a model's row by removing it from `usage-state.json` if you ever want a fresh count.
+
+## Warnings and the update check
+
+- **Warnings are grouped by kind** and each group folds: *Setup*, *No longer listed*, *Turned paid*, *Limits changed*, *Free windows ending*, *Deprecated models*, *Deprecation dates*, *Experimental / unverified*. The header shows how many rows are inside. Groups that need a decision start open; the long *Deprecated models* list starts closed. Open/closed is remembered. GitHub sync working is one quiet line; GitHub sync *not* set up is a warning under *Setup*.
+- **API call.** Next to each provider's *Check … for updates* button there is an **API call** button. It shows the exact request the check makes (`GET <provider>/models`), a `curl` line to repeat it by hand (with a placeholder key), the `curl` line for this proxy's own check (`/admin/api/sync/<provider>`), and **Send it now**, which makes the call from the server and shows the status, timing, model count and the provider's raw answer (the real key never reaches the page). API: `GET /admin/api/sync/<provider>/raw` describes the call, `?send=1` also sends it.
 
 ## Model tester
 
