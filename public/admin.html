@@ -231,6 +231,14 @@
     border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
   }
   .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-api-btn { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+  .sync-api-btn:hover, .sync-api-btn.on { border-color: var(--accent); color: var(--accent); }
+  .sync-api { margin: 8px 0 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
+  .sa-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; flex-wrap: wrap; }
+  .sa-label { color: var(--text-faint); min-width: 150px; font-size: 11.5px; }
+  .sa-code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .sa-status { margin-top: 8px; font-weight: 600; } .sa-status.ok { color: #4ADE80; } .sa-status.bad { color: var(--broken); }
+  .sa-raw { margin: 8px 0 0; max-height: 280px; overflow: auto; background: rgba(0,0,0,.35); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-all; }
   .sync-result { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: #0D1119; }
   .sync-result-head { color: var(--text-dim); margin-bottom: 8px; }
   .sync-result-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -418,6 +426,17 @@
   .autologin #login-gate { display: none; }
   #autologin-note { display: none; }
   .autologin #autologin-note { display: flex; position: fixed; inset: 0; align-items: center; justify-content: center; color: var(--text-faint); font-size: 13px; }
+  .warn-cat { margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .warn-cat > summary { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; list-style: none; font-size: 13.5px; font-weight: 600; border-left: 3px solid var(--broken); }
+  .warn-cat > summary::-webkit-details-marker { display: none; }
+  .warn-cat > summary::before { content: '▸'; color: var(--text-faint); width: 10px; transition: transform .12s; }
+  .warn-cat[open] > summary::before { transform: rotate(90deg); }
+  .warn-cat > summary:hover { background: rgba(255,255,255,.04); }
+  .wc-count { margin-left: auto; background: rgba(255,255,255,.08); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; color: var(--text-dim); }
+  .wc-body { padding: 4px 8px 8px; }
+  .wc-body .warn-item { margin: 6px 0 0; }
+  .warn-info { color: var(--text-dim); font-size: 12.5px; padding: 6px 4px; }
+  .warn-info span { color: #4ADE80; }
   .stay-label { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; margin: 10px 0 2px; cursor: pointer; }
   .stay-label input { width: auto; margin: 0; }
   .signout-btn { margin-left: auto; padding: 5px 11px; font-size: 12px; }
@@ -655,12 +674,14 @@
   const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', deepseek: 'DeepSeek' };
   const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
   let currentModels = {};
-  let providerTab = '';
+  let providerTab = '';   // 'All' / a provider / custom bundles; restored from the saved settings just below
   // ── remembered view settings (kept in this browser; the admin key is stored separately, see "Stay signed in") ──
   const PREFS_KEY = 'qproxy-ui';
   function loadPrefs() { try { const v = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
   const savedPrefs = loadPrefs();
   let quickUsageTab = savedPrefs.quickTab === 'recent' ? 'recent' : 'used';
+  const warnOpen = (savedPrefs.warnOpen && typeof savedPrefs.warnOpen === 'object') ? Object.assign({}, savedPrefs.warnOpen) : {};   // category key -> open?
+  if (typeof savedPrefs.providerTab === 'string') providerTab = savedPrefs.providerTab;
   let reasoningSchemas = {};
   const syncState = {};
   // Which Literouter tier groups are expanded, remembered across re-renders
@@ -858,53 +879,55 @@
     $('#stats').innerHTML = stats.map(s => `<div class="stat"><div class="n">${s.n}</div><div class="l">${s.l}</div></div>`).join('');
   }
 
+  // Warnings are grouped by what kind of problem they are, each group collapsible (and remembered).
+  // [key, title, open by default]: problems that need a decision start open, long informational lists start closed.
+  const WARN_CATS = [
+    ['setup', 'Setup', true], ['gone', 'No longer listed', true], ['turned-paid', 'Turned paid', true], ['limits-changed', 'Limits changed', true],
+    ['free-window', 'Free windows ending', true], ['deprecated', 'Deprecated models', false], ['deprecating', 'Deprecation dates', false], ['experimental', 'Experimental / unverified', false]
+  ];
   function renderWarnings(models, githubStatus) {
-    const items = [];
+    const cats = {};
+    const add = (key, id, msg, cls) => { (cats[key] = cats[key] || []).push({ id, msg, cls: cls || '' }); };
+    let githubInfo = '';
     if (githubStatus && !githubStatus.enabled) {
-      items.push({
-        cls: 'experimental',
-        id: 'GitHub sync',
-        msg: 'GITHUB_TOKEN/GITHUB_REPO are not set — edits made here only live on local disk and will be LOST the next time Render restarts this service. Set both env vars to back edits up to your repo automatically.'
-      });
+      add('setup', 'GitHub sync', 'GITHUB_TOKEN/GITHUB_REPO are not set — edits made here only live on local disk and will be LOST the next time Render restarts this service. Set both env vars to back edits up to your repo automatically.', 'experimental');
     } else if (githubStatus && githubStatus.enabled) {
-      items.push({
-        cls: '',
-        id: 'GitHub sync',
-        msg: `Edits here are committed to ${githubStatus.repo}@${githubStatus.branch} automatically — safe across restarts.`
-      });
+      githubInfo = `<div class="warn-info"><span>✓</span> <strong>GitHub sync</strong> — edits here are committed to ${escapeHtml(githubStatus.repo)}@${escapeHtml(githubStatus.branch)} automatically, safe across restarts.</div>`;
     }
     Object.entries(models).forEach(([id, entry]) => {
       flattenHops(entry).forEach((hop, i) => {
         const label = i === 0 ? id : `${id} → fallback (${hop.provider})`;
         if (hop.status === 'deprecated') {
-          items.push({ cls: '', id: label, msg: hop.deprecatedOn ? `Deprecated by the provider, effective ${fmtDate(hop.deprecatedOn)}.` : 'Marked deprecated.' });
+          add('deprecated', label, hop.deprecatedOn ? `Deprecated by the provider, effective ${fmtDate(hop.deprecatedOn)}.` : 'Marked deprecated.');
         } else if (hop.deprecatedOn) {
           const d = daysUntil(hop.deprecatedOn);
-          if (d !== null && d <= 14) items.push({ cls: '', id: label, msg: d < 0 ? `Deprecation date (${fmtDate(hop.deprecatedOn)}) has passed.` : `Deprecates in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.deprecatedOn)}).` });
+          if (d !== null && d <= 14) add('deprecating', label, d < 0 ? `Deprecation date (${fmtDate(hop.deprecatedOn)}) has passed.` : `Deprecates in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.deprecatedOn)}).`);
         }
         if (hop.freeUntil) {
           const d = daysUntil(hop.freeUntil);
-          if (d !== null && d <= 7) items.push({ cls: '', id: label, msg: d < 0 ? `Free window ended ${fmtDate(hop.freeUntil)} — likely billing now.` : `Free window ends in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.freeUntil)}).` });
+          if (d !== null && d <= 7) add('free-window', label, d < 0 ? `Free window ended ${fmtDate(hop.freeUntil)} — likely billing now.` : `Free window ends in ${d} day${d === 1 ? '' : 's'} (${fmtDate(hop.freeUntil)}).`);
         }
-        if (hop.status === 'experimental') {
-          items.push({ cls: 'experimental', id: label, msg: hop.notes || 'Unconfirmed / not yet verified — test before relying on it.' });
-        }
+        if (hop.status === 'experimental') add('experimental', label, hop.notes || 'Unconfirmed / not yet verified — test before relying on it.', 'experimental');
       });
     });
-    // Automatic warnings (one row per provider + kind; the exact models are on each hop's badge).
+    // Automatic warnings (from the provider's live list / real requests / the saved tables): one row per provider, under the category of its kind.
     const grouped = {};
     Object.values(lastHopWarnings).forEach(w => { (grouped[w.provider + '|' + w.kind] = grouped[w.provider + '|' + w.kind] || []).push(w); });
-    const autoRows = Object.entries(grouped).map(([k, ws]) => {
-      const [prov, kind] = k.split('|'); const names = ws.map(w => w.model);
+    let autoCount = 0;
+    Object.entries(grouped).forEach(([k, ws]) => {
+      const [prov, kind] = k.split('|'); const names = ws.map(w => w.model); autoCount++;
       const shown = names.slice(0, 6).join(', ') + (names.length > 6 ? ` … +${names.length - 6} more` : '');
-      return { cls: '', id: `${escapeHtml(PROVIDER_LABELS[prov] || prov)} — ${escapeHtml((WARN_KIND[kind] || [kind])[0])} (${ws.length})`, msg: `${(WARN_KIND[kind] || ['', ''])[1]}: ${shown}. Hover the ⚠ on each model for details.` };
+      add(kind, `${PROVIDER_LABELS[prov] || prov} (${ws.length})`, `${(WARN_KIND[kind] || ['', ''])[1]}: ${shown}. Hover the ⚠ on each model for details.`);
     });
-    items.push(...autoRows);
     const checkedBits = Object.entries(lastCatalogChecked).map(([p, t]) => `${PROVIDER_LABELS[p] || p} ${timeAgo(t)}`).join(' · ');
-    const checkRow = (autoRows.length || checkedBits) ? `<div class="warn-item"><span>↻</span><div><span class="id">Provider catalogs</span><br><span class="msg">${escapeHtml(checkedBits ? 'Last checked: ' + checkedBits + '.' : 'Not checked yet.')} Checked automatically every 6 hours and whenever you open a Sync panel.</span> <button class="btn-secondary" id="catalog-check-btn" style="margin-left:6px;">Check now</button></div></div>` : '';
-    $('#warnings').innerHTML = items.length
-      ? items.map(w => `<div class="warn-item ${w.cls}"><span>⚠</span><div><span class="id">${w.id}</span><br><span class="msg">${escapeHtml(w.msg)}</span></div></div>`).join('')
-      : '';
+    const checkRow = (autoCount || checkedBits) ? `<div class="warn-item"><span>↻</span><div><span class="id">Provider catalogs</span><br><span class="msg">${escapeHtml(checkedBits ? 'Last checked: ' + checkedBits + '.' : 'Not checked yet.')} Checked automatically every 6 hours and whenever you open a Sync panel.</span> <button class="btn-secondary" id="catalog-check-btn" style="margin-left:6px;">Check now</button></div></div>` : '';
+    const known = new Set(WARN_CATS.map(c => c[0]));
+    const order = [...WARN_CATS, ...Object.keys(cats).filter(k => !known.has(k)).map(k => [k, ((WARN_KIND[k] || [k])[0]).replace(/^./, c => c.toUpperCase()), true])];
+    const html = order.filter(([k]) => (cats[k] || []).length).map(([k, title, openDefault]) => {
+      const rows = cats[k]; const open = k in warnOpen ? warnOpen[k] : openDefault;
+      return `<details class="warn-cat" data-warn-cat="${escapeHtml(k)}" ${open ? 'open' : ''}><summary><span class="wc-title">⚠ ${escapeHtml(title)}</span><span class="wc-count">${rows.length}</span></summary><div class="wc-body">${rows.map(w => `<div class="warn-item ${w.cls}"><div><span class="id">${escapeHtml(w.id)}</span><br><span class="msg">${escapeHtml(w.msg)}</span></div></div>`).join('')}</div></details>`;
+    }).join('');
+    $('#warnings').innerHTML = githubInfo + html;
     if (checkRow) $('#warnings').innerHTML += checkRow;
   }
 
@@ -1181,6 +1204,58 @@
     </div>`;
   }
 
+  // "API call" panel under a provider's update check: the exact URL it calls, curl lines to repeat it by hand, and a button that
+  // makes the call from the server and shows the provider's raw answer (the key never reaches the page).
+  const syncApi = {};   // provider -> { open, meta, sent, loading, error }
+  function renderSyncApi(provider) {
+    const st = syncApi[provider];
+    if (!st || !st.open) return '';
+    const m = st.meta;
+    if (!m) return `<div class="sync-api"><span class="sync-result-note">${st.error ? escapeHtml(st.error) : 'Loading…'}</span></div>`;
+    const cp = t => `<span class="copyable" data-copy="${escapeHtml(t)}" title="Click to copy">${escapeHtml(t)}</span>`;
+    const proxyUrl = `${location.origin}/admin/api/sync/${provider}`;
+    const r = st.sent;
+    const result = r ? `
+      <div class="sa-status ${r.ok ? 'ok' : 'bad'}">HTTP ${r.status == null ? '—' : r.status} · ${r.ms} ms${r.ok ? ` · ${r.count == null ? 'no "data" list' : r.count + ' models listed'}` : ''}</div>
+      ${r.message ? `<div class="sa-row"><span class="sa-label">Provider says</span><span>${escapeHtml(r.message)}</span></div>` : ''}
+      <pre class="sa-raw">${escapeHtml(r.raw || '')}</pre>
+      <div class="sync-result-note">${r.truncated ? 'Shown cut at 60,000 characters. ' : ''}<button type="button" class="sync-item-btn" data-sync-api-copy="${escapeHtml(provider)}">Copy raw answer</button></div>` : '';
+    return `<div class="sync-api">
+      <div class="sa-row"><span class="sa-label">What the check calls</span>${cp('GET ' + m.url)}</div>
+      <div class="sa-row"><span class="sa-label">Same call by hand</span><span class="sa-code">${cp(m.curl)}</span></div>
+      <div class="sa-row"><span class="sa-label">This proxy's own check</span><span class="sa-code">${cp(`curl -s -H "X-Admin-Key: YOUR_ADMIN_KEY" ${proxyUrl}`)}</span></div>
+      <div class="sa-row"><button type="button" class="sync-item-btn" data-sync-api-send="${escapeHtml(provider)}">${st.loading ? 'Calling…' : 'Send it now and show the raw answer'}</button>${m.hasKey ? '' : '<span class="sa-status bad">no API key is set on the server for this provider</span>'}</div>
+      ${result}
+    </div>`;
+  }
+  document.addEventListener('click', async e => {
+    const t = e.target.closest && e.target.closest('[data-sync-api],[data-sync-api-send],[data-sync-api-copy]');
+    if (!t) return;
+    const redraw = () => renderProviders(currentModels, buildUsageIndex(lastUsageList));
+    if (t.hasAttribute('data-sync-api-copy')) {
+      const st = syncApi[t.getAttribute('data-sync-api-copy')];
+      if (st && st.sent) toast((await copyText(st.sent.raw || '')) ? 'Copied to clipboard' : "Couldn't copy — select the text and press Ctrl+C");
+      return;
+    }
+    if (t.hasAttribute('data-sync-api')) {
+      const p = t.getAttribute('data-sync-api');
+      const st = syncApi[p] = syncApi[p] || {};
+      st.open = !st.open;
+      if (st.open && !st.meta) {
+        redraw();
+        try { st.meta = await api('/admin/api/sync/' + encodeURIComponent(p) + '/raw'); st.error = ''; } catch (err) { st.error = err.message; }
+      }
+      redraw();
+      return;
+    }
+    const p = t.getAttribute('data-sync-api-send');
+    const st = syncApi[p]; if (!st || st.loading) return;
+    st.loading = true; redraw();
+    try { st.sent = await api('/admin/api/sync/' + encodeURIComponent(p) + '/raw?send=1'); }
+    catch (err) { st.sent = { ok: false, status: null, ms: 0, message: err.message, raw: '' }; }
+    st.loading = false; redraw();
+  });
+
   function renderSyncResult(provider) {
     const state = syncState[provider];
     if (!state) return '';
@@ -1439,7 +1514,6 @@
     $('#model-visible-count').textContent = filtered.length + ' shown';
 
     if (!filtered.length) {
-      providerTab = '';
       $('#provider-tabs').innerHTML = '';
       $('#providers').innerHTML = '<div class="empty-note big">No models match the current search/filters/tags. Adjust or clear filters.</div>';
       return;
@@ -1487,8 +1561,9 @@
       return `<div class="provider-group">
         <div class="provider-group-head">
           <span class="pname">${PROVIDER_LABELS[provider] || provider} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span>
-          ${syncBtn}
+          <span>${syncBtn}${(!isAllTab && SYNCABLE.has(provider)) ? `<button type="button" class="sync-api-btn ${syncApi[provider] && syncApi[provider].open ? 'on' : ''}" data-sync-api="${provider}" title="Show the exact API call behind this check, so you can test it by hand">API call</button>` : ''}</span>
         </div>
+        ${isAllTab ? '' : renderSyncApi(provider)}
         ${isAllTab ? '' : renderSyncResult(provider)}
         ${cards || '<div class="empty-note">No models configured for this provider.</div>'}
       </div>`;
@@ -2946,6 +3021,8 @@
   function collectPrefs() {
     return {
       quickTab: quickUsageTab,
+      providerTab,
+      warnOpen,
       logs: { levels: [...logLevels], order: logOrder, group: logGroup, auto: $('#log-auto-refresh').checked },
       tester: { provider: $('#tester-provider').value, max: $('#tester-max').value, prompt: $('#tester-prompt').value, models: $('#tester-models').value },
       filters: { search: $('#filter-search').value, provider: $('#filter-provider').value, status: $('#filter-status').value, limitType: $('#filter-limit').value, family: $('#filter-family').value, include: $('#filter-include').value, exclude: $('#filter-exclude').value, tags: [...filterState.tags] },
@@ -2957,6 +3034,11 @@
     prefsTimer = setTimeout(() => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(collectPrefs())); } catch (_) {} }, 300);
   }
   ['input', 'change', 'click'].forEach(ev => document.addEventListener(ev, schedulePrefsSave, true));
+  // a warning category opened/closed: remember it ('toggle' doesn't bubble, so listen in the capture phase)
+  document.addEventListener('toggle', e => {
+    const d = e.target;
+    if (d && d.matches && d.matches('details[data-warn-cat]')) { warnOpen[d.getAttribute('data-warn-cat')] = d.open; schedulePrefsSave(); }
+  }, true);
   (function applySavedPrefs() {
     const sp = savedPrefs;
     if (sp.logs) {
@@ -2983,4 +3065,3 @@
 </script>
 </body>
 </html>
-
