@@ -414,6 +414,10 @@
   .copyable:hover { background: rgba(255,255,255,.08); text-decoration: underline dotted; text-underline-offset: 3px; }
   #toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); background: #1f2937; color: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 9px 18px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 9999; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* a saved key (or ?key=) means we sign in automatically: never flash the login box while that is happening */
+  .autologin #login-gate { display: none; }
+  #autologin-note { display: none; }
+  .autologin #autologin-note { display: flex; position: fixed; inset: 0; align-items: center; justify-content: center; color: var(--text-faint); font-size: 13px; }
   .stay-label { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; margin: 10px 0 2px; cursor: pointer; }
   .stay-label input { width: auto; margin: 0; }
   .signout-btn { margin-left: auto; padding: 5px 11px; font-size: 12px; }
@@ -487,6 +491,8 @@
 </head>
 <body>
 
+<script>try { if (localStorage.getItem('qproxy-admin-key') || /[?&]key=/.test(location.search)) document.documentElement.classList.add('autologin'); } catch (_) {}</script>
+<div id="autologin-note">Signing in…</div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="login-gate">
   <div class="login-card">
@@ -2894,9 +2900,11 @@
       // visible instead of hiding it behind an already-dismissed gate.
       $('#login-gate').style.display = 'none';
       $('#dashboard').hidden = false;
+      document.documentElement.classList.remove('autologin');
       persistKey(key);
       stripKeyFromUrl();
     } catch (err) {
+      document.documentElement.classList.remove('autologin');
       $('#login-gate').style.display = '';
       $('#dashboard').hidden = true;
       if (auto && /admin key/i.test(err.message)) {   // the saved key no longer works (changed on Render): forget it, ask again
