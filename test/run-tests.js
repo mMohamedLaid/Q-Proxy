@@ -785,6 +785,29 @@ async function main() {
     check('tester: needs the admin key', tt.s === 401 || tt.s === 403, String(tt.s));
     r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
     check('tester: "load my configured models" lists the Z.ai models from models.json', Array.isArray(j.models) && j.models.includes('glm-4.7-flash') && j.models.includes('glm-4.5-flash'), JSON.stringify(j));
+    // proxy names AND provider slugs in the same box
+    const resolve = async (provider, lines) => { const rr = await fetch(BASE + '/admin/api/test-model/resolve', { method: 'POST', headers: admin2, body: JSON.stringify({ provider, lines }) }); return { s: rr.status, j: await rr.json() }; };
+    await addHop('zz-chain', { provider: 'nvidia', model: 'zz-a/model-a', fallback: { provider: 'zai', model: 'zz-model-b', status: 'deprecated' } });
+    let rs = await resolve('zai', ['glm-4.7-flash']);
+    check('tester names: a plain id is a provider slug on the selected provider', rs.j.targets?.length === 1 && rs.j.targets[0].provider === 'zai' && rs.j.targets[0].model === 'glm-4.7-flash' && rs.j.targets[0].via === null, JSON.stringify(rs.j));
+    rs = await resolve('google', ['zz-chain']);
+    check('tester names: one of YOUR model names expands to every hop of it, each on its own provider (selected provider ignored)', rs.j.targets?.length === 2 && rs.j.targets[0].provider === 'nvidia' && rs.j.targets[0].model === 'zz-a/model-a' && rs.j.targets[1].provider === 'zai' && rs.j.targets[1].model === 'zz-model-b' && rs.j.targets.every(x => x.via === 'zz-chain') && rs.j.targets[1].note === 'deprecated', JSON.stringify(rs.j));
+    rs = await resolve('google', ['ZZ-CHAIN']);
+    check('tester names: your own names match in any letter case', rs.j.targets?.length === 2, JSON.stringify(rs.j));
+    await addHop('zz-slug', { provider: 'zai', model: 'zz-slug' });
+    rs = await resolve('nvidia', ['zz-slug']);
+    const viaName = rs.j.targets || [];
+    rs = await resolve('nvidia', ['zai:zz-slug']);
+    check('tester names: provider:id forces the provider\'s own id even when it is also one of your names', viaName.length === 1 && viaName[0].via === 'zz-slug' && viaName[0].provider === 'zai' && rs.j.targets?.length === 1 && rs.j.targets[0].provider === 'zai' && rs.j.targets[0].model === 'zz-slug' && rs.j.targets[0].via === null, JSON.stringify({ viaName, forced: rs.j }));
+    rs = await resolve('literouter', ['glm-5.3-flash:free', 'nope:thing']);
+    check('tester names: a colon that is not a provider prefix stays part of the slug (glm-5.3-flash:free, nope:thing)', rs.j.targets?.length === 2 && rs.j.targets[0].model === 'glm-5.3-flash:free' && rs.j.targets[1].model === 'nope:thing' && rs.j.targets.every(x => x.provider === 'literouter'), JSON.stringify(rs.j));
+    rs = await resolve('zai', ['glm-4.7-flash', 'glm-4.7-flash', '', '  ']);
+    check('tester names: duplicates and blank lines are dropped', rs.j.targets?.length === 1, JSON.stringify(rs.j));
+    rs = await resolve('bogus', ['x']);
+    check('tester names: an unknown provider is a 400', rs.s === 400);
+    r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
+    check('tester names: "Load my configured models" prefixes a slug that is also one of your names (zai:zz-slug) so it is read as the slug, and leaves normal ones plain', j.lines.includes('zai:zz-slug') && j.lines.includes('glm-4.7-flash') && j.models.includes('zz-slug'), JSON.stringify(j.lines));
+    for (const id of ['zz-chain', 'zz-slug']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
     setScenario({ mode: 'nonstream', models: ['org/some-nim-model'] });
     r = await fetch(BASE + '/admin/api/sync/nvidia', { headers: admin2 }); j = await r.json();
     check('nvidia: free-only, so no free/paid grouping (everything stays "unknown")', Object.values(j.modelInfo || {}).every(v => v.tier === 'unknown') && !j.tierNotes, JSON.stringify(j.modelInfo));
@@ -796,6 +819,23 @@ async function main() {
   } finally {
     child.kill();
     await Promise.race([exited, sleep(3000)]);
+    // ══ "Most used" survives a restart: the shutdown flush writes the per-model counts, a fresh boot reads them back ══
+    try {
+      const snap = JSON.parse(fs.readFileSync(usagePath, 'utf8'));
+      const rows = Object.values(snap.providerUsage || {});
+      check('usage counts: the shutdown flush saved the per-model counts to usage-state.json', rows.length > 0 && rows.some(u => u.count > 0), JSON.stringify(Object.keys(snap)));
+      const top = rows.slice().sort((x, y) => y.count - x.count)[0];
+      const child3 = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], { cwd: ROOT, env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', QP_NO_CATALOG_WATCH: '1', PORT: String(PORT + 2), MOCK_FILE: SCEN }, stdio: ['ignore', 'pipe', 'pipe'] });
+      child3.stdout.on('data', () => {}); child3.stderr.on('data', () => {});
+      const exited3 = new Promise(resolve => child3.on('exit', resolve));
+      const B3 = `http://127.0.0.1:${PORT + 2}`;
+      let up3 = false;
+      for (let i = 0; i < 50 && !up3; i++) { try { const hr = await fetch(B3 + '/health'); up3 = hr.ok; await hr.text(); } catch (_) {} if (!up3) await sleep(200); }
+      let back = null;
+      if (up3) { const ur = await fetch(B3 + '/admin/api/usage', { headers: { 'X-Admin-Key': 'adminkey' } }); const uj = await ur.json(); back = (uj.providerUsage || []).find(u => u.provider === top.provider && u.model === top.model); }
+      check('usage counts: after a restart the same model still shows its count, errors and last-used time', up3 && back && back.count === top.count && back.errors === top.errors && back.lastUsed === top.lastUsed, JSON.stringify({ top, back }));
+      child3.kill(); await Promise.race([exited3, sleep(3000)]);
+    } catch (e) { check('usage counts: restart round-trip ran', false, e.message); }
     fs.copyFileSync(modelsPath + '.bak', modelsPath);
     fs.unlinkSync(modelsPath + '.bak');
     if (hadUsage) { fs.copyFileSync(usagePath + '.bak', usagePath); fs.unlinkSync(usagePath + '.bak'); } else { try { fs.unlinkSync(usagePath); } catch (_) {} }
