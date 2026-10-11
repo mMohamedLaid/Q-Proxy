@@ -886,8 +886,10 @@ async function saveUsageState(commitMessage) {
     googleLimitMismatches,
     hopWarnings,
     catalogCheckedAt,
+    providerUsage,
   };
   const json = JSON.stringify(snapshot, null, 2);
+  usageCountsDirty = false; lastUsageSaveAt = Date.now();      // cleared BEFORE the write so a request landing mid-write marks it dirty again
   fs.writeFileSync(USAGE_STATE_PATH, json);
   return githubSyncFile(GITHUB_USAGE_PATH, json, commitMessage || 'Q-Proxy: periodic usage-state snapshot');
 }
@@ -909,6 +911,18 @@ function hydrateUsageStateFromDisk() {
   if (saved.literouterFreeModelCursor) Object.assign(literouterFreeModelCursor, saved.literouterFreeModelCursor);
   if (typeof saved.literouterLastResetDay === 'string') literouterLastResetDay = saved.literouterLastResetDay;
   if (typeof saved.literouterRotationIndex === 'number') literouterRotationIndex = saved.literouterRotationIndex;
+  // "Most used": per-model request counts survive restarts (Render restarts the service whenever it sleeps or redeploys).
+  if (saved.providerUsage && typeof saved.providerUsage === 'object') {
+    for (const [k, u] of Object.entries(saved.providerUsage).slice(0, 1000)) {
+      if (!u || typeof u.provider !== 'string' || typeof u.model !== 'string') continue;
+      providerUsage[k] = {
+        provider: u.provider, model: u.model, count: Number(u.count) || 0, errors: Number(u.errors) || 0,
+        lastUsed: typeof u.lastUsed === 'string' ? u.lastUsed : null, lastStatus: u.lastStatus == null ? null : u.lastStatus,
+        skips: Number(u.skips) || 0, lastSkipReason: typeof u.lastSkipReason === 'string' ? u.lastSkipReason : null,
+        lastSkipAt: typeof u.lastSkipAt === 'string' ? u.lastSkipAt : null,
+      };
+    }
+  }
   if (typeof saved.literouterPremiumRotationIndex === 'number') literouterPremiumRotationIndex = saved.literouterPremiumRotationIndex;
   if (Array.isArray(saved.openrouterKeyState)) {
     saved.openrouterKeyState.forEach((s, i) => { if (openrouterKeyState[i] && s) Object.assign(openrouterKeyState[i], s); });
@@ -931,6 +945,11 @@ function hydrateUsageStateFromDisk() {
 // silently dropped.
 let usageStateDirty = false;
 function markUsageStateDirty() { usageStateDirty = true; }
+// Per-model request counts (the "Most used" list) change on EVERY request, so they get their own, slower flush
+// (at most every 5 minutes, plus on shutdown) instead of making the repo commit every 30 seconds.
+let usageCountsDirty = false;
+let lastUsageSaveAt = 0;
+const USAGE_COUNTS_FLUSH_MS = 5 * 60 * 1000;
 
 // ── Hop warnings ───────────────────────────────────────────────────────
 // Providers change their catalogs without notice (Literouter especially). A hop that is
@@ -1154,7 +1173,8 @@ function learnGoogleLimitsFrom429(providerConfig, bodyText) {
   }
 }
 setInterval(() => {
-  if (!usageStateDirty) return;
+  const countsDue = usageCountsDirty && Date.now() - lastUsageSaveAt >= USAGE_COUNTS_FLUSH_MS;
+  if (!usageStateDirty && !countsDue) return;
   usageStateDirty = false;
   saveUsageState().catch(e => log('WARN', `[usage-state] periodic save failed: ${e.message}`));
 }, 30000);
@@ -1170,7 +1190,7 @@ setInterval(() => {
 // either — exit happens no matter what the flush does.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
-    if (usageStateDirty) {
+    if (usageStateDirty || usageCountsDirty) {
       try {
         await Promise.race([saveUsageState('Q-Proxy: shutdown flush'), new Promise(r => setTimeout(r, 3000))]);
       } catch (_) { /* exiting regardless */ }
@@ -1530,6 +1550,7 @@ function trackUsage(provider, model, ok, status) {
   if (!providerUsage[k]) providerUsage[k] = { provider, model, count: 0, errors: 0, lastUsed: null, lastStatus: null, skips: 0, lastSkipReason: null, lastSkipAt: null };
   const u = providerUsage[k];
   if (ok) u.count++; else u.errors++;
+  usageCountsDirty = true;
   u.lastUsed = new Date().toISOString();
   u.lastStatus = ok ? 'ok' : (status || 'error');
 }
@@ -1547,6 +1568,7 @@ function trackSkip(provider, model, reason) {
   u.skips = (u.skips || 0) + 1;
   u.lastSkipReason = reason;
   u.lastSkipAt = new Date().toISOString();
+  usageCountsDirty = true;
 }
 
 // ============================================================
@@ -2990,12 +3012,53 @@ const TEST_VERDICT_LABEL = {
   'auth': 'key rejected', 'quota': 'quota / credits used up', 'rate-limited': 'rate limited (alive)',
   'rejected': 'request rejected', 'error': 'error', 'no-key': 'no API key set'
 };
+// Everything in `models.json` by its own name (case-insensitive) -> its hops.
+function hopsByProxyName() {
+  const map = new Map();
+  forEachHop((id, hop, i) => {
+    const k = id.toLowerCase();
+    if (!map.has(k)) map.set(k, { id, hops: [] });
+    map.get(k).hops.push({ provider: hop.provider, model: hop.model, index: i, status: hop.status || 'active' });
+  });
+  return map;
+}
 app.get('/admin/api/test-model/configured', requireAdmin, (req, res) => {
   const provider = String(req.query.provider || '').toLowerCase();
   if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
   const models = new Set();
   forEachHop((id, hop) => { if (hop.provider === provider && hop.model && hop.status !== 'deprecated') models.add(hop.model); });
-  res.json({ provider, models: [...models].sort((a, b) => a.localeCompare(b)) });
+  const names = hopsByProxyName();
+  const sorted = [...models].sort((a, b) => a.localeCompare(b));
+  // a slug that is ALSO one of your own model names would be read as the name, so it gets an explicit "provider:" prefix
+  res.json({ provider, models: sorted, lines: sorted.map(m => names.has(m.toLowerCase()) ? `${provider}:${m}` : m) });
+});
+// Turns what was typed into the exact (provider, model) pairs to test. Each line is one of:
+//   provider:slug   forced — that provider's own model id            (zai:glm-5.3)
+//   your own name   an id from models.json — every hop of it is tested (kimi, glm-5.3-flash-lr)
+//   slug            anything else — the provider's own model id on the selected provider (glm-4.7-flash)
+app.post('/admin/api/test-model/resolve', requireAdmin, (req, res) => {
+  const selected = String(req.body?.provider || '').toLowerCase();
+  const lines = Array.isArray(req.body?.lines) ? req.body.lines : [];
+  if (!TESTABLE_PROVIDERS.has(selected)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
+  const names = hopsByProxyName();
+  const targets = []; const seen = new Set(); let truncated = false;
+  const add = t => {
+    const k = `${t.provider}|${t.model}`;
+    if (seen.has(k)) return;
+    if (targets.length >= 40) { truncated = true; return; }
+    seen.add(k); targets.push(t);
+  };
+  for (const raw of lines.slice(0, 100)) {
+    const line = String(raw || '').trim();
+    if (!line || line.length > 200) continue;
+    const colon = line.indexOf(':');
+    const forced = colon > 0 ? line.slice(0, colon).toLowerCase() : '';
+    if (forced && TESTABLE_PROVIDERS.has(forced) && line.slice(colon + 1).trim()) { add({ provider: forced, model: line.slice(colon + 1).trim(), via: null, note: '' }); continue; }
+    const named = names.get(line.toLowerCase());
+    if (named) { for (const h of named.hops) add({ provider: h.provider, model: h.model, via: named.id, note: h.status !== 'active' ? h.status : '' }); continue; }
+    add({ provider: selected, model: line, via: null, note: '' });
+  }
+  res.json({ targets, truncated });
 });
 app.post('/admin/api/test-model', requireAdmin, async (req, res) => {
   const provider = String(req.body?.provider || '').toLowerCase();
