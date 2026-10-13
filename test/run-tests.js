@@ -735,6 +735,9 @@ async function main() {
     check('google tiers: 14.4K and 500 requests/day are "generous"; 20/day is "thin"; 0/0/0 is "paid only"; not in the table is "unknown"',
       tg('gemma-4-26b-it') === 'generous' && tg('gemini-3.1-flash-lite') === 'generous' && tg('gemini-2.5-flash-lite') === 'thin' && tg('gemini-2.5-pro') === 'paidonly' && tg('text-embedding-004') === 'unknown', JSON.stringify(Object.fromEntries(Object.entries(j.modelInfo || {}).map(([k, v]) => [k, v.tier]))));
     check('google tiers: the generous line (500/day) is sent along so the panel can say it', j.tierNotes?.generousRpd === 500, JSON.stringify(j.tierNotes));
+    // glm-4.6v-flash IS in models.json now, so take it out for the "not configured yet" checks below and put it back after
+    const glmVisionEntry = JSON.parse(fs.readFileSync(path.join(ROOT, 'models.json'), 'utf8'))['glm-4.6v-flash-z'];
+    r = await fetch(BASE + '/admin/api/models/glm-4.6v-flash-z', { method: 'DELETE', headers: admin2 }); await r.text();
     setScenario({ mode: 'nonstream', models: ['glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6v-flash', 'glm-5.2'] });
     r = await fetch(BASE + '/admin/api/sync/zai', { headers: admin2 }); j = await r.json();
     check('zai tiers: the vision flash model is free, glm-5.2 is paid (the free list comes from Z.ai\'s pricing page); Z.ai has no limits snapshot to show', j.modelInfo?.['glm-4.6v-flash']?.tier === 'free' && j.modelInfo?.['glm-5.2']?.tier === 'paid' && j.limitsMeta === null, JSON.stringify({ m: j.modelInfo, l: j.limitsMeta }));
@@ -742,6 +745,7 @@ async function main() {
     r = await fetch(BASE + '/admin/api/sync/zai', { headers: admin2 }); j = await r.json();
     check('zai sync: the free flash hops are NOT shown as "no longer listed" just because /models leaves them out', !(j.noLongerListed || []).includes('glm-4.7-flash') && !(j.noLongerListed || []).includes('glm-4.5-flash'), JSON.stringify(j.noLongerListed));
     check('zai sync: a free model that is not configured yet is still offered (as free), and the live count stays the real 2', (j.newlyAvailable || []).includes('glm-4.6v-flash') && j.modelInfo?.['glm-4.6v-flash']?.tier === 'free' && j.liveCount === 2, JSON.stringify({ n: j.newlyAvailable, c: j.liveCount }));
+    await addHop('glm-4.6v-flash-z', glmVisionEntry);
     // ══ Model tester: one tiny direct request, and what the answer means ══
     const tm = async (body, headers = admin2) => { const rr = await fetch(BASE + '/admin/api/test-model', { method: 'POST', headers, body: JSON.stringify(body) }); return { s: rr.status, j: await rr.json() }; };
     const errSc = (status, body) => setScenario({ mode: 'upstream-error', status, body });
@@ -783,6 +787,33 @@ async function main() {
     check('tester: an empty model id is a 400', tt.s === 400, JSON.stringify(tt));
     tt = await tm({ provider: 'zai', model: 'glm-4.7-flash' }, { 'Content-Type': 'application/json' });
     check('tester: needs the admin key', tt.s === 401 || tt.s === 403, String(tt.s));
+    // ══ "Test this config": a hop sent as it is on screen, with its own reasoning fields ══
+    const tc = async (hop, headers = admin2, extra = {}) => { const rr = await fetch(BASE + '/admin/api/test-model/config', { method: 'POST', headers, body: JSON.stringify({ hop, ...extra }) }); return { s: rr.status, j: await rr.json() }; };
+    const lastBody = () => JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
+    setScenario(okReply);
+    let tcx = await tc({ provider: 'nvidia', model: 'google/gemma-4-x', reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: false } });
+    check('test config: the hop\'s reasoning fields are really sent (chat_template_kwargs.enable_thinking=false), exactly as a real request would build them, and the answer lists them', tcx.j.verdict === 'works' && tcx.j.ok === true && JSON.stringify(tcx.j.sent) === '{"chat_template_kwargs":{"enable_thinking":false}}' && lastBody().chat_template_kwargs?.enable_thinking === false && lastBody().model === 'google/gemma-4-x' && lastBody().stream === false, JSON.stringify({ r: tcx.j, b: lastBody() }));
+    check('test config: a 200 is reported as "not rejected", and says that is not proof the provider acted on it', /did not reject/.test(tcx.j.message) && /does not prove/.test(tcx.j.message), tcx.j.message);
+    setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok', reasoning_content: 'x'.repeat(40) }, finish_reason: 'stop' }] } });
+    tcx = await tc({ provider: 'nvidia', model: 'google/gemma-4-x', reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: true } });
+    check('test config: the answer says how much thinking text came back (40 characters here)', tcx.j.reasoningChars === 40 && /40 characters of thinking/.test(tcx.j.message), JSON.stringify(tcx.j));
+    setScenario(okReply);
+    tcx = await tc({ provider: 'zai', model: 'glm-4.7-flash' });
+    check('test config: a hop with no reasoning schema sends no reasoning field and says there was nothing to check', tcx.j.sent === null && lastBody().chat_template_kwargs === undefined && /no reasoning field/.test(tcx.j.message) && tcx.j.verdict === 'works', JSON.stringify({ r: tcx.j, b: lastBody() }));
+    errSc(400, '{"error":{"message":"Unsupported parameter: enable_thinking"}}');
+    tcx = await tc({ provider: 'nvidia', model: 'google/gemma-4-x', reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: false } });
+    check('test config: a provider that refuses the fields is "request rejected", with the provider\'s own words and the fields that were sent', tcx.j.verdict === 'rejected' && tcx.j.ok === false && /rejected the request/.test(tcx.j.message) && /Unsupported parameter/.test(tcx.j.message) && tcx.j.sent?.chat_template_kwargs?.enable_thinking === false, JSON.stringify(tcx.j));
+    setScenario(okReply);
+    tcx = await tc({ provider: 'nvidia', model: 'a/b', reasoningSchema: 'no-such-schema-xyz' });
+    check('test config: a schema that is not defined says so and sends nothing (no silent "works")', tcx.j.ok === false && tcx.j.sent === null && /not defined/.test(tcx.j.message), JSON.stringify(tcx.j));
+    tcx = await tc({ provider: 'nvidia', model: 'a/b', reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: false } }, admin2, { maxTokens: 99999, prompt: 'say hi' });
+    check('test config: max tokens is capped at 2000 and a custom prompt is used', lastBody().max_tokens === 2000 && lastBody().messages[0].content === 'say hi', JSON.stringify(lastBody()));
+    tcx = await tc({ provider: 'bogus', model: 'x' });
+    check('test config: an unknown provider is a 400', tcx.s === 400, JSON.stringify(tcx));
+    tcx = await tc({ provider: 'zai', model: '  ' });
+    check('test config: a hop with no model id is a 400', tcx.s === 400, JSON.stringify(tcx));
+    tcx = await tc({ provider: 'zai', model: 'glm-4.7-flash' }, { 'Content-Type': 'application/json' });
+    check('test config: needs the admin key', tcx.s === 401 || tcx.s === 403, String(tcx.s));
     r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
     check('tester: "load my configured models" lists the Z.ai models from models.json', Array.isArray(j.models) && j.models.includes('glm-4.7-flash') && j.models.includes('glm-4.5-flash'), JSON.stringify(j));
     // proxy names AND provider slugs in the same box
