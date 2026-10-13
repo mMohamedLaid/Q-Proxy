@@ -497,6 +497,9 @@
   .hop-controls { display: flex; gap: 4px; text-transform: none; }
   .hop-mini-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 5px; width: 22px; height: 22px; cursor: pointer; font-size: 11px; line-height: 1; }
   .hop-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hop-mini-btn.wide { width: auto; padding: 0 7px; font-size: 11px; }
+  .cfg-test { grid-column: 1 / -1; font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
+  .cfg-test code { display: block; margin-top: 4px; font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
   .hop-mini-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
   .form-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 9px 14px; cursor: pointer; font-size: 13px; }
@@ -2568,6 +2571,20 @@
     return `<div class="form-grid" style="grid-column:1/-1;margin-top:2px;"><div style="grid-column:1/-1;font-size:12px;color:var(--text-dim);"><strong>${escapeHtml(schema.label || h.reasoningSchema)}</strong><div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${escapeHtml(schema.description || '')}</div></div>${rows.join('')}</div>`;
   }
 
+  // Result of the "Test this config" button for one hop (kept on the hop while the editor is open; never saved).
+  function renderCfgTest(h, i) {
+    const t = h._cfgTest;
+    if (!t) return '';
+    if (t.pending) return `<div class="cfg-test" data-cfg-idx="${i}"><span class="tv tv-pending">testing… (can take a while on slow models)</span></div>`;
+    const head = t.verdict === 'works' || t.verdict === 'works-empty' ? 'accepted' : (t.label || t.verdict || 'error');
+    const sent = t.sent ? `<code>sent: ${escapeHtml(JSON.stringify(t.sent))}</code>` : '';
+    return `<div class="cfg-test" data-cfg-idx="${i}"><strong class="tv tv-${escapeHtml(t.verdict || 'error')}">${escapeHtml(head)}</strong>${t.status ? ' · HTTP ' + escapeHtml(String(t.status)) : ''}${t.ms != null ? ' · ' + escapeHtml(String(t.ms)) + ' ms' : ''}<div>${escapeHtml(t.message || t.reply || '')}</div>${sent}</div>`;
+  }
+  // an old "Test this config" answer no longer describes the hop once a field changes
+  function staleCfgTest(idx) {
+    if (hopState[idx]) hopState[idx]._cfgTest = null;
+    $$('#hop-list .cfg-test').forEach(el => { if (+el.dataset.cfgIdx === idx) el.remove(); });
+  }
   function renderHopList() {
     const root = $('#hop-list');
     // Existing models this hop could be pre-filled from — excludes whatever
@@ -2597,6 +2614,7 @@
             ${i < hopState.length - 1 ? `<button type="button" class="hop-mini-btn" data-act="down" data-idx="${i}" title="Move later in the chain">↓</button>` : ''}
             ${h.model.trim() ? `<button type="button" class="hop-mini-btn apply-preset-btn" data-idx="${i}" title="Check for a saved known-good config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} and apply it">🔍</button>` : ''}
             <button type="button" class="hop-mini-btn detect-btn" data-idx="${i}" title="Paste an example request from the provider's docs to auto-detect the reasoning toggle/effort controls">🧪</button>
+            ${h.model.trim() ? `<button type="button" class="hop-mini-btn wide cfg-test-btn" data-idx="${i}" title="Send ONE tiny real request to ${escapeHtml(h.provider)} with this hop's reasoning fields exactly as they are on screen (saved or not) and see whether the provider accepts them. Uses one request of its quota.">Test this config</button>` : ''}
             ${h.reasoningSchema && h.model.trim() ? `<button type="button" class="hop-mini-btn save-preset-btn" data-idx="${i}" title="Remember this reasoning config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} — auto-applied next time you import this exact model">💾</button>` : ''}
             ${hopState.length > 1 ? `<button type="button" class="hop-mini-btn remove" data-act="remove" data-idx="${i}" title="Remove this hop">✕</button>` : ''}
           </span>
@@ -2608,6 +2626,7 @@
           <div class="field" style="grid-column:1 / -1;"><label>Reasoning schema</label><select data-f="reasoningSchema" data-idx="${i}">${schemaOptions}</select><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Choose how this model expects reasoning parameters to be sent, or hit 🧪 above to detect it from an example instead. The controls below are generated from that schema.</div></div>
           ${h._detectOpen ? renderDetectPanel(h, i) : ''}
           ${renderReasoningControls(h, i)}
+          ${renderCfgTest(h, i)}
           <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(st => `<option value="${st}" ${h.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(st => `<option value="${st}" ${h.limitType === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"> <label title="Skip this hop when a single request's estimated INPUT size is bigger than this. Not a per-minute budget — that is TPM (Google) below.">Max request size, tokens (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
@@ -2685,6 +2704,7 @@
           return;
         }
         hopState[idx][field] = e.target.value;
+        staleCfgTest(idx);
         // Daily cap only applies to (and is only shown for) literouter hops —
         // re-render so switching provider in/out of literouter shows/hides it.
         if (field === 'provider') renderHopList();
@@ -2708,6 +2728,7 @@
           value = (value === '__custom__') ? '' : value;
         }
         hopState[idx].reasoning[key] = value;
+        staleCfgTest(idx);
         if (field?.optionsPerHop) renderHopList();
       });
     });
@@ -2717,6 +2738,7 @@
         const idx = +e.target.dataset.idx;
         const key = e.target.dataset.rfCustom;
         hopState[idx].reasoning[key] = e.target.value;
+        staleCfgTest(idx);
       });
     });
 
@@ -2804,6 +2826,20 @@
       hopState[idx]._detectOpen = !hopState[idx]._detectOpen;
       if (!hopState[idx]._detectOpen) hopState[idx]._detectResult = null;
       renderHopList();
+    }));
+    $$('#hop-list .cfg-test-btn').forEach(btn => btn.addEventListener('click', async e => {
+      const h = hopState[+e.currentTarget.dataset.idx];
+      if (!h || (h._cfgTest && h._cfgTest.pending)) return;
+      h._cfgTest = { pending: true };
+      renderHopList();
+      let out;
+      try {
+        out = await api('/admin/api/test-model/config', { method: 'POST', body: { hop: {
+          provider: h.provider, model: h.model.trim(), reasoningSchema: h.reasoningSchema || '', reasoning: h.reasoning,
+          reasoningFieldEnabled: h.reasoningFieldEnabled, reasoningFieldKeys: h.reasoningFieldKeys, reasoningFieldTransport: h.reasoningFieldTransport } } });
+      } catch (err) { out = { verdict: 'error', label: 'error', message: err.message }; }
+      h._cfgTest = out;
+      if (hopState.includes(h)) renderHopList();
     }));
     $$('#hop-list [data-detect-input]').forEach(el => el.addEventListener('input', e => {
       hopState[+e.target.dataset.idx]._detectInput = e.target.value;
