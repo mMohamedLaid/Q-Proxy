@@ -13,6 +13,13 @@
     "limitType": "rate-limited",
     "notes": "Confirmed genuinely free (not trial credits). Lowercase slug. Re-probed 2026-10-09: still free (HTTP 200) even though Z.ai's /models no longer lists it."
   },
+  "glm-4.6v-flash-z": {
+    "model": "glm-4.6v-flash",
+    "provider": "zai",
+    "status": "active",
+    "limitType": "rate-limited",
+    "notes": "Z.ai's free VISION model (listed as $0 on Z.ai's official pricing page). Confirmed working 2026-10-09/10. Like the other free flash models it is missing from Z.ai's /models list but answers fine."
+  },
   "gemma-4-31b-g": {
     "model": "gemma-4-31b-it",
     "provider": "google",
@@ -474,3 +481,4 @@
     "rpd": 20
   }
 }
+
