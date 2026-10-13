@@ -3060,31 +3060,27 @@ app.post('/admin/api/test-model/resolve', requireAdmin, (req, res) => {
   }
   res.json({ targets, truncated });
 });
-app.post('/admin/api/test-model', requireAdmin, async (req, res) => {
-  const provider = String(req.body?.provider || '').toLowerCase();
-  const model = String(req.body?.model || '').trim();
-  if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
-  if (!model || model.length > 200) return res.status(400).json({ error: { message: 'Give a model id (max 200 characters).', type: 'invalid_request_error', code: 400 } });
-  const prompt = String(req.body?.prompt || '').trim().slice(0, 2000) || 'Reply with exactly one word: ok';
-  const maxTokens = Math.min(2000, Math.max(16, parseInt(req.body?.maxTokens, 10) || 256));
+// One tiny non-streaming request straight to a provider; returns the verdict object the tester shows.
+// `extraBody` (optional) is merged into the request body - that is how "Test this config" sends a hop's reasoning fields.
+async function runTesterRequest({ provider, model, prompt, maxTokens, extraBody, timeoutMs }) {
   const base = { provider, model };
   const { base: baseUrl, key } = getProviderConfigReadOnly(provider);
-  if (!key) return res.json({ ...base, ok: false, verdict: 'no-key', label: TEST_VERDICT_LABEL['no-key'], message: `No API key is set for ${provider} on the server.` });
+  if (!key) return { ...base, ok: false, verdict: 'no-key', label: TEST_VERDICT_LABEL['no-key'], message: `No API key is set for ${provider} on the server.` };
   const t0 = Date.now();
   try {
     const r = await axios.post(`${baseUrl}/chat/completions`,
-      { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, stream: false },
-      { headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 45000 });
+      { model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, stream: false, ...(extraBody || {}) },
+      { headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: timeoutMs || 45000 });
     const choice = r.data?.choices?.[0] || {};
     const m = choice.message || {};
     const content = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.map(part => part?.text || '').join('') : '');
     const reasoning = String(m.reasoning_content || m.reasoning || '');
     const ms = Date.now() - t0;
-    if (content.trim()) return res.json({ ...base, ok: true, verdict: 'works', label: TEST_VERDICT_LABEL.works, status: r.status, ms, reply: content.trim().slice(0, 300), finishReason: choice.finish_reason || null });
+    if (content.trim()) return { ...base, ok: true, verdict: 'works', label: TEST_VERDICT_LABEL.works, status: r.status, ms, reply: content.trim().slice(0, 300), finishReason: choice.finish_reason || null, reasoningChars: reasoning.length };
     const why = reasoning.trim() ? 'it answered, but every token went into thinking — raise max tokens to see text'
       : choice.finish_reason === 'length' ? 'it answered, but hit the token limit before any text — raise max tokens'
       : 'it answered with empty text';
-    return res.json({ ...base, ok: true, verdict: 'works-empty', label: TEST_VERDICT_LABEL['works-empty'], status: r.status, ms, reply: '', message: why, finishReason: choice.finish_reason || null, reasoningChars: reasoning.length });
+    return { ...base, ok: true, verdict: 'works-empty', label: TEST_VERDICT_LABEL['works-empty'], status: r.status, ms, reply: '', message: why, finishReason: choice.finish_reason || null, reasoningChars: reasoning.length };
   } catch (err) {
     const ms = Date.now() - t0;
     const raw = err.response?.data;
@@ -3099,8 +3095,46 @@ app.post('/admin/api/test-model', requireAdmin, async (req, res) => {
     else if (cls.tag === 'QUOTA') verdict = 'quota';
     else if (cls.tag === 'RATE_LIMIT') verdict = 'rate-limited';
     else if (cls.tag === 'BAD_REQUEST') verdict = 'rejected';
-    return res.json({ ...base, ok: false, verdict, label: TEST_VERDICT_LABEL[verdict], status, tag: cls.tag, ms, message: String(providerMsg).slice(0, 400) });
+    return { ...base, ok: false, verdict, label: TEST_VERDICT_LABEL[verdict], status, tag: cls.tag, ms, message: String(providerMsg).slice(0, 400) };
   }
+}
+app.post('/admin/api/test-model', requireAdmin, async (req, res) => {
+  const provider = String(req.body?.provider || '').toLowerCase();
+  const model = String(req.body?.model || '').trim();
+  if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
+  if (!model || model.length > 200) return res.status(400).json({ error: { message: 'Give a model id (max 200 characters).', type: 'invalid_request_error', code: 400 } });
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 2000) || 'Reply with exactly one word: ok';
+  const maxTokens = Math.min(2000, Math.max(16, parseInt(req.body?.maxTokens, 10) || 256));
+  res.json(await runTesterRequest({ provider, model, prompt, maxTokens }));
+});
+
+// "Test this config": the Models editor sends ONE hop exactly as it is on screen (saved or not). The server builds the
+// reasoning fields the same way a real request would (getReasoningBody), sends one tiny request with them, and says whether
+// the provider took them. A 200 only means "not rejected" - some providers silently ignore fields they don't know - so the
+// answer also reports how much thinking text came back and the exact fields that were sent.
+app.post('/admin/api/test-model/config', requireAdmin, async (req, res) => {
+  const h = req.body && typeof req.body.hop === 'object' && req.body.hop ? req.body.hop : {};
+  const provider = String(h.provider || '').toLowerCase();
+  const model = String(h.model || '').trim();
+  if (!TESTABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: 'Unknown provider.', type: 'invalid_request_error', code: 400 } });
+  if (!model || model.length > 200) return res.status(400).json({ error: { message: 'This hop has no model id yet.', type: 'invalid_request_error', code: 400 } });
+  const plainObj = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : undefined);
+  const hop = { provider, model, reasoningSchema: typeof h.reasoningSchema === 'string' ? h.reasoningSchema : '',
+    reasoning: plainObj(h.reasoning), reasoningFieldEnabled: plainObj(h.reasoningFieldEnabled), reasoningFieldKeys: plainObj(h.reasoningFieldKeys), reasoningFieldTransport: plainObj(h.reasoningFieldTransport) };
+  if (hop.reasoningSchema && !REASONING_SCHEMAS[hop.reasoningSchema]) {
+    return res.json({ provider, model, ok: false, verdict: 'error', label: TEST_VERDICT_LABEL.error, sent: null, message: `The schema "${hop.reasoningSchema}" is not defined in reasoning-schemas.json, so this hop sends no reasoning field at all.` });
+  }
+  const extraBody = getReasoningBody(hop) || null;
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 2000) || 'Reply with exactly one word: ok';
+  const maxTokens = Math.min(2000, Math.max(16, parseInt(req.body?.maxTokens, 10) || 256));
+  const out = await runTesterRequest({ provider, model, prompt, maxTokens, extraBody, timeoutMs: 100000 });
+  const sent = extraBody;
+  let message = out.message || '';
+  if (!sent) message = `This hop sends no reasoning field, so there was nothing to check${out.ok ? ' (the model itself answered fine)' : ''}.${message ? ' ' + message : ''}`;
+  else if (out.ok) message = `The provider took these fields (HTTP ${out.status}) — it did not reject them. That does not prove it acted on them: ${out.reasoningChars ? `${out.reasoningChars} characters of thinking came back` : 'no thinking text came back'}.${message ? ' ' + message : ''}`;
+  else if (out.verdict === 'rejected') message = `The provider rejected the request — most likely these fields. ${message}`;
+  else if (/timeout|ECONNABORTED/i.test(message)) message = `No answer within 100 s — a slow queue, not necessarily a rejection. ${message}`;
+  res.json({ ...out, sent, message });
 });
 
 app.get('/admin/api/logs', requireAdmin, (req, res) => {
