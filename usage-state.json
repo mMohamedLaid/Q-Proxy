@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-15T10:56:23.466Z",
+  "savedAt": "2026-10-15T11:12:23.526Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -95,14 +95,20 @@
       "detail": "\"glm-5.2:free\" is no longer listed, but \"glm-5.2\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-10-14T17:48:29.779Z"
+    },
+    "literouter|gemini-2.5-flash-lite:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-10-15T11:11:55.381Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-15T05:12:39.128Z",
-    "zai": "2026-10-15T05:12:39.605Z",
-    "google": "2026-10-15T05:12:39.800Z",
-    "openrouter": "2026-10-15T05:12:40.069Z",
-    "literouter": "2026-10-15T05:12:40.212Z"
+    "nvidia": "2026-10-15T11:11:54.128Z",
+    "zai": "2026-10-15T11:11:54.472Z",
+    "google": "2026-10-15T11:11:54.923Z",
+    "openrouter": "2026-10-15T11:11:55.265Z",
+    "literouter": "2026-10-15T11:11:55.381Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
