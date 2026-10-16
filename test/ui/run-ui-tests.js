@@ -188,6 +188,169 @@ async function main() {
       }
     }
 
+    // ── 4b2. Per-hop "Test" button on the model cards ──
+    const card1 = d.querySelector('.model-card[data-id="gemma-4-31b-nv"]');
+    const t1 = card1 && card1.querySelector('.model-card-top .test-hop-btn');
+    check('single-hop card has a Test button next to Edit/Remove', !!t1 && /Test/.test(t1.textContent) && !card1.querySelector('.chain .test-hop-btn'));
+    if (t1) {
+      click(w, t1);
+      const dp = await until(() => d.querySelector('#hop-list .detect-panel, #hop-list .detect-nv-link, #hop-list [data-detect-input]'));
+      check('Test opens the editor with the detect panel (link + paste box) already expanded', !!dp && !!d.querySelector('#hop-list textarea'));
+      check('no request is sent by just opening it', !d.querySelector('#hop-list .cfg-test'));
+    }
+    const multiCard = d.querySelector('.model-card[data-id="gemma-4-31b"]');
+    const multiBtns = multiCard ? multiCard.querySelectorAll('.chain .test-hop-btn') : [];
+    check('multi-hop card has one Test button per hop (none by Edit)', multiBtns.length >= 2 && !multiCard.querySelector('.model-card-top .test-hop-btn'), String(multiBtns.length));
+    if (multiBtns.length >= 2) {
+      click(w, multiBtns[1]);
+      const blocks = await until(() => { const b = d.querySelectorAll('#hop-list .hop-block'); return b.length >= 2 ? b : null; });
+      const open = blocks ? Array.from(blocks).map(b => !!b.querySelector('textarea')) : [];
+      check('Test on hop #2 expands only that hop\'s detect panel', open[1] === true && open[0] === false, JSON.stringify(open));
+    }
+
+    // ── 4c. Detect controls: link to NVIDIA's page, and reading pasted Python / JS / curl examples ──
+    const EX_GLM = `from openai import OpenAI
+
+client = OpenAI(
+  base_url = "https://integrate.api.nvidia.com/v1",
+  api_key = "$NVIDIA_API_KEY"
+)
+
+completion = client.chat.completions.create(
+  model="z-ai/glm-5.3",
+  messages=[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Which number is larger, 9.11 or 9.8?"}],
+  temperature=0.5,
+  top_p=1,
+  max_tokens=1024,
+  stream=False
+)
+
+print(completion.choices[0].message)`;
+    const EX_KIMI = `import requests
+
+invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+stream = True
+
+headers = {
+    "Authorization": "Bearer $NVIDIA_API_KEY",
+    "Accept": "text/event-stream" if stream else "application/json",
+}
+
+payload = {
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What is in this image?"
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "https://assets.ngc.nvidia.com/products/api-catalog/phi-3-5-vision/example1b.jpg"
+          }
+        }
+      ]
+    }
+  ],
+  "model": "moonshotai/kimi-k3",
+  "max_tokens": 16384,
+  "seed": 0,
+  "stream": stream,
+  "temperature": 1,
+  "reasoning_effort": "max"
+}
+
+response = requests.post(invoke_url, headers=headers, json=payload, stream=stream)
+if stream:
+    for line in response.iter_lines():
+        if line:
+            print(line.decode("utf-8"))
+else:
+    print(response.json())`;
+    const EX_GEMMA = `payload = {
+  "messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}]}],
+  "model": "google/diffusiongemma-26b-a4b-it",
+  "chat_template_kwargs": {
+    "enable_thinking": True
+  },
+  "max_tokens": 4096,
+  "stream": stream,
+  "temperature": 1,
+  "top_p": 0.95
+}`;
+    const EX_JS = `const completion = await openai.chat.completions.create({
+    model: "z-ai/glm-5.3",
+    messages: [{"role":"user","content":"hi"}],
+    temperature: 1, // a comment
+    extra_body: { chat_template_kwargs: { enable_thinking: true } },
+    stream: true,
+})`;
+    const EX_CURL = `curl https://integrate.api.nvidia.com/v1/chat/completions -H "Authorization: Bearer $K" -H "Content-Type: application/json" -d '{"model":"z-ai/glm-5.3","messages":[{"role":"user","content":"x"}],"reasoning_effort":"high"}'`;
+    const detectOn = async (modelId, text) => {
+      const eb = d.querySelector(`.edit-btn[data-edit="${modelId}"]`);
+      if (!eb) return null;
+      click(w, eb);
+      const det = await until(() => d.querySelector('#hop-list .detect-btn'));
+      if (!det) return null;
+      if (!d.querySelector('#hop-list [data-detect-input]')) click(w, det);
+      const ta = await until(() => d.querySelector('#hop-list [data-detect-input]'));
+      if (text != null) {
+        setVal(w, ta, text);
+        click(w, d.querySelector('#hop-list [data-act="detect-scan"]'));
+        await until(() => d.querySelector('#hop-list .detect-result'));
+      }
+      return det;
+    };
+    const resultText = () => (d.querySelector('#hop-list .detect-result') || {}).textContent || '';
+    let detBtn = await detectOn('glm-5.3-nv', null);
+    check('the hop editor button is labelled "Detect controls"', !!detBtn && /Detect controls/.test(detBtn.textContent), detBtn && detBtn.textContent);
+    const nvLinks = [...d.querySelectorAll('#hop-list .detect-nv-link a')].map(a => a.getAttribute('href'));
+    check('NVIDIA hop: the panel links to the model\'s page (z-ai/glm-5.3 -> build.nvidia.com/z-ai/glm-5-3) and offers the "_" form too', nvLinks[0] === 'https://build.nvidia.com/z-ai/glm-5-3' && nvLinks[1] === 'https://build.nvidia.com/z-ai/glm-5_3', JSON.stringify(nvLinks));
+    check('NVIDIA link opens in a new tab safely', [...d.querySelectorAll('#hop-list .detect-nv-link a')].every(a => a.getAttribute('target') === '_blank' && /noopener/.test(a.getAttribute('rel') || '')));
+    setVal(w, d.querySelector('#hop-list [data-detect-input]'), EX_GLM);
+    click(w, d.querySelector('#hop-list [data-act="detect-scan"]'));
+    await until(() => d.querySelector('#hop-list .detect-result'));
+    let rt = resultText();
+    check('Python OpenAI-client example (GLM-5.3, no reasoning field): reads the request and says "No reasoning parameter"', /No reasoning parameter/.test(rt) && /z-ai\/glm-5\.3/.test(rt) && /temperature/.test(rt) && /max_tokens/.test(rt), rt.slice(0, 300));
+    check('...and does not warn about a model mismatch (same model)', !/This example is for/.test(rt));
+    const applyNone = d.querySelector('#hop-list [data-act="detect-apply"]');
+    check('...and offers "Apply: send no reasoning fields"', !!applyNone && /send no reasoning fields/.test(applyNone.textContent), applyNone && applyNone.textContent);
+    if (applyNone) {
+      click(w, applyNone);
+      const schemaSel = d.querySelector('#hop-list select[data-f="reasoningSchema"]');
+      check('applying it leaves the hop with no reasoning schema (nothing is sent)', !!schemaSel && schemaSel.value === '', schemaSel && schemaSel.value);
+    }
+    await detectOn('kimi-k3-nv', EX_KIMI);
+    rt = resultText();
+    check('Python requests example (Kimi-K3, with "stream": stream and a headers dict with an if-else): finds reasoning_effort = "max" at the top level', /reasoning_effort/.test(rt) && /"max"/.test(rt) && /top_level/.test(rt), rt.slice(0, 300));
+    check('...and says the example shows only ONE value, so the other values are not known from it', /ONE value/.test(rt), rt.slice(0, 400));
+    await detectOn('gemma-4-31b-nv', EX_GEMMA);
+    rt = resultText();
+    check('Python dict with True (diffusiongemma): finds enable_thinking inside chat_template_kwargs', /enable_thinking/.test(rt) && /chat_template_kwargs/.test(rt), rt.slice(0, 300));
+    check('...and warns when the example is for a different model than the hop (gemma-4-31b-it vs diffusiongemma)', /This example is for/.test(rt) && /diffusiongemma/.test(rt), rt.slice(0, 400));
+    await detectOn('glm-5.3-nv', EX_JS);
+    rt = resultText();
+    check('JavaScript create({...}) call with bare keys, a comment and extra_body: finds enable_thinking (extra_body is read as top level)', /enable_thinking/.test(rt) && /chat_template_kwargs/.test(rt), rt.slice(0, 300));
+    await detectOn('glm-5.3-nv', EX_CURL);
+    rt = resultText();
+    check('curl -d \'{...}\': finds reasoning_effort "high"', /reasoning_effort/.test(rt) && /"high"/.test(rt), rt.slice(0, 300));
+    await detectOn('glm-5.3-nv', 'client.chat.completions.create(model="z-ai/glm-5.3", messages=[], extra_body={"google": {"thinking_config": {"thinking_level": "low", "include_thoughts": True}}})');
+    rt = resultText();
+    check('a nested wrapper such as Google\'s google.thinking_config is flagged as a special case (Raw), NOT reported as "no reasoning parameter"', /Special case/.test(rt) && /google/.test(rt) && !/No reasoning parameter/.test(rt), rt.slice(0, 300));
+    await detectOn('glm-5.3-nv', 'client.chat.completions.create(model="z-ai/glm-5.3", messages=[], response_format={"type": "json_schema", "json_schema": {"schema": {"properties": {"reasoning": {"type": "string"}}}}})');
+    rt = resultText();
+    check('a JSON schema that merely has a property named "reasoning" is NOT mistaken for a reasoning control', /No reasoning parameter/.test(rt) && !/Special case/.test(rt), rt.slice(0, 300));
+    await detectOn('glm-5.3-nv', 'client.chat.completions.create(model="z-ai/glm-5.3", messages=[], reasoning_effort=my_effort)');
+    rt = resultText();
+    check('a reasoning field whose value is a variable is reported as unreadable (not as "no controls")', /variables or expressions/.test(rt) && !/No reasoning parameter/.test(rt), rt.slice(0, 300));
+    await detectOn('glm-5.3-nv', 'hello, this is not code');
+    rt = resultText();
+    check('text with no request in it says it could not read one', /Couldn't read a request/.test(rt), rt.slice(0, 200));
+    await detectOn('glm-4.7-flash-z', null);
+    check('a non-NVIDIA hop has no NVIDIA link', !d.querySelector('#hop-list .detect-nv-link'));
+
     // ── 5. Warnings: grouped + collapsible ──
     const cats = d.querySelectorAll('details[data-warn-cat]');
     if (cats.length) {
@@ -265,12 +428,21 @@ async function main() {
     check('Sign out button exists', !!d.getElementById('signout-btn'));
     dom.window.close();
   } finally {
+    finished = true;
     for (const x of dones) { try { x.window.close(); } catch (_) {} }
     child.kill('SIGTERM');
     await sleep(300);
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
+  finished = true;
   console.log(`\n${failures ? 'SOME FAILED' : 'ALL PASS'} — ${passes} pass / ${failures} fail`);
   process.exit(failures ? 1 : 0);
 }
+// A page request that finishes just AFTER its window was closed rejects inside the page's own code (document is gone).
+// That is a teardown race, not a bug in the admin page, so it is ignored once the test run is over - never before.
+let finished = false;
+process.on('unhandledRejection', (e) => {
+  if (finished && /127\.0\.0\.1:\d+\/admin/.test(String(e && e.stack))) return;
+  console.error(e); process.exit(2);
+});
 main().catch(e => { console.error(e); process.exit(2); });
