@@ -330,6 +330,9 @@
     border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
   }
   .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .test-hop-btn { font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); background: transparent; color: inherit; border-radius: 6px; cursor: pointer; }
+  .test-hop-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hop-block.flash { outline: 2px solid var(--accent); }
   .del-btn { margin-left: 6px; }
   .model-notes { color: var(--text-dim); font-size: 12.5px; margin: 4px 0 10px; }
   .model-notes.expiry { color: var(--credits); }
@@ -1006,7 +1009,7 @@
     return '';
   }
 
-  function renderChain(entry, usageIndex, showOrder) {
+  function renderChain(entry, usageIndex, showOrder, entryId) {
     const hops = flattenHops(entry);
     // find which hop was most recently actually used
     let mostRecentIdx = -1, mostRecentTime = 0;
@@ -1036,6 +1039,7 @@
         <span class="hop-provider">${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span>
         <span class="hop-model copyable" data-copy="${escapeHtml(hop.model)}" title="Click to copy">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
+        ${hops.length > 1 ? `<button type="button" class="test-hop-btn" data-test="${escapeHtml(entryId)}" data-hop="${i}" title="Open this hop's settings with the test area ready">🧪 Test</button>` : ''}
         ${skipBadge}${warnBadge}
         ${renderHopKeyBreakdown(hop)}
         ${showOrder && limitsSummary(hop) ? `<div class="hop-keys">limits: ${escapeHtml(limitsSummary(hop))}</div>` : ''}
@@ -1178,6 +1182,7 @@
     const d = st && st.result;
     if (!d) return '';
     if (d.error) return `<div style="margin-top:6px;font-size:11px;color:var(--broken);">${escapeHtml(d.error)}</div>`;
+    if (d.noControls) return `<div style="margin-top:6px;font-size:11px;line-height:1.6;background:var(--bg);border-radius:6px;padding:6px 8px;">No reasoning parameter in this example — it will be added with <strong>no reasoning field</strong>.</div>`;
     const lines = [];
     if (d.toggle) lines.push(`Thinking toggle: <code>${escapeHtml(d.toggle.key)}</code> = <strong>${d.toggle.value}</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.toggle.transport)})</span>`);
     if (d.effort) lines.push(`Reasoning effort: <code>${escapeHtml(d.effort.key)}</code>${d.effort.guessedKey ? ' <span style="color:var(--text-faint);">(no effort key found — check this)</span>' : ''} = <strong>"${escapeHtml(d.effort.value)}"</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.effort.transport)})</span>, accepted: ${(d.effort.options || []).map(v => escapeHtml(v)).join(', ')}`);
@@ -1196,7 +1201,7 @@
     return `<div class="field" style="margin-top:6px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;padding:8px 10px;">
       ${autoBtn}
       ${pageNote}
-      <label style="font-size:10.5px;margin-top:${autoBtn ? '8px' : '0'};display:block;">Paste an example request for this model (full body, curl snippet, or just the kwargs) — or use auto-fetch above</label>
+      <label style="font-size:10.5px;margin-top:${autoBtn ? '8px' : '0'};display:block;">Paste the example code for this model (Python, JavaScript, curl, JSON or just the kwargs) — or use auto-fetch above</label>
       <textarea rows="4" data-sync-detect-input="1" data-provider="${provider}" data-model="${escapeHtml(model)}" style="font-family:var(--font-mono);font-size:11px;width:100%;margin-top:3px;resize:vertical;" placeholder='{"chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "high"}}'>${escapeHtml(st.input || '')}</textarea>
       <label style="font-size:10.5px;margin-top:6px;display:block;">Accepted effort values, if the docs list them (comma/newline separated) — optional</label>
       <textarea rows="2" data-sync-detect-values="1" data-provider="${provider}" data-model="${escapeHtml(model)}" style="font-family:var(--font-mono);font-size:11px;width:100%;margin-top:3px;resize:vertical;" placeholder="low, medium, high, xhigh">${escapeHtml(st.values || '')}</textarea>
@@ -1405,6 +1410,7 @@
         <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
         ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
         ${entry.custom ? `<span class="badge rate-limited">🗂 custom bundle</span>` : ''}
+        ${hops.length === 1 ? `<button class="test-hop-btn" data-test="${escapeHtml(id)}" data-hop="0" title="Open this model's settings with the test area ready">🧪 Test</button>` : ''}
         <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
         <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
       </div>
@@ -1419,12 +1425,13 @@
       </div>
       ${notesLine}
       <div class="model-tags">${tags}</div>
-      <div class="chain">${renderChain(entry, lastRenderUsageIndex, aggregate)}</div>
+      <div class="chain">${renderChain(entry, lastRenderUsageIndex, aggregate, id)}</div>
     </div>`;
   }
 
   function bindModelCardEvents() {
     $$('.del-btn').forEach(btn => btn.addEventListener('click', onDeleteModel));
+    $$('.test-hop-btn').forEach(btn => btn.addEventListener('click', e => { const id = btn.getAttribute('data-test'); openForm(id, currentModels[id], { testHop: Number(btn.getAttribute('data-hop')) }); }));
     $$('.edit-btn').forEach(btn => btn.addEventListener('click', e => openForm(e.target.getAttribute('data-edit'), currentModels[e.target.getAttribute('data-edit')])));
     $$('.sync-btn').forEach(btn => btn.addEventListener('click', onSync));
     $$('.sync-item-btn').forEach(btn => btn.addEventListener('click', onSyncAction));
@@ -2197,35 +2204,183 @@
   const DETECT_EFFORT_KEY_RE = /^(reasoning[_-]?effort|thinking[_-]?effort|effort|reasoning[_-]?level|thinking[_-]?level|reasoning[_-]?budget)$/i;
   const DETECT_REASONING_HINT_RE = /think|reason/i;
 
-  // Accepts strict JSON, or a curl/docs snippet with a JSON object buried
-  // in it (e.g. `curl ... -d '{"chat_template_kwargs": {...}}'`) — grabs
-  // the first balanced {...} block and parses that instead of giving up.
-  function extractJsonObject(text) {
-    if (!text || !text.trim()) return null;
-    const trimmed = text.trim();
-    try { return JSON.parse(trimmed); } catch (_) {}
-    const start = trimmed.indexOf('{');
-    if (start === -1) return null;
-    let depth = 0;
-    for (let i = start; i < trimmed.length; i++) {
-      if (trimmed[i] === '{') depth++;
-      else if (trimmed[i] === '}') {
-        depth--;
-        if (depth === 0) {
-          try { return JSON.parse(trimmed.slice(start, i + 1)); } catch (_) { return null; }
-        }
+  // Reads a pasted example: plain JSON, curl -d '{...}', a Python call or dict, or a JavaScript call or object.
+  // This is NOT a full parser - just enough Python/JS literal syntax (quotes, True/False/None, bare keys, trailing commas,
+  // comments, variables) to get a request's fields out of the samples provider pages show. A value it cannot read as a
+  // literal (a variable, os.getenv("KEY"), "a" if x else "b") becomes {__var: '...'} so one unreadable value never
+  // stops the rest from being read.
+  function looseReader(src, start) {
+    let i = start; const n = src.length;
+    const fail = (m) => { throw new Error(m + ' at ' + i); };
+    const skipWs = () => {
+      for (;;) {
+        while (i < n && /\s/.test(src[i])) i++;
+        if (src[i] === '#' || (src[i] === '/' && src[i + 1] === '/')) { while (i < n && src[i] !== '\n') i++; continue; }
+        if (src[i] === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; continue; }
+        break;
       }
+    };
+    const readString = () => {
+      const q = src[i];
+      if ((q === '"' || q === "'") && src.startsWith(q + q + q, i)) {          // Python triple quotes
+        const end = src.indexOf(q + q + q, i + 3);
+        if (end < 0) fail('unterminated string');
+        const t = src.slice(i + 3, end); i = end + 3; return t;
+      }
+      i++; let out = '';
+      const esc = { n: '\n', t: '\t', r: '\r' };
+      while (i < n && src[i] !== q) {
+        if (src[i] === '\\') {
+          const c = src[i + 1];
+          if (c === undefined) fail('bad escape');
+          if (c === 'u' && /^[0-9a-fA-F]{4}$/.test(src.substr(i + 2, 4))) { out += String.fromCharCode(parseInt(src.substr(i + 2, 4), 16)); i += 6; continue; }
+          out += Object.prototype.hasOwnProperty.call(esc, c) ? esc[c] : c; i += 2; continue;
+        }
+        out += src[i++];
+      }
+      if (i >= n) fail('unterminated string');
+      i++; return out;
+    };
+    const skipGroup = () => {                                                   // at ( [ or { - jump past the matching close
+      const pairs = { '(': ')', '[': ']', '{': '}' }; const stack = [];
+      while (i < n) {
+        const ch = src[i];
+        if (ch === '"' || ch === "'" || ch === '`') { readString(); continue; }
+        if (pairs[ch]) stack.push(pairs[ch]);
+        else if (stack.length && ch === stack[stack.length - 1]) { stack.pop(); if (!stack.length) { i++; return; } }
+        i++;
+      }
+      fail('unbalanced brackets');
+    };
+    // after a value: anything left before the next , or closing bracket (x if c else y, a + b, a.b(c)) is skipped
+    const tail = (v) => {
+      skipWs();
+      if (i >= n || ',}])'.includes(src[i])) return v;
+      const from = i;
+      while (i < n && !',}])'.includes(src[i])) {
+        if (src[i] === '"' || src[i] === "'" || src[i] === '`') readString();
+        else if ('([{'.includes(src[i])) skipGroup();
+        else i++;
+      }
+      return { __var: src.slice(from, i).trim().slice(0, 60) };
+    };
+    const lits = { True: true, true: true, False: false, false: false, None: null, null: null, undefined: null };
+    const value = () => {
+      skipWs();
+      const ch = src[i];
+      if (ch === '{') return object();
+      if (ch === '[' || ch === '(') return array();
+      if (ch === '"' || ch === "'" || ch === '`') return readString();
+      const num = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src.slice(i, i + 40));
+      if (num) { i += num[0].length; return Number(num[0]); }
+      const id = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/.exec(src.slice(i, i + 200));
+      if (id) {
+        i += id[0].length;
+        if (/^[frbuFRBU]{1,2}$/.test(id[0]) && (src[i] === '"' || src[i] === "'")) return readString();   // f"..." r'...'
+        if (Object.prototype.hasOwnProperty.call(lits, id[0])) return lits[id[0]];
+        while (src[i] === '(' || src[i] === '[') skipGroup();                                            // os.getenv("KEY"), env["KEY"]
+        return { __var: id[0] };
+      }
+      return fail('unexpected "' + (ch || 'end') + '"');
+    };
+    const array = () => {
+      const close = src[i] === '(' ? ')' : ']'; i++; const a = [];
+      for (;;) {
+        skipWs();
+        if (i >= n) fail('unterminated list');
+        if (src[i] === close) { i++; return a; }
+        a.push(tail(value()));
+        skipWs();
+        if (src[i] === ',') i++; else if (src[i] !== close) fail('expected , or ' + close);
+      }
+    };
+    const spread = () => {                                                      // ...x  or  **x  - cannot be read, skipped
+      i += src[i] === '.' ? 3 : (src[i + 1] === '*' ? 2 : 1); value(); tail(null);
+    };
+    const object = () => {
+      i++; const o = {};
+      for (;;) {
+        skipWs();
+        if (i >= n) fail('unterminated object');
+        if (src[i] === '}') { i++; return o; }
+        if (src.startsWith('...', i) || src.startsWith('**', i)) { spread(); skipWs(); if (src[i] === ',') i++; continue; }
+        let key;
+        if (src[i] === '"' || src[i] === "'" || src[i] === '`') key = readString();
+        else { const m = /^[A-Za-z_$][\w$]*|^\d+/.exec(src.slice(i, i + 200)); if (!m) fail('bad key'); key = m[0]; i += m[0].length; }
+        skipWs();
+        if (src[i] !== ':') fail('expected :');
+        i++;
+        o[key] = tail(value());
+        skipWs();
+        if (src[i] === ',') i++; else if (src[i] !== '}') fail('expected , or }');
+      }
+    };
+    const callArgs = () => {                                                    // at "(" of  create(model="x", ...)  or  create({...})
+      i++; const kw = {}; const pos = [];
+      for (;;) {
+        skipWs();
+        if (i >= n) fail('unterminated call');
+        if (src[i] === ')') { i++; return { kw, pos }; }
+        if (src[i] === '*') { spread(); skipWs(); if (src[i] === ',') i++; continue; }
+        const m = /^([A-Za-z_]\w*)\s*=(?!=)/.exec(src.slice(i, i + 200));
+        if (m) { i += m[0].length; kw[m[1]] = tail(value()); } else pos.push(tail(value()));
+        skipWs();
+        if (src[i] === ',') i++; else if (src[i] !== ')') fail('expected , or )');
+      }
+    };
+    return { object, callArgs, pos: () => i };
+  }
+
+  // Finds the request body in a pasted example. Returns a plain object of the request's fields, or null.
+  // The OpenAI SDK sends everything in extra_body at the TOP level of the request, so that is merged up here too.
+  function extractRequestFromText(text) {
+    if (!text || !String(text).trim()) return null;
+    const src = String(text);
+    const take = (o) => {
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+      const out = { ...o };
+      if (out.extra_body && typeof out.extra_body === 'object' && !Array.isArray(out.extra_body)) { Object.assign(out, out.extra_body); delete out.extra_body; }
+      return out;
+    };
+    try { const t = take(JSON.parse(src.trim())); if (t) return t; } catch (_) {}
+    // 1. an SDK call:  client.chat.completions.create(model="...", ...)   or   create({ model: "...", ... })
+    const callRe = /\bcreate\s*\(/g; let cm;
+    while ((cm = callRe.exec(src))) {
+      try {
+        const r = looseReader(src, cm.index + cm[0].length - 1).callArgs();
+        const t = take(Object.keys(r.kw).length ? r.kw : r.pos[0]);
+        if (t) return t;
+      } catch (_) {}
     }
-    return null;
+    // 2. an object literal / JSON body:  payload = {...},  -d '{...}',  json={...}  - prefer the one that looks like a request
+    let best = null, skipUntil = 0;
+    for (let p = src.indexOf('{'); p !== -1; p = src.indexOf('{', p + 1)) {
+      if (p < skipUntil) continue;
+      try {
+        const rd = looseReader(src, p); const o = rd.object(); skipUntil = rd.pos();
+        const t = take(o);
+        if (t && ('model' in t || 'messages' in t)) return t;
+        if (t && !best) best = t;
+      } catch (_) {}
+    }
+    return best;
   }
 
   function detectReasoningFromExample(exampleText, valuesText) {
-    const parsed = extractJsonObject(exampleText);
-    const result = { ok: false, error: null, toggle: null, effort: null, extraKeys: [], special: false };
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      result.error = 'Could not find a valid JSON object in that text. Paste the example request body (or just the reasoning kwargs object).';
+    const parsed = extractRequestFromText(exampleText);
+    const result = { ok: false, error: null, toggle: null, effort: null, extraKeys: [], special: false, noControls: false, readKeys: [], unread: [], exampleModel: null };
+    if (!parsed) {
+      result.error = "Couldn't read a request out of that text. Paste the example code from the provider's page (Python, JavaScript, curl or JSON), or just the reasoning kwargs object.";
       return result;
     }
+    result.readKeys = Object.keys(parsed);
+    result.exampleModel = typeof parsed.model === 'string' ? parsed.model : null;
+    const isVar = (v) => v && typeof v === 'object' && !Array.isArray(v) && Object.prototype.hasOwnProperty.call(v, '__var');
+    // A wrapper object whose NAME says nothing about reasoning but which holds a think/reason key inside it, e.g.
+    // Google's  extra_body={"google": {"thinking_config": {...}}}.  Fields that legitimately carry free-form content
+    // (messages, tools, response_format ...) are never searched - a JSON schema with a "reasoning" property is not a control.
+    const NOT_CONTROL_WRAPPERS = new Set(['messages', 'tools', 'functions', 'tool_choice', 'function_call', 'response_format', 'metadata', 'stream_options', 'logit_bias', 'stop', 'user']);
+    const hasHintDeep = (o, depth) => o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).some(k => DETECT_REASONING_HINT_RE.test(k) || (depth > 1 && hasHintDeep(o[k], depth - 1)));
 
     // Only two containers count as a real transport: the request's top
     // level, and chat_template_kwargs — those are the only two transports
@@ -2241,6 +2396,11 @@
     for (const { obj, transport } of containers) {
       for (const [k, v] of Object.entries(obj)) {
         if (k === 'chat_template_kwargs') continue; // scanned as its own container above
+        if (isVar(v)) { if (DETECT_REASONING_HINT_RE.test(k)) result.unread.push(k); continue; }   // a variable: value unknown
+        if (transport === 'top_level' && !NOT_CONTROL_WRAPPERS.has(k) && !DETECT_REASONING_HINT_RE.test(k) && hasHintDeep(v, 3)) {
+          result.extraKeys.push({ key: k, value: v, transport });
+          continue;
+        }
         if (v !== null && typeof v === 'object' && DETECT_REASONING_HINT_RE.test(k)) {
           // e.g. {"reasoning": {"effort": "high"}} — a nested wrapper, not
           // a flat boolean/enum. Don't try to guess inside it; flag it.
@@ -2277,7 +2437,12 @@
 
     result.special = result.extraKeys.length > 0;
     result.ok = Boolean(result.toggle || result.effort || result.special);
-    if (!result.ok) result.error = 'No reasoning-looking fields found in that JSON — nothing to apply.';
+    if (!result.ok) {
+      const looksLikeRequest = result.exampleModel !== null || 'messages' in parsed;
+      if (result.unread.length) result.error = `Found reasoning field(s) (${result.unread.join(', ')}) but their values are variables or expressions, so I can't tell what they send. Replace them with the literal value and scan again.`;
+      else if (looksLikeRequest) result.noControls = true;     // a real request that mentions no reasoning field at all
+      else result.error = 'No reasoning-looking fields found in that text — nothing to apply.';
+    }
     return result;
   }
 
@@ -2286,6 +2451,11 @@
   // as configuring by hand); anything special falls back to "raw" with the
   // detected object seeded in, exactly like manually switching to raw.
   function applyDetectionToHop(h, detection) {
+    if (detection.noControls) {          // the example has no reasoning field: this hop sends nothing
+      h.reasoningSchema = '';
+      h.reasoning = {}; h.reasoningFieldEnabled = {}; h.reasoningFieldKeys = {}; h.reasoningFieldTransport = {}; h.reasoningFieldOptions = {};
+      return;
+    }
     if (detection.special) {
       const rawObj = {};
       if (detection.toggle) rawObj[detection.toggle.key] = detection.toggle.value;
@@ -2325,19 +2495,43 @@
   function renderDetectResult(h, i) {
     const d = h._detectResult;
     if (!d) return '';
-    if (d.error) return `<div style="margin-top:8px;font-size:11.5px;color:var(--broken);">${escapeHtml(d.error)}</div>`;
+    if (d.error) return `<div class="detect-result" style="margin-top:8px;font-size:11.5px;color:var(--broken);">${escapeHtml(d.error)}</div>`;
     const lines = [];
+    const norm = (m) => String(m || '').toLowerCase().replace(/^models\//, '');
+    if (d.readKeys && d.readKeys.length) lines.push(`<span style="color:var(--text-faint);">Read from your paste${d.exampleModel ? `: model <code>${escapeHtml(d.exampleModel)}</code>` : ''} — fields: ${d.readKeys.slice(0, 14).map(k => escapeHtml(k)).join(', ')}${d.readKeys.length > 14 ? ', …' : ''}</span>`);
+    if (d.exampleModel && h.model && norm(d.exampleModel) !== norm(h.model)) lines.push(`<span style="color:var(--broken);">This example is for <code>${escapeHtml(d.exampleModel)}</code>, but this hop's model is <code>${escapeHtml(h.model)}</code> — check it is the right page.</span>`);
+    if (d.noControls) {
+      lines.push(`<strong>No reasoning parameter in this example.</strong> If a parameter is not in the provider's own example, its endpoint most likely does not take it. Applying makes this hop send <strong>no reasoning field</strong>.`);
+      return `<div class="detect-result" style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
+      <button type="button" class="btn-primary" style="margin-top:8px;width:auto;" data-act="detect-apply" data-idx="${i}">Apply: send no reasoning fields</button>`;
+    }
     if (d.toggle) lines.push(`Thinking toggle: <code>${escapeHtml(d.toggle.key)}</code> = <strong>${d.toggle.value}</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.toggle.transport)})</span>`);
     if (d.effort) lines.push(`Reasoning effort: <code>${escapeHtml(d.effort.key)}</code>${d.effort.guessedKey ? ' <span style="color:var(--text-faint);">(no effort key found — using values list only, check the key name)</span>' : ''} = <strong>"${escapeHtml(d.effort.value)}"</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.effort.transport)})</span>, accepted: ${(d.effort.options || []).map(v => escapeHtml(v)).join(', ')}`);
     if (d.special) lines.push(`<span style="color:var(--broken);">Special case</span> — found field(s) that don't fit a plain toggle/effort shape (${d.extraKeys.map(e => escapeHtml(e.key)).join(', ')}). Applying will switch this hop to the <strong>Raw</strong> schema with everything detected pasted in, instead of forcing it into structured controls.`);
-    return `<div style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
+    if (d.effort && !d.effort.guessedKey && (d.effort.options || []).length <= 1) lines.push(`<span style="color:var(--text-faint);">An example shows only ONE value (<code>${escapeHtml(d.effort.value)}</code>); the other values it accepts are not in it — add them in the box above if the page lists them.</span>`);
+    return `<div class="detect-result" style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
       <button type="button" class="btn-primary" style="margin-top:8px;width:auto;" data-act="detect-apply" data-idx="${i}">Apply detected config${d.special ? ' (as raw)' : ''}</button>`;
   }
 
+  // NVIDIA's public page for a model: build.nvidia.com/<org>/<name>, with the dots of the id turned into dashes
+  // (z-ai/glm-5.3 -> build.nvidia.com/z-ai/glm-5-3). Only that one case is confirmed; some pages use "_" instead
+  // (meta/llama-3.1-... -> llama-3_1-...), so when the id has a dot a second link with "_" is offered too.
+  function nvidiaPageLinks(model) {
+    const m = String(model || '').trim();
+    if (!/^[\w.\-]+\/[\w.\-]+$/.test(m)) return null;
+    const mk = (u) => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u.replace('https://', ''))}</a>`;
+    const main = 'https://build.nvidia.com/' + m.replace(/\./g, '-');
+    const alt = m.includes('.') ? 'https://build.nvidia.com/' + m.replace(/\./g, '_') : null;
+    return { main: mk(main), alt: alt ? mk(alt) : '' };
+  }
+
   function renderDetectPanel(h, i) {
+    const nv = h.provider === 'nvidia' ? nvidiaPageLinks(h.model) : null;
+    const nvLine = nv ? `<div class="detect-nv-link" style="font-size:11.5px;line-height:1.6;margin-bottom:8px;">NVIDIA's example for this model: ${nv.main} — open it, copy the code under <em>View Code</em> (Python, JavaScript or curl) and paste it below.${nv.alt ? ` <span style="color:var(--text-faint);">If that page is not found, some pages write the dot as an underscore: ${nv.alt}.</span>` : ''}</div>` : '';
     return `<div class="field" style="grid-column:1/-1;background:var(--surface);border:1px dashed var(--border);border-radius:8px;padding:10px 12px;">
-      <label style="font-size:11px;">Paste an example request from this provider's docs — full request body, curl snippet, or just the reasoning kwargs object</label>
-      <textarea rows="5" data-detect-input="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:11.5px;width:100%;margin-top:4px;resize:vertical;" placeholder='{"chat_template_kwargs": {"enable_thinking": true, "reasoning_effort": "high"}}'>${escapeHtml(h._detectInput || '')}</textarea>
+      ${nvLine}
+      <label style="font-size:11px;">Paste the example code from this provider's page — Python, JavaScript, curl or JSON (or just the reasoning kwargs object)</label>
+      <textarea rows="5" data-detect-input="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:11.5px;width:100%;margin-top:4px;resize:vertical;" placeholder='client.chat.completions.create(model="…", …)   or   {"chat_template_kwargs": {"enable_thinking": true}}'>${escapeHtml(h._detectInput || '')}</textarea>
       <label style="font-size:11px;margin-top:8px;display:block;">Full list of accepted effort values, if the docs spell them out (comma or newline separated) — optional</label>
       <textarea rows="2" data-detect-values="1" data-idx="${i}" style="font-family:var(--font-mono);font-size:11.5px;width:100%;margin-top:4px;resize:vertical;" placeholder="low, medium, high, xhigh">${escapeHtml(h._detectValues || '')}</textarea>
       <div style="margin-top:8px;display:flex;gap:8px;">
@@ -2425,14 +2619,23 @@
     return result;
   }
 
-  function openForm(id, entry) {
+  function openForm(id, entry, opts) {
     editingId = id || null;
     editingCustomFlag = Boolean(entry && entry.custom);
     hopState = entry ? flattenEntry(entry) : [emptyHop()];
     $('#add-form-toggle').hidden = true;
     $('#add-model-panel').hidden = false;
+    const th = opts && Number.isInteger(opts.testHop) ? opts.testHop : -1;
+    if (th >= 0 && hopState[th]) hopState[th]._detectOpen = true;
     renderForm();
-    $('#add-model-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const blocks = $$('#hop-list .hop-block');
+    if (th >= 0 && blocks[th]) {
+      blocks[th].classList.add('flash');
+      setTimeout(() => blocks[th].classList.remove('flash'), 1800);
+      blocks[th].scrollIntoView && blocks[th].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      $('#add-model-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function closeForm() {
@@ -2613,7 +2816,7 @@
             ${i > 0 ? `<button type="button" class="hop-mini-btn" data-act="up" data-idx="${i}" title="Move earlier in the chain">↑</button>` : ''}
             ${i < hopState.length - 1 ? `<button type="button" class="hop-mini-btn" data-act="down" data-idx="${i}" title="Move later in the chain">↓</button>` : ''}
             ${h.model.trim() ? `<button type="button" class="hop-mini-btn apply-preset-btn" data-idx="${i}" title="Check for a saved known-good config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} and apply it">🔍</button>` : ''}
-            <button type="button" class="hop-mini-btn detect-btn" data-idx="${i}" title="Paste an example request from the provider's docs to auto-detect the reasoning toggle/effort controls">🧪</button>
+            <button type="button" class="hop-mini-btn wide detect-btn" data-idx="${i}" title="Paste an example from the provider's docs to detect this model's reasoning toggle/effort controls">🧪 Detect controls</button>
             ${h.model.trim() ? `<button type="button" class="hop-mini-btn wide cfg-test-btn" data-idx="${i}" title="Send ONE tiny real request to ${escapeHtml(h.provider)} with this hop's reasoning fields exactly as they are on screen (saved or not) and see whether the provider accepts them. Uses one request of its quota.">Test this config</button>` : ''}
             ${h.reasoningSchema && h.model.trim() ? `<button type="button" class="hop-mini-btn save-preset-btn" data-idx="${i}" title="Remember this reasoning config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} — auto-applied next time you import this exact model">💾</button>` : ''}
             ${hopState.length > 1 ? `<button type="button" class="hop-mini-btn remove" data-act="remove" data-idx="${i}" title="Remove this hop">✕</button>` : ''}
