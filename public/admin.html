@@ -332,6 +332,8 @@
   .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
   .test-hop-btn { font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); background: transparent; color: inherit; border-radius: 6px; cursor: pointer; }
   .test-hop-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .rf-dim { opacity: .45; }
+  .rf-locked { font-size: 12px; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 6px; background: var(--surface); }
   .hop-block.flash { outline: 2px solid var(--accent); }
   .del-btn { margin-left: 6px; }
   .model-notes { color: var(--text-dim); font-size: 12.5px; margin: 4px 0 10px; }
@@ -2569,6 +2571,10 @@
         reasoningFieldKeys: cur.reasoningFieldKeys && typeof cur.reasoningFieldKeys === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldKeys)) : {},
         reasoningFieldEnabled: cur.reasoningFieldEnabled && typeof cur.reasoningFieldEnabled === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldEnabled)) : {},
         reasoningFieldTransport: cur.reasoningFieldTransport && typeof cur.reasoningFieldTransport === 'object' ? JSON.parse(JSON.stringify(cur.reasoningFieldTransport)) : {},
+        reasoningUseDefault: cur.reasoningUseDefault === true,
+        reasoningLocks: cur.reasoningLocks && typeof cur.reasoningLocks === 'object' ? JSON.parse(JSON.stringify(cur.reasoningLocks)) : {},
+        reasoningOffValue: typeof cur.reasoningOffValue === 'string' ? cur.reasoningOffValue : '',
+        reasoningThinkingOff: cur.reasoningThinkingOff === true,
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
         tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', rpm: cur.rpm ?? '', tpm: cur.tpm ?? '', rpd: cur.rpd ?? '', maxTokens: cur.maxTokens ?? '', tools: cur.tools === false ? 'false' : '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
         retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : ''
@@ -2600,6 +2606,12 @@
           entry.reasoningFieldTransport = JSON.parse(JSON.stringify(h.reasoningFieldTransport));
         }
       }
+      if (h.reasoningUseDefault === true && (h.reasoningSchema || (h.reasoningLocks && (h.reasoningLocks.thinking || h.reasoningLocks.effort)))) entry.reasoningUseDefault = true;
+      const lk = {};
+      if (h.reasoningLocks && h.reasoningLocks.thinking === 'always') lk.thinking = 'always';
+      if (h.reasoningLocks && String(h.reasoningLocks.effort || '').trim()) lk.effort = String(h.reasoningLocks.effort).trim();
+      if (Object.keys(lk).length) entry.reasoningLocks = lk;
+      if (h.reasoningSchema && h.reasoningOffValue) { entry.reasoningOffValue = h.reasoningOffValue; if (h.reasoningThinkingOff === true) entry.reasoningThinkingOff = true; }
       if (h.notes && h.notes.trim()) entry.notes = h.notes.trim();
       if (h.tpmLimit !== '' && h.tpmLimit != null) entry.tpmLimit = parseInt(h.tpmLimit, 10);
       if (h.dailyCap !== '' && h.dailyCap != null) entry.dailyCap = parseInt(h.dailyCap, 10);
@@ -2626,7 +2638,11 @@
     $('#add-form-toggle').hidden = true;
     $('#add-model-panel').hidden = false;
     const th = opts && Number.isInteger(opts.testHop) ? opts.testHop : -1;
-    if (th >= 0 && hopState[th]) hopState[th]._detectOpen = true;
+    if (th >= 0 && hopState[th]) {
+      refreshReasoningMasters();
+      // A hop whose facts live on another model keeps its Setup closed (that is on the master); the Run test button is right there.
+      if (!hopState[th]._masterId) { hopState[th]._testOpen = true; hopState[th]._detectOpen = true; }
+    }
     renderForm();
     const blocks = $$('#hop-list .hop-block');
     if (th >= 0 && blocks[th]) {
@@ -2673,14 +2689,88 @@
     $('#cancel-model').addEventListener('click', closeForm);
   }
 
-  function renderReasoningControls(h, i) {
-    const schema = reasoningSchemas[h.reasoningSchema];
-    if (!schema) {
-      return `<div class="reasoning-help" style="grid-column:1/-1;color:var(--text-faint);font-size:11px;">No reasoning override selected. The provider/model default will be used.</div>`;
+  // Normal view: only what exists on this hop, as small controls. Facts are edited in Setup.
+  function renderReasoningNormal(h, i) {
+    const schema = reasoningSchemas[h.reasoningSchema] || null;
+    normalizeReasoningForSchema(h);
+    const locks = h.reasoningLocks && typeof h.reasoningLocks === 'object' ? h.reasoningLocks : {};
+    const useDefault = h.reasoningUseDefault === true;
+    const isThinkKey = k => k === 'thinking_toggle' || k === 'enable_thinking';
+    const fieldEntries = Object.entries(schema ? (schema.fields || {}) : {});
+    const fieldActive = ([k, f]) => !Object.prototype.hasOwnProperty.call(f, 'enabledByDefault') || Boolean(h.reasoningFieldEnabled?.[k]);
+    const toggleActive = fieldEntries.some(e => e[1].type === 'boolean' && isThinkKey(e[0]) && fieldActive(e)) && locks.thinking !== 'always';
+    const effortEntry = fieldEntries.find(e => e[1].type === 'select' && fieldActive(e));
+    const offWord = h.reasoningOffValue || '';
+    const synth = Boolean(effortEntry && offWord && !toggleActive && !locks.effort);
+    const hasFacts = Boolean(schema || locks.thinking || locks.effort);
+    const note = t => `<div class="field rf-locked" style="grid-column:1/-1;">${t}</div>`;
+    const rows = [];
+    if (locks.thinking === 'always') rows.push(note('<strong>Thinking:</strong> Always on — this model can\'t turn it off. Nothing is sent for it.'));
+    else if (!toggleActive && !synth && effortEntry) rows.push(note('<strong>Thinking:</strong> Always on — no thinking switch is recorded for this model.'));
+    if (locks.effort) rows.push(note(`<strong>Reasoning effort:</strong> Fixed at <strong>${escapeHtml(locks.effort)}</strong> — it can\'t be changed on this model. Nothing is sent for it.`));
+    for (const [key, field] of fieldEntries) {
+      const entry = [key, field];
+      if (!fieldActive(entry)) continue;
+      const value = h.reasoning[key] !== undefined ? h.reasoning[key] : field.default;
+      const label = field.label || key;
+      let control = '';
+      if (field.type === 'boolean') {
+        if (isThinkKey(key) && locks.thinking === 'always') continue;
+        control = `<select data-rf="${escapeHtml(key)}" data-idx="${i}"><option value="true" ${value === true ? 'selected' : ''}>ON</option><option value="false" ${value === false ? 'selected' : ''}>OFF</option></select>`;
+      } else if (field.type === 'select' && field.optionsPerHop) {
+        if (locks.effort) continue;
+        if (synth) rows.push(`<div class="field"><label>Enable thinking</label><div style="margin-top:6px;"><select data-rfsynth="thinking" data-idx="${i}"><option value="on" ${h.reasoningThinkingOff === true ? '' : 'selected'}>ON</option><option value="off" ${h.reasoningThinkingOff === true ? 'selected' : ''}>OFF</option></select></div></div>`);
+        const list = (Array.isArray(h.reasoningFieldOptions?.[key]) ? h.reasoningFieldOptions[key] : (field.defaultOptions || [])).filter(v => !(synth && String(v) === offWord));
+        const cur = h.reasoning[key];
+        const opts = list.slice();
+        if (cur !== undefined && cur !== '' && !opts.map(String).includes(String(cur))) opts.push(cur);
+        control = `<select data-rf="${escapeHtml(key)}" data-idx="${i}">${opts.length ? '' : '<option value="">(no values listed — add them in Setup)</option>'}${opts.map(o => `<option value="${escapeHtml(o)}" ${String(cur) === String(o) ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`;
+      } else if (field.type === 'select') {
+        control = `<select data-rf="${escapeHtml(key)}" data-idx="${i}">${(field.options || []).map(o => `<option value="${escapeHtml(o)}" ${String(value) === String(o) ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`;
+      } else if (field.type === 'number') {
+        control = `<input type="number" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}">`;
+      } else if (field.type === 'text') {
+        control = `<input type="text" data-rf="${escapeHtml(key)}" data-idx="${i}" value="${escapeHtml(value ?? '')}">`;
+      } else {
+        rows.push(note(`<strong>${escapeHtml(label)}:</strong> raw JSON — edit it in Setup.`));
+        continue;
+      }
+      rows.push(`<div class="field"><label>${escapeHtml(isThinkKey(key) ? 'Thinking' : label)}</label><div style="margin-top:6px;">${control}</div></div>`);
     }
+    const body = hasFacts ? rows : [note('No reasoning settings are recorded for this model, so nothing is sent. Open <strong>⚙ Setup</strong> to add them (paste the provider\'s example, or mark it always-on / fixed).')];
+    const rendered = useDefault ? body.map(r => r.replace('<div class="field', '<div class="rf-dim field').replace(/<(input|select|textarea)\b/g, '<$1 disabled')) : body;
+    const useBox = hasFacts ? `<div class="field" style="grid-column:1/-1;"><label style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;cursor:pointer;"><input type="checkbox" data-rfuse="1" data-idx="${i}" ${useDefault ? 'checked' : ''}> Use provider default — send no reasoning fields (my settings are kept)</label></div>` : '';
+    return `<div class="form-grid" style="grid-column:1/-1;margin-top:2px;"><div style="grid-column:1/-1;font-size:12px;color:var(--text-dim);"><strong>Reasoning</strong>${h._masterId ? ` <span style="font-size:11px;color:var(--text-faint);">— what this model has comes from <em>${escapeHtml(h._masterId)}</em>; you can still choose the values for this hop.</span>` : ''}</div>${useBox}${rendered.join('')}</div>`;
+  }
+
+  function renderReasoningControls(h, i) {
+    const schema = reasoningSchemas[h.reasoningSchema] || null;
     normalizeReasoningForSchema(h);
     const rows = [];
-    for (const [key, field] of Object.entries(schema.fields || {})) {
+    const locks = h.reasoningLocks && typeof h.reasoningLocks === 'object' ? h.reasoningLocks : {};
+    const useDefault = h.reasoningUseDefault === true;
+    const isThinkKey = k => k === 'thinking_toggle' || k === 'enable_thinking';
+    const fieldEntries = Object.entries(schema ? (schema.fields || {}) : {});
+    const hasThinkField = !schema || fieldEntries.some(([k, f]) => f.type === 'boolean' && isThinkKey(k));
+    const effortEntry = fieldEntries.find(([k, f]) => f.type === 'select');
+    const toggleActive = fieldEntries.some(([k, f]) => f.type === 'boolean' && isThinkKey(k)
+      && (!Object.prototype.hasOwnProperty.call(f, 'enabledByDefault') || h.reasoningFieldEnabled?.[k]) && locks.thinking !== 'always');
+    const effortOptsAll = effortEntry ? (Array.isArray(h.reasoningFieldOptions?.[effortEntry[0]]) ? h.reasoningFieldOptions[effortEntry[0]] : (effortEntry[1].defaultOptions || [])) : [];
+    const offWord = h.reasoningOffValue || '';
+    const syntheticSwitch = Boolean(effortEntry && offWord && !toggleActive && !locks.effort);
+    if (!schema) {
+      if (locks.thinking === 'always') rows.push(`<div class="field rf-locked" style="grid-column:1/-1;"><strong>Thinking:</strong> Always on — this model can't turn it off. Nothing is sent for it.</div>`);
+      if (locks.effort) rows.push(`<div class="field rf-locked" style="grid-column:1/-1;"><strong>Reasoning effort:</strong> Fixed at <strong>${escapeHtml(locks.effort)}</strong> — it can't be changed on this model. Nothing is sent for it.</div>`);
+    }
+    for (const [key, field] of fieldEntries) {
+      if (field.type === 'boolean' && isThinkKey(key) && locks.thinking === 'always') {
+        rows.push(`<div class="field rf-locked" style="grid-column:1/-1;"><strong>${escapeHtml(field.label || key)}:</strong> Always on — this model can't turn it off. Nothing is sent for it.</div>`);
+        continue;
+      }
+      if (field.type === 'select' && locks.effort) {
+        rows.push(`<div class="field rf-locked" style="grid-column:1/-1;"><strong>${escapeHtml(field.label || key)}:</strong> Fixed at <strong>${escapeHtml(locks.effort)}</strong> — it can't be changed on this model. Nothing is sent for it.</div>`);
+        continue;
+      }
       const hasEnableSwitch = Object.prototype.hasOwnProperty.call(field, 'enabledByDefault');
       const isEnabled = !hasEnableSwitch || Boolean(h.reasoningFieldEnabled?.[key]);
       const value = h.reasoning[key] !== undefined ? h.reasoning[key] : field.default;
@@ -2699,6 +2789,9 @@
         // Collapsed: just the switch. Nothing configured, nothing sent.
         rows.push(`<div class="field">${enableSwitch}${desc}</div>`);
         continue;
+      }
+      if (syntheticSwitch && field.type === 'select' && field.optionsPerHop) {
+        rows.push(`<div class="field"><label>Enable thinking</label><div style="margin-top:6px;"><select data-rfsynth="thinking" data-idx="${i}"><option value="on" ${h.reasoningThinkingOff === true ? '' : 'selected'}>ON</option><option value="off" ${h.reasoningThinkingOff === true ? 'selected' : ''}>OFF</option></select></div><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">OFF sends "${escapeHtml(offWord)}" as the effort. ON sends the effort picked below.</div></div>`);
       }
 
       // Some models send this same concept under a different literal key
@@ -2738,7 +2831,7 @@
         // support a different set of values — the option list lives on
         // this hop, not the schema. "Custom…" covers a value that isn't
         // in the list yet, and stays a no-op until something is typed.
-        const optionList = Array.isArray(h.reasoningFieldOptions?.[key]) ? h.reasoningFieldOptions[key] : (field.defaultOptions || []);
+        const optionList = (Array.isArray(h.reasoningFieldOptions?.[key]) ? h.reasoningFieldOptions[key] : (field.defaultOptions || [])).filter(v => !(syntheticSwitch && String(v) === offWord));
         const currentValue = h.reasoning[key];
         const isKnown = currentValue !== undefined && currentValue !== '' && optionList.map(String).includes(String(currentValue));
         const selectOptions = optionList.map(opt => `<option value="${escapeHtml(opt)}" ${String(currentValue) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')
@@ -2771,10 +2864,39 @@
       const wide = field.type === 'json' ? 'style="grid-column:1/-1;"' : '';
       rows.push(`<div class="field" ${wide}>${enableSwitch}<div style="margin-top:6px;">${controlHtml}</div>${transportBox}${keyRemapBox}${desc}</div>`);
     }
-    return `<div class="form-grid" style="grid-column:1/-1;margin-top:2px;"><div style="grid-column:1/-1;font-size:12px;color:var(--text-dim);"><strong>${escapeHtml(schema.label || h.reasoningSchema)}</strong><div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${escapeHtml(schema.description || '')}</div></div>${rows.join('')}</div>`;
+    const offOptionList = ['<option value="">— none —</option>'].concat(effortOptsAll.map(v => `<option value="${escapeHtml(v)}" ${offWord === String(v) ? 'selected' : ''}>${escapeHtml(v)}</option>`)).join('');
+    const dis = useDefault ? 'disabled' : '';
+    const behaviourBox = `<div class="field" style="grid-column:1/-1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;cursor:pointer;"><input type="checkbox" data-rfuse="1" data-idx="${i}" ${useDefault ? 'checked' : ''}> Use provider default — send no reasoning fields (the settings below are kept and come back when this is off)</label>
+      <div class="${useDefault ? 'rf-dim' : ''}" style="margin-top:8px;display:grid;gap:8px;">
+        ${hasThinkField ? `<div><label style="font-size:10.5px;color:var(--text-faint);">Thinking on this model</label><select data-rflock-thinking="1" data-idx="${i}" ${dis}><option value="" ${locks.thinking === 'always' ? '' : 'selected'}>Can be switched on/off</option><option value="always" ${locks.thinking === 'always' ? 'selected' : ''}>Always on — can't be turned off</option></select></div>` : ''}
+        ${(effortEntry || !schema) ? `<div><label style="font-size:10.5px;color:var(--text-faint);">Effort fixed by the provider? (type the fixed level, e.g. max — blank means it can be changed)</label><input type="text" data-rflock-effort="1" data-idx="${i}" value="${escapeHtml(locks.effort || '')}" placeholder="blank = changeable" ${dis}></div>` : ''}
+        ${effortEntry ? `<div><label style="font-size:10.5px;color:var(--text-faint);">Which effort value means thinking OFF? (only if it has no thinking switch — it moves out of the list into an "Enable thinking" switch)</label><select data-rfoff="1" data-idx="${i}" ${dis || (toggleActive ? 'disabled' : '')}>${offOptionList}</select>${toggleActive ? '<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Not needed: this hop already has a real thinking switch.</div>' : ''}</div>` : ''}
+      </div>
+    </div>`;
+    return `<div class="form-grid" style="grid-column:1/-1;margin-top:2px;"><div style="grid-column:1/-1;font-size:12px;color:var(--text-dim);"><strong>${escapeHtml(schema ? (schema.label || h.reasoningSchema) : 'No reasoning controls recorded')}</strong><div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${escapeHtml(schema ? (schema.description || '') : 'Nothing is sent. Pick a schema above, or paste the provider\'s example, to add controls. You can still record facts below (always on, fixed effort).')}</div></div>${behaviourBox}${(useDefault ? rows.map(r => r.replace('<div class="field', '<div class="rf-dim field').replace(/<(input|select|textarea)\b/g, '<$1 disabled')) : rows).join('')}</div>`;
   }
 
   // Result of the "Test this config" button for one hop (kept on the hop while the editor is open; never saved).
+  function renderTestArea(h, i) {
+    const t = h._cfgTest;
+    const state = !t ? 'Not run yet.' : '';
+    const step = (n, txt) => `<div style="font-weight:600;font-size:12px;margin-bottom:6px;">${n} · ${txt}</div>`;
+    return `<div class="field test-area" data-test-area="${i}" style="grid-column:1/-1;border:2px solid var(--accent);border-radius:10px;padding:12px;background:var(--surface-2);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong>🧪 Testing ${escapeHtml(h.model || 'this hop')} on ${escapeHtml(PROVIDER_LABELS[h.provider] || h.provider)}</strong>
+        <button type="button" class="hop-mini-btn" data-act="test-close" data-idx="${i}" title="Close the test area">✕</button>
+      </div>
+      <div style="margin-bottom:12px;">${step('1 + 2', 'Get the provider\'s example and paste it')}${renderDetectPanel(h, i)}
+        ${h._detectNote ? `<div class="detect-note" style="font-size:12px;margin-top:6px;color:var(--ok, #2e9d5b);">${escapeHtml(h._detectNote)}</div>` : ''}</div>
+      <div style="margin-bottom:12px;">${step(3, 'Reasoning settings (filled in when known, and after you paste)')}${renderReasoningControls(h, i)}</div>
+      <div>${step(4, 'Run the test')}
+        <button type="button" class="btn-secondary cfg-test-btn" data-idx="${i}" ${h.model.trim() ? '' : 'disabled'} title="Sends ONE tiny real request with the settings above (uses a little quota)">▶ Run test</button>
+        <span style="font-size:11px;color:var(--text-faint);margin-left:8px;">${state}</span>
+        ${renderCfgTest(h, i)}
+      </div>
+    </div>`;
+  }
   function renderCfgTest(h, i) {
     const t = h._cfgTest;
     if (!t) return '';
@@ -2788,7 +2910,35 @@
     if (hopState[idx]) hopState[idx]._cfgTest = null;
     $$('#hop-list .cfg-test').forEach(el => { if (+el.dataset.cfgIdx === idx) el.remove(); });
   }
+  const REASONING_FACT_KEYS = ['reasoningSchema', 'reasoningFieldEnabled', 'reasoningFieldKeys', 'reasoningFieldTransport', 'reasoningFieldOptions', 'reasoningLocks', 'reasoningOffValue'];
+  // Same rule as the server: a hop inside a compound model takes its FACTS from the standalone
+  // model with the same provider + model. Its CHOICES (values, thinking on/off, use default) stay on the hop.
+  function findReasoningMaster(provider, model, exceptId) {
+    for (const id of Object.keys(currentModels).sort()) {
+      if (id === exceptId) continue;
+      const e = currentModels[id];
+      if (!e || e.fallback || e.provider !== provider || e.model !== model) continue;
+      if (REASONING_FACT_KEYS.some(k => e[k] !== undefined)) return { id, entry: e };
+    }
+    return null;
+  }
+  function refreshReasoningMasters() {
+    hopState.forEach(h => {
+      delete h._masterId;
+      if (hopState.length < 2 || !h.model || !h.model.trim()) return;
+      const m = findReasoningMaster(h.provider, h.model.trim(), editingId);
+      if (!m) return;
+      for (const k of REASONING_FACT_KEYS) {
+        if (m.entry[k] !== undefined) h[k] = JSON.parse(JSON.stringify(m.entry[k]));
+        else h[k] = k === 'reasoningSchema' || k === 'reasoningOffValue' ? '' : {};
+      }
+      h._masterId = m.id;
+      h._testOpen = false; h._detectOpen = false;
+      normalizeReasoningForSchema(h);
+    });
+  }
   function renderHopList() {
+    refreshReasoningMasters();
     const root = $('#hop-list');
     // Existing models this hop could be pre-filled from — excludes whatever
     // id is currently being edited. Picking one COPIES that model's fields
@@ -2798,7 +2948,8 @@
     const cloneableIds = Object.keys(currentModels).filter(mid => mid !== editingId).sort();
     root.innerHTML = hopState.map((h, i) => {
       const suggestedSchema = autoReasoningSchema(h);
-      if (!h.reasoningSchema && suggestedSchema) { h.reasoningSchema = suggestedSchema; normalizeReasoningForSchema(h); }
+      const hasRecordedLocks = Boolean(h.reasoningLocks && (h.reasoningLocks.thinking || h.reasoningLocks.effort));
+      if (!h.reasoningSchema && suggestedSchema && !hasRecordedLocks) { h.reasoningSchema = suggestedSchema; normalizeReasoningForSchema(h); }
       const schemaOptions = `<option value="" ${!h.reasoningSchema ? 'selected' : ''}>Provider/model default (no override)</option>` + Object.entries(reasoningSchemas).map(([key, p]) => `<option value="${escapeHtml(key)}" ${h.reasoningSchema === key ? 'selected' : ''}>${escapeHtml(p.label || key)}</option>`).join('');
 
       const cloneOptions = `<option value="">— or copy fields from an existing model —</option>` +
@@ -2816,9 +2967,9 @@
             ${i > 0 ? `<button type="button" class="hop-mini-btn" data-act="up" data-idx="${i}" title="Move earlier in the chain">↑</button>` : ''}
             ${i < hopState.length - 1 ? `<button type="button" class="hop-mini-btn" data-act="down" data-idx="${i}" title="Move later in the chain">↓</button>` : ''}
             ${h.model.trim() ? `<button type="button" class="hop-mini-btn apply-preset-btn" data-idx="${i}" title="Check for a saved known-good config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} and apply it">🔍</button>` : ''}
-            <button type="button" class="hop-mini-btn wide detect-btn" data-idx="${i}" title="Paste an example from the provider's docs to detect this model's reasoning toggle/effort controls">🧪 Detect controls</button>
+            <button type="button" class="hop-mini-btn wide detect-btn" data-idx="${i}" title="${h._masterId ? `What this model has (thinking, effort, locks, keys) is kept once, on "${escapeHtml(h._masterId)}" — this opens it` : 'Admin view: paste the provider\'s example, set the schema, mark thinking always-on or effort fixed'}">${h._masterId ? '⚙ Setup → ' + escapeHtml(h._masterId) : (h._testOpen ? '⚙ Setup (open)' : '⚙ Setup')}</button>
             ${h.model.trim() ? `<button type="button" class="hop-mini-btn wide cfg-test-btn" data-idx="${i}" title="Send ONE tiny real request to ${escapeHtml(h.provider)} with this hop's reasoning fields exactly as they are on screen (saved or not) and see whether the provider accepts them. Uses one request of its quota.">Test this config</button>` : ''}
-            ${h.reasoningSchema && h.model.trim() ? `<button type="button" class="hop-mini-btn save-preset-btn" data-idx="${i}" title="Remember this reasoning config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} — auto-applied next time you import this exact model">💾</button>` : ''}
+            ${(h.reasoningSchema || (h.reasoningLocks && (h.reasoningLocks.thinking || h.reasoningLocks.effort))) && h.model.trim() ? `<button type="button" class="hop-mini-btn save-preset-btn" data-idx="${i}" title="Remember this reasoning config for ${escapeHtml(h.provider)}/${escapeHtml(h.model)} — auto-applied next time you import this exact model">💾</button>` : ''}
             ${hopState.length > 1 ? `<button type="button" class="hop-mini-btn remove" data-act="remove" data-idx="${i}" title="Remove this hop">✕</button>` : ''}
           </span>
         </div>
@@ -2826,10 +2977,9 @@
           ${cloneRow}
           <div class="field"><label>Model slug</label><input type="text" data-f="model" data-idx="${i}" value="${escapeHtml(h.model)}" placeholder="e.g. z-ai/glm4.7"></div>
           <div class="field"><label>Provider</label><select data-f="provider" data-idx="${i}">${Object.keys(PROVIDER_LABELS).map(p => `<option value="${p}" ${h.provider === p ? 'selected' : ''}>${PROVIDER_LABELS[p]}</option>`).join('')}</select></div>
-          <div class="field" style="grid-column:1 / -1;"><label>Reasoning schema</label><select data-f="reasoningSchema" data-idx="${i}">${schemaOptions}</select><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Choose how this model expects reasoning parameters to be sent, or hit 🧪 above to detect it from an example instead. The controls below are generated from that schema.</div></div>
-          ${h._detectOpen ? renderDetectPanel(h, i) : ''}
-          ${renderReasoningControls(h, i)}
-          ${renderCfgTest(h, i)}
+          ${h._testOpen ? `<div class="field" style="grid-column:1 / -1;"><label>Reasoning schema</label><select data-f="reasoningSchema" data-idx="${i}">${schemaOptions}</select><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Choose how this model expects reasoning parameters to be sent, or hit 🧪 above to detect it from an example instead. The controls below are generated from that schema.</div></div>` : ''}
+          ${h._testOpen ? renderTestArea(h, i) : `${renderReasoningNormal(h, i)}
+          ${renderCfgTest(h, i)}`}
           <div class="field"><label>Status</label><select data-f="status" data-idx="${i}">${['active', 'experimental', 'deprecated', 'disabled'].map(st => `<option value="${st}" ${h.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"><label>Limit type</label><select data-f="limitType" data-idx="${i}">${['rate-limited', 'credits', 'unlimited', 'paid'].map(st => `<option value="${st}" ${h.limitType === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
           <div class="field"> <label title="Skip this hop when a single request's estimated INPUT size is bigger than this. Not a per-minute budget — that is TPM (Google) below.">Max request size, tokens (opt.)</label><input type="number" data-f="tpmLimit" data-idx="${i}" value="${h.tpmLimit}"></div>
@@ -2874,6 +3024,10 @@
           reasoning: src.reasoning && typeof src.reasoning === 'object' ? JSON.parse(JSON.stringify(src.reasoning)) : {},
           reasoningFieldOptions: src.reasoningFieldOptions ? JSON.parse(JSON.stringify(src.reasoningFieldOptions)) : {},
           reasoningFieldKeys: src.reasoningFieldKeys ? JSON.parse(JSON.stringify(src.reasoningFieldKeys)) : {},
+          reasoningUseDefault: src.reasoningUseDefault === true,
+          reasoningLocks: src.reasoningLocks ? JSON.parse(JSON.stringify(src.reasoningLocks)) : {},
+          reasoningOffValue: src.reasoningOffValue || '',
+          reasoningThinkingOff: src.reasoningThinkingOff === true,
           reasoningFieldEnabled: src.reasoningFieldEnabled ? JSON.parse(JSON.stringify(src.reasoningFieldEnabled)) : {},
           reasoningFieldTransport: src.reasoningFieldTransport ? JSON.parse(JSON.stringify(src.reasoningFieldTransport)) : {},
           status: src.status || 'active', limitType: src.limitType || 'rate-limited',
@@ -2947,6 +3101,19 @@
 
     // "Does this model even have this parameter?" switch — flipping it
     // re-renders so the rest of that field's controls appear/disappear.
+    const behaviourChange = (sel, fn) => $$(sel).forEach(el => el.addEventListener('change', e => { const idx = +e.target.dataset.idx; fn(hopState[idx], e.target); staleCfgTest(idx); renderHopList(); }));
+    behaviourChange('#hop-list [data-rfuse]', (h, t) => { h.reasoningUseDefault = t.checked; });
+    behaviourChange('#hop-list [data-rflock-thinking]', (h, t) => { h.reasoningLocks = { ...(h.reasoningLocks || {}) }; if (t.value === 'always') h.reasoningLocks.thinking = 'always'; else delete h.reasoningLocks.thinking; });
+    behaviourChange('#hop-list [data-rflock-effort]', (h, t) => { h.reasoningLocks = { ...(h.reasoningLocks || {}) }; const v = t.value.trim(); if (v) h.reasoningLocks.effort = v; else delete h.reasoningLocks.effort; });
+    behaviourChange('#hop-list [data-rfoff]', (h, t) => {
+      h.reasoningOffValue = t.value; if (!t.value) h.reasoningThinkingOff = false;
+      const eff = Object.entries(reasoningSchemas[h.reasoningSchema]?.fields || {}).find(([k, f]) => f.type === 'select');
+      if (eff && t.value && String(h.reasoning[eff[0]]) === t.value) {
+        const rest = (h.reasoningFieldOptions[eff[0]] || []).filter(v => String(v) !== t.value);
+        h.reasoning[eff[0]] = rest.length ? rest[rest.length - 1] : '';
+      }
+    });
+    behaviourChange('#hop-list [data-rfsynth]', (h, t) => { h.reasoningThinkingOff = t.value === 'off'; });
     $$('#hop-list [data-rfenable]').forEach(el => {
       el.addEventListener('change', e => {
         const idx = +e.target.dataset.idx;
@@ -3026,8 +3193,16 @@
 
     $$('#hop-list .detect-btn').forEach(btn => btn.addEventListener('click', e => {
       const idx = +e.currentTarget.dataset.idx;
-      hopState[idx]._detectOpen = !hopState[idx]._detectOpen;
-      if (!hopState[idx]._detectOpen) hopState[idx]._detectResult = null;
+      const h = hopState[idx];
+      if (h._masterId) {
+        // What a model has (thinking? effort? locks? keys?) is kept once, on the standalone provider+model.
+        const mid = h._masterId;
+        if (confirm(`What this model has is kept once, on "${mid}" — not on this hop.\n\nOpen "${mid}" to change it? (Unsaved changes in this editor are lost.)`)) openForm(mid, currentModels[mid], { testHop: 0 });
+        return;
+      }
+      h._testOpen = !h._testOpen;
+      h._detectOpen = h._testOpen;
+      if (!h._testOpen) h._detectResult = null;
       renderHopList();
     }));
     $$('#hop-list .cfg-test-btn').forEach(btn => btn.addEventListener('click', async e => {
@@ -3039,7 +3214,7 @@
       try {
         out = await api('/admin/api/test-model/config', { method: 'POST', body: { hop: {
           provider: h.provider, model: h.model.trim(), reasoningSchema: h.reasoningSchema || '', reasoning: h.reasoning,
-          reasoningFieldEnabled: h.reasoningFieldEnabled, reasoningFieldKeys: h.reasoningFieldKeys, reasoningFieldTransport: h.reasoningFieldTransport } } });
+          reasoningFieldEnabled: h.reasoningFieldEnabled, reasoningFieldKeys: h.reasoningFieldKeys, reasoningFieldTransport: h.reasoningFieldTransport, reasoningFieldOptions: h.reasoningFieldOptions, reasoningUseDefault: h.reasoningUseDefault === true, reasoningLocks: h.reasoningLocks, reasoningOffValue: h.reasoningOffValue || '', reasoningThinkingOff: h.reasoningThinkingOff === true } } });
       } catch (err) { out = { verdict: 'error', label: 'error', message: err.message }; }
       h._cfgTest = out;
       if (hopState.includes(h)) renderHopList();
@@ -3053,20 +3228,29 @@
     $$('#hop-list [data-act="detect-scan"]').forEach(btn => btn.addEventListener('click', e => {
       const idx = +e.currentTarget.dataset.idx;
       const h = hopState[idx];
+      h._detectNote = '';
       h._detectResult = detectReasoningFromExample(h._detectInput, h._detectValues);
       renderHopList();
     }));
     $$('#hop-list [data-act="detect-cancel"]').forEach(btn => btn.addEventListener('click', e => {
       const idx = +e.currentTarget.dataset.idx;
       hopState[idx]._detectOpen = false;
+      hopState[idx]._testOpen = false;
       hopState[idx]._detectResult = null;
+      renderHopList();
+    }));
+    $$('#hop-list [data-act="test-close"]').forEach(btn => btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.idx;
+      hopState[idx]._testOpen = false; hopState[idx]._detectOpen = false; hopState[idx]._detectResult = null;
       renderHopList();
     }));
     $$('#hop-list [data-act="detect-apply"]').forEach(btn => btn.addEventListener('click', e => {
       const idx = +e.currentTarget.dataset.idx;
       const h = hopState[idx];
       applyDetectionToHop(h, h._detectResult);
-      h._detectOpen = false;
+      h._cfgTest = null;
+      if (h._testOpen) h._detectNote = '✓ Applied — the settings in step 3 are now filled in. Press Run test to check them.';
+      else h._detectOpen = false;
       h._detectResult = null;
       h._detectInput = '';
       h._detectValues = '';
@@ -3088,6 +3272,11 @@
       h.reasoningFieldKeys = preset.reasoningFieldKeys ? JSON.parse(JSON.stringify(preset.reasoningFieldKeys)) : {};
       h.reasoningFieldTransport = preset.reasoningFieldTransport ? JSON.parse(JSON.stringify(preset.reasoningFieldTransport)) : {};
       h.reasoningFieldOptions = preset.reasoningFieldOptions ? JSON.parse(JSON.stringify(preset.reasoningFieldOptions)) : {};
+      h.reasoningUseDefault = preset.reasoningUseDefault === true;
+      h.reasoningLocks = preset.reasoningLocks ? JSON.parse(JSON.stringify(preset.reasoningLocks)) : {};
+      h.reasoningOffValue = preset.reasoningOffValue || '';
+      h.reasoningThinkingOff = preset.reasoningThinkingOff === true;
+      h._cfgTest = null;
       if (preset.notes && !h.notes) h.notes = preset.notes;
       renderHopList();
     }));
@@ -3106,12 +3295,16 @@
         reasoningFieldEnabled: h.reasoningFieldEnabled || {},
         reasoningFieldKeys: h.reasoningFieldKeys || {},
         reasoningFieldTransport: h.reasoningFieldTransport || {},
-        reasoningFieldOptions: h.reasoningFieldOptions || {}
+        reasoningFieldOptions: h.reasoningFieldOptions || {},
+        ...(h.reasoningUseDefault === true ? { reasoningUseDefault: true } : {}),
+        ...(h.reasoningLocks && Object.keys(h.reasoningLocks).length ? { reasoningLocks: h.reasoningLocks } : {}),
+        ...(h.reasoningOffValue ? { reasoningOffValue: h.reasoningOffValue, ...(h.reasoningThinkingOff === true ? { reasoningThinkingOff: true } : {}) } : {})
       };
       const btnLabel = btn.textContent;
       btn.textContent = '…';
       try {
         await api('/admin/api/presets', { method: 'POST', body: { provider: h.provider, model: h.model.trim(), config } });
+        modelPresets[`${h.provider}/${h.model.trim()}`] = JSON.parse(JSON.stringify(config));
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = btnLabel; }, 1200);
       } catch (err) {
