@@ -99,6 +99,24 @@ The 🧪 button in the Admin hop editor and sync panel infers a model's reasonin
 
 **Apply** writes the hop's `reasoningSchema` as `thinking-and-effort` (a toggle and/or effort, each sent only when switched on, with the wire key and placement — `chat_template_kwargs` or top level — set per hop) or `raw` (any other detected fields). Both are defined in `reasoning-schemas.json`; a hop pointing at a schema id that isn't defined there sends nothing and logs `Unknown reasoning schema`.
 
+## Reasoning behaviour per hop (Normal view, Setup view, locks, master)
+
+Two views of a hop's reasoning:
+
+- **Normal view** (the default): only what exists on this hop, as small controls — a thinking ON/OFF (or *Always on*), an effort picker (or *Fixed at …*), and **Use provider default**. A model with an effort list but no thinking switch shows *Thinking: always on — no thinking switch is recorded*.
+- **⚙ Setup view** (admin): the schema picker, the NVIDIA example link and paste box, the key/placement/option editors, the locks, and **▶ Run test** (one tiny real request, result shown in the box). The model card's 🧪 Test button opens this for single-hop models.
+
+What the settings mean:
+
+- **Use provider default.** Sends no reasoning fields, so the provider decides. Saved settings stay on the hop (greyed out) and come back when it is unticked. Hops saved before this existed behave as before.
+- **Thinking: always on** and **Effort fixed at …** are facts about a model, and work **with no schema at all** (e.g. a model whose hosted endpoint shows no controls). The control is replaced by a locked label and nothing is sent for it.
+- **Which effort value means OFF.** For a model with no thinking switch but an effort list that has an "off" word. That word leaves the effort list and becomes an *Enable thinking* ON/OFF switch: OFF sends the word, ON sends the effort you picked. Ignored when the hop has a real thinking switch.
+- **Facts vs choices.** *Facts* (does it have thinking or effort, locks, off word, wire keys, placement, option lists, schema) belong to a provider + model and are kept once, on the standalone (single-hop) model. *Choices* (the values, thinking on/off, use default) belong to each hop. A hop inside a compound model takes its facts from the standalone model with the same provider + model when one exists (server and Admin use the same rule); **⚙ Setup** on such a hop jumps to that standalone model. Without one, the hop keeps its own facts.
+- **💾 Save as preset** remembers the facts and choices for a provider + model (🔍 re-applies them).
+- **The pasted example is never stored**, only what was read from it. `reasoning-vocab.json` holds the effort words providers use (researched from their docs, with links) and decides only how they are displayed; each hop sends its own exact words. No synonyms are defined until a source confirms two words mean the same.
+
+A 200 from the tester means the provider did not reject the request, not that it acted on it.
+
 ## Custom bundles
 
 A hop chain can be flagged `"custom": true` to group it under its own "Custom bundles" tab in the Admin dashboard, separate from its provider's tab — for hand-assembled multi-provider fallback chains you want to find quickly rather than hunting through whichever provider its first hop happens to use.
@@ -188,3 +206,4 @@ The Admin panel's **Model tester** sends one tiny real request straight to a pro
 - **THINK / REPLY** blocks are stitched live in the Admin log, and a copy of each is written to the Render console when the stream finishes (every line prefixed with the request id), so Render no longer has only per-chunk lines.
 - **Waiting notices.** From the moment a request arrives until the model's *first output* (thinking counts as output) an Admin/console line appears once 10s pass with nothing back, then again at 30s, 60s and every minute: `⏳ still waiting for nvidia/… to start answering — 2m 0s and no output yet (queue/connect time, not thinking)`. Fast models never print one. When output finally starts after a long wait you get `✓ first output arrived after 4m 14s`, and the end-of-stream line shows both clocks: time streaming, and time since the request arrived.
 - **Client hang-up cancels the upstream call.** When the client stops or disconnects, the in-flight request to the provider is aborted — including one still waiting in the provider's queue — instead of running to the end for nobody. (Before this, a stopped generation kept running and competed with the retry for the same provider capacity.)
+
