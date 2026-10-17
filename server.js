@@ -1417,6 +1417,7 @@ function getProviderConfigReadOnly(provider) {
 function getReasoningBody(providerConfig) {
   const schemaName = providerConfig.reasoningSchema;
   if (!schemaName) return undefined;
+  if (providerConfig.reasoningUseDefault === true) return undefined;
 
   const schema = REASONING_SCHEMAS[schemaName];
   if (!schema) {
@@ -1438,7 +1439,20 @@ function getReasoningBody(providerConfig) {
   // whole schema shares one.
   const byTransport = {};
 
+  // Per-hop behaviour flags (all optional; a hop without them behaves as before):
+  //  reasoningLocks.thinking === 'always'  -> thinking can't be turned off: the thinking toggle is never sent.
+  //  reasoningLocks.effort (a word)        -> effort is fixed by the provider: the effort field is never sent.
+  //  reasoningOffValue + reasoningThinkingOff === true, on a hop with no ACTIVE thinking toggle ->
+  //     "thinking off" is expressed by sending that word as the effort (the Admin shows it as a thinking switch).
+  const locks = providerConfig.reasoningLocks && typeof providerConfig.reasoningLocks === 'object' ? providerConfig.reasoningLocks : {};
+  const isThinkingField = n => n === 'thinking_toggle' || n === 'enable_thinking';
+  const thinkingToggleActive = Object.entries(schema.fields || {}).some(([n, f]) => f.type === 'boolean' && isThinkingField(n)
+    && (!Object.prototype.hasOwnProperty.call(f, 'enabledByDefault') || enabledMap[n]) && locks.thinking !== 'always');
+  const offActive = Boolean(providerConfig.reasoningOffValue) && !thinkingToggleActive && providerConfig.reasoningThinkingOff === true;
+
   for (const [fieldName, field] of Object.entries(schema.fields || {})) {
+    if (field.type === 'boolean' && isThinkingField(fieldName) && locks.thinking === 'always') continue;
+    if (field.type === 'select' && locks.effort) continue;
     // A field with an enable switch (the unified thinking+effort schema)
     // is skipped entirely — not sent, not even blank — unless this hop
     // explicitly turned it on. That's what "this model doesn't have a
@@ -1458,6 +1472,7 @@ function getReasoningBody(providerConfig) {
 
     let value = rawValue;
     if (value === undefined) value = field.default;
+    if (field.type === 'select' && offActive) value = providerConfig.reasoningOffValue;
     if (value === undefined) continue;
 
     if (field.type === 'boolean') {
@@ -1521,6 +1536,104 @@ function getReasoningBody(providerConfig) {
   }
 
   return Object.keys(result).length ? result : undefined;
+}
+
+// ---- Per-hop "use default" -------------------------------------------------
+// A hop with reasoningUseDefault === true sends NO reasoning fields at all, so
+// the provider decides. The saved reasoning settings stay on the hop untouched
+// and take effect again the moment the flag is switched off. Hops without the
+// flag (every hop saved before this existed) behave exactly as before.
+// ---- Reasoning vocabulary + normalized per-hop facts ------------------------
+// reasoning-vocab.json maps effort words to display levels (mid/medium -> Medium).
+// deriveReasoningFacts() reads a hop's legacy fields into a small normalized
+// record; buildBodyFromFacts() turns that record back into the request fields.
+// getReasoningBody() above is still what real requests use; the test suite
+// proves both produce identical bodies for every hop, so later steps can move
+// over without changing what is sent.
+let REASONING_VOCAB = { levels: [] };
+try { REASONING_VOCAB = JSON.parse(fs.readFileSync(path.join(__dirname, 'reasoning-vocab.json'), 'utf8')); }
+catch (e) { log('WARN', `reasoning-vocab.json not loaded (${e.message}); effort words will display as typed.`); }
+
+function normalizeEffortWord(word) {
+  const w = String(word == null ? '' : word).trim().toLowerCase();
+  if (!w) return null;
+  for (const lv of REASONING_VOCAB.levels || []) {
+    if (lv.id === w || (lv.aliases || []).includes(w)) return lv.id;
+  }
+  return null;
+}
+function effortLabel(word) {
+  const id = normalizeEffortWord(word);
+  const lv = id && (REASONING_VOCAB.levels || []).find(l => l.id === id);
+  return lv ? lv.label : String(word);
+}
+
+function deriveReasoningFacts(hop) {
+  const schema = hop && hop.reasoningSchema ? REASONING_SCHEMAS[hop.reasoningSchema] : null;
+  if (!schema) {
+    // A hop with no controls can still carry facts: thinking that is always on, an effort that is fixed.
+    const lk = hop && hop.reasoningLocks && typeof hop.reasoningLocks === 'object' ? hop.reasoningLocks : null;
+    if (!lk || (lk.thinking !== 'always' && !lk.effort)) return null;
+    return { useDefault: hop.reasoningUseDefault === true, thinking: lk.thinking === 'always' ? { mode: 'always_on' } : null,
+      effort: lk.effort ? { mode: 'fixed', value: String(lk.effort) } : null, extras: [], raw: [], syntheticThinkingSwitch: false };
+  }
+  const configured = hop.reasoning && typeof hop.reasoning === 'object' ? hop.reasoning : {};
+  const enabledMap = hop.reasoningFieldEnabled && typeof hop.reasoningFieldEnabled === 'object' ? hop.reasoningFieldEnabled : {};
+  const keys = hop.reasoningFieldKeys || {};
+  const transports = hop.reasoningFieldTransport || {};
+  const facts = { useDefault: hop.reasoningUseDefault === true, thinking: null, effort: null, extras: [], raw: [], syntheticThinkingSwitch: false };
+  const locks = hop.reasoningLocks && typeof hop.reasoningLocks === 'object' ? hop.reasoningLocks : {};
+  const isThink = n => n === 'thinking_toggle' || n === 'enable_thinking';
+  const toggleActive = Object.entries(schema.fields || {}).some(([n, f]) => f.type === 'boolean' && isThink(n)
+    && (!Object.prototype.hasOwnProperty.call(f, 'enabledByDefault') || enabledMap[n]) && locks.thinking !== 'always');
+  const offActive = Boolean(hop.reasoningOffValue) && !toggleActive && hop.reasoningThinkingOff === true;
+  for (const [name, field] of Object.entries(schema.fields || {})) {
+    if (Object.prototype.hasOwnProperty.call(field, 'enabledByDefault') && !enabledMap[name]) continue;
+    if (field.type === 'boolean' && isThink(name) && locks.thinking === 'always') { facts.thinking = { mode: 'always_on' }; continue; }
+    if (field.type === 'select' && locks.effort) { facts.effort = { mode: 'fixed', value: String(locks.effort) }; continue; }
+    const transport = (field.transportPerHop && transports[name]) ? transports[name] : (schema.transport || 'top_level');
+    if (name === '__raw') {
+      let v = configured[name] === undefined ? field.default : configured[name];
+      if (configured[name] === '') continue;
+      if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = field.default ?? {}; } }
+      if (!v || typeof v !== 'object' || Array.isArray(v)) v = field.default ?? {};
+      facts.raw.push({ transport, body: v });
+      continue;
+    }
+    if (configured[name] === '') continue;
+    let value = configured[name] === undefined ? field.default : configured[name];
+    if (value === undefined) continue;
+    const key = (field.keyPerHop && keys[name]) ? keys[name] : name;
+    if (field.type === 'boolean') {
+      if (typeof value === 'string') value = value.toLowerCase() === 'true';
+      const f = { mode: 'toggle', key, transport, value: Boolean(value) };
+      if (name === 'thinking_toggle' || name === 'enable_thinking') facts.thinking = f; else facts.extras.push({ ...f, name });
+    } else if (field.type === 'select') {
+      let v = String(value);
+      if (!field.optionsPerHop && Array.isArray(field.options) && !field.options.includes(value)) v = field.default;
+      if (offActive) v = String(hop.reasoningOffValue);
+      const values = field.optionsPerHop ? ((hop.reasoningFieldOptions || {})[name] || field.defaultOptions || []) : (field.options || []);
+      facts.effort = { mode: 'choice', key, transport, values: values.slice(), value: v };
+      if (hop.reasoningOffValue && !toggleActive) facts.syntheticThinkingSwitch = true;
+    } else {
+      facts.extras.push({ mode: 'value', name, key, transport, value });
+    }
+  }
+  return facts;
+}
+
+function buildBodyFromFacts(facts) {
+  if (!facts || facts.useDefault) return undefined;
+  const byT = {};
+  const put = (t, k, v) => { (byT[t] = byT[t] || {})[k] = v; };
+  if (facts.thinking && facts.thinking.mode === 'toggle') put(facts.thinking.transport, facts.thinking.key, facts.thinking.value);
+  if (facts.effort && facts.effort.mode === 'choice') put(facts.effort.transport, facts.effort.key, facts.effort.value);
+  for (const x of facts.extras) put(x.transport, x.key, x.value);
+  for (const r of facts.raw) byT[r.transport] = { ...(byT[r.transport] || {}), ...r.body };
+  const out = {};
+  if (byT.chat_template_kwargs && Object.keys(byT.chat_template_kwargs).length) out.chat_template_kwargs = byT.chat_template_kwargs;
+  if (byT.top_level && Object.keys(byT.top_level).length) Object.assign(out, byT.top_level);
+  return Object.keys(out).length ? out : undefined;
 }
 
 // ============================================================
@@ -1587,7 +1700,34 @@ function resolveModelChain(modelId, mapping = MODEL_MAPPING) {
     hops.push(leaf);
     cur = fallback || null;
   }
+  // A hop inside a compound (multi-hop) model takes its reasoning FACTS from
+  // the standalone model with the same provider + model, when one exists.
+  // Facts = does it have thinking / effort, locks, the off word, wire keys,
+  // placement, option lists. Choices (the values, thinking on/off, use
+  // default) always stay on the hop itself.
+  if (hops.length > 1) return hops.map(h => inheritReasoningFacts(h, modelId, mapping));
   return hops;
+}
+
+const REASONING_FACT_KEYS = ['reasoningSchema', 'reasoningFieldEnabled', 'reasoningFieldKeys', 'reasoningFieldTransport', 'reasoningFieldOptions', 'reasoningLocks', 'reasoningOffValue'];
+function findReasoningMaster(provider, model, exceptId, mapping = MODEL_MAPPING) {
+  for (const id of Object.keys(mapping).sort()) {
+    if (id === exceptId) continue;
+    const e = mapping[id];
+    if (!e || e.fallback || e.provider !== provider || e.model !== model) continue;
+    if (REASONING_FACT_KEYS.some(k => e[k] !== undefined)) return { id, entry: e };
+  }
+  return null;
+}
+function inheritReasoningFacts(hop, modelId, mapping = MODEL_MAPPING) {
+  const m = findReasoningMaster(hop.provider, hop.model, modelId, mapping);
+  if (!m) return hop;
+  const out = { ...hop };
+  for (const k of REASONING_FACT_KEYS) {
+    if (m.entry[k] !== undefined) out[k] = JSON.parse(JSON.stringify(m.entry[k])); else delete out[k];
+  }
+  out._reasoningFactsFrom = m.id;
+  return out;
 }
 
 // ============================================================
@@ -3120,7 +3260,7 @@ app.post('/admin/api/test-model/config', requireAdmin, async (req, res) => {
   if (!model || model.length > 200) return res.status(400).json({ error: { message: 'This hop has no model id yet.', type: 'invalid_request_error', code: 400 } });
   const plainObj = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : undefined);
   const hop = { provider, model, reasoningSchema: typeof h.reasoningSchema === 'string' ? h.reasoningSchema : '',
-    reasoning: plainObj(h.reasoning), reasoningFieldEnabled: plainObj(h.reasoningFieldEnabled), reasoningFieldKeys: plainObj(h.reasoningFieldKeys), reasoningFieldTransport: plainObj(h.reasoningFieldTransport) };
+    reasoning: plainObj(h.reasoning), reasoningFieldEnabled: plainObj(h.reasoningFieldEnabled), reasoningFieldKeys: plainObj(h.reasoningFieldKeys), reasoningFieldTransport: plainObj(h.reasoningFieldTransport), reasoningFieldOptions: plainObj(h.reasoningFieldOptions), reasoningUseDefault: h.reasoningUseDefault === true, reasoningLocks: plainObj(h.reasoningLocks), reasoningOffValue: typeof h.reasoningOffValue === 'string' ? h.reasoningOffValue : '', reasoningThinkingOff: h.reasoningThinkingOff === true };
   if (hop.reasoningSchema && !REASONING_SCHEMAS[hop.reasoningSchema]) {
     return res.json({ provider, model, ok: false, verdict: 'error', label: TEST_VERDICT_LABEL.error, sent: null, message: `The schema "${hop.reasoningSchema}" is not defined in reasoning-schemas.json, so this hop sends no reasoning field at all.` });
   }
@@ -3129,12 +3269,15 @@ app.post('/admin/api/test-model/config', requireAdmin, async (req, res) => {
   const maxTokens = Math.min(2000, Math.max(16, parseInt(req.body?.maxTokens, 10) || 256));
   const out = await runTesterRequest({ provider, model, prompt, maxTokens, extraBody, timeoutMs: 100000 });
   const sent = extraBody;
+  const facts = deriveReasoningFacts(hop);
+  const sameAsLive = JSON.stringify(buildBodyFromFacts(facts) || null) === JSON.stringify(extraBody);
   let message = out.message || '';
-  if (!sent) message = `This hop sends no reasoning field, so there was nothing to check${out.ok ? ' (the model itself answered fine)' : ''}.${message ? ' ' + message : ''}`;
+  if (!sent && hop.reasoningUseDefault) message = `This hop is set to "use default", so no reasoning field is sent and the provider decides${out.ok ? ' (the model itself answered fine)' : ''}.${message ? ' ' + message : ''}`;
+  else if (!sent) message = `This hop sends no reasoning field, so there was nothing to check${out.ok ? ' (the model itself answered fine)' : ''}.${message ? ' ' + message : ''}`;
   else if (out.ok) message = `The provider took these fields (HTTP ${out.status}) — it did not reject them. That does not prove it acted on them: ${out.reasoningChars ? `${out.reasoningChars} characters of thinking came back` : 'no thinking text came back'}.${message ? ' ' + message : ''}`;
   else if (out.verdict === 'rejected') message = `The provider rejected the request — most likely these fields. ${message}`;
   else if (/timeout|ECONNABORTED/i.test(message)) message = `No answer within 100 s — a slow queue, not necessarily a rejection. ${message}`;
-  res.json({ ...out, sent, message });
+  res.json({ ...out, sent, message, facts, factsMatchLive: sameAsLive });
 });
 
 app.get('/admin/api/logs', requireAdmin, (req, res) => {
@@ -3215,6 +3358,11 @@ app.post('/admin/api/logs/clear', requireAdmin, (req, res) => {
 // ============================================================
 // ADMIN: REASONING SCHEMAS
 // ============================================================
+app.get('/admin/api/reasoning-vocab', requireAdmin, (req, res) => {
+  const words = String(req.query.words || '').split(',').map(w => w.trim()).filter(Boolean).slice(0, 50);
+  res.json({ levels: REASONING_VOCAB.levels || [], words: words.map(w => ({ word: w, level: normalizeEffortWord(w), label: effortLabel(w) })) });
+});
+
 app.get('/admin/api/reasoning-schemas', requireAdmin, (req, res) => {
   res.json({ schemas: REASONING_SCHEMAS });
 });
@@ -3951,6 +4099,10 @@ app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
     ...(src?.reasoningFieldKeys ? { reasoningFieldKeys: JSON.parse(JSON.stringify(src.reasoningFieldKeys)) } : {}),
     ...(src?.reasoningFieldTransport ? { reasoningFieldTransport: JSON.parse(JSON.stringify(src.reasoningFieldTransport)) } : {}),
     ...(src?.reasoningFieldOptions ? { reasoningFieldOptions: JSON.parse(JSON.stringify(src.reasoningFieldOptions)) } : {}),
+    ...(src?.reasoningUseDefault === true ? { reasoningUseDefault: true } : {}),
+    ...(src?.reasoningLocks && typeof src.reasoningLocks === 'object' ? { reasoningLocks: JSON.parse(JSON.stringify(src.reasoningLocks)) } : {}),
+    ...(src?.reasoningOffValue ? { reasoningOffValue: String(src.reasoningOffValue) } : {}),
+    ...(src?.reasoningThinkingOff === true ? { reasoningThinkingOff: true } : {}),
     ...((preset?.notes && !usedDetection) || limitNotes.length ? { notes: [(preset?.notes && !usedDetection) ? preset.notes : null, ...limitNotes].filter(Boolean).join(' ') } : {}),
     status: (status || 'active'),
     limitType: (limitType || 'rate-limited'),
@@ -4047,3 +4199,4 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
+
