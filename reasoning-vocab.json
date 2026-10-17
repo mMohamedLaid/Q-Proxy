@@ -1,0 +1,62 @@
+{
+  "_note": "Shared vocabulary for reasoning-effort words, used only to DISPLAY and ORDER them in the Admin panel. Each hop keeps the exact words its provider accepts and sends those as-is. Researched 2026-10-16 from the providers' own docs (links under 'sources'). No synonyms are defined: none of the sources use 'mid' or similar for 'medium'. A synonym is added only once a doc, a paste or a test confirms two words mean the same thing. Never pruned when models are deleted. Unknown words are shown as typed.",
+  "levels": [
+    {
+      "id": "none",
+      "label": "None",
+      "aliases": [],
+      "seen": "Turns reasoning off where supported: OpenRouter ('none', rejected by Anthropic models and by models flagged mandatory), OpenAI (model-dependent), Gemini ('none' only on 2.5 models), Z.ai glm-5.2 ('none'/'minimal' skip thinking), DeepSeek Responses API."
+    },
+    {
+      "id": "minimal",
+      "label": "Minimal",
+      "aliases": [],
+      "seen": "OpenRouter (about 10% of max_tokens; sent to Anthropic as 'low'), OpenAI, Gemini, Z.ai glm-5.2, DeepSeek (maps to 'low')."
+    },
+    {
+      "id": "low",
+      "label": "Low",
+      "aliases": [],
+      "seen": "Everywhere: OpenRouter, OpenAI, Anthropic, Gemini, Z.ai, DeepSeek."
+    },
+    {
+      "id": "medium",
+      "label": "Medium",
+      "aliases": [],
+      "seen": "OpenRouter, OpenAI, Anthropic, Gemini. Z.ai glm-5.2 and DeepSeek accept it but treat it as 'high'. Z.ai glm-5.3 does NOT list it."
+    },
+    {
+      "id": "high",
+      "label": "High",
+      "aliases": [],
+      "seen": "Everywhere. Default for DeepSeek V4 and most Anthropic models."
+    },
+    {
+      "id": "xhigh",
+      "label": "X-High",
+      "aliases": [],
+      "seen": "OpenRouter (same allocation as 'max'; mapped down to 'high' on Gemini 3), OpenAI, Anthropic (some models only), Z.ai glm-5.2 (maps to 'max'), DeepSeek (maps to 'high')."
+    },
+    {
+      "id": "max",
+      "label": "Max",
+      "aliases": [],
+      "seen": "OpenRouter, OpenAI, Anthropic, Z.ai (default; the only values for glm-5.3 are low/high/max), DeepSeek V4."
+    }
+  ],
+  "otherModesSeen": [
+    "Token budget instead of words: Gemini 2.5 thinking_budget; OpenRouter reasoning.max_tokens.",
+    "Thinking switch only: DeepSeek and Z.ai thinking.type = enabled/disabled; NVIDIA templates use enable_thinking or thinking (true/false).",
+    "Three-state mode: MiniMax M3 thinking_mode = disabled/adaptive/enabled (via a third-party NVIDIA NIM extension README, unverified).",
+    "Word with no level meaning: DeepSeek's docs map 'ultra' to 'max'."
+  ],
+  "sources": [
+    "https://openrouter.ai/docs/use-cases/reasoning-tokens.md",
+    "https://developers.openai.com/api/docs/guides/reasoning.md",
+    "https://platform.claude.com/docs/en/build-with-claude/effort",
+    "https://ai.google.dev/gemini-api/docs/openai",
+    "https://docs.z.ai/api-reference/llm/chat-completion",
+    "https://api-docs.deepseek.com/guides/thinking_mode/",
+    "https://cdn.jsdelivr.net/gh/xRyul/pi-nvidia-nim@main/README.md (third party)"
+  ]
+}
