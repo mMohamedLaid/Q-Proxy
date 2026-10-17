@@ -35,7 +35,7 @@ async function until(fn, ms = 4000, step = 50) {
 
 function stageProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qp-ui-'));
-  for (const f of ['server.js', 'models.json', 'reasoning-schemas.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+  for (const f of ['server.js', 'models.json', 'reasoning-schemas.json', 'reasoning-vocab.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'public'), path.join(dir, 'public'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'test'));
   fs.copyFileSync(path.join(ROOT, 'test', 'mock-axios.js'), path.join(dir, 'test', 'mock-axios.js'));
@@ -197,6 +197,25 @@ async function main() {
       const dp = await until(() => d.querySelector('#hop-list .detect-panel, #hop-list .detect-nv-link, #hop-list [data-detect-input]'));
       check('Test opens the editor with the detect panel (link + paste box) already expanded', !!dp && !!d.querySelector('#hop-list textarea'));
       check('no request is sent by just opening it', !d.querySelector('#hop-list .cfg-test'));
+      const ta = d.querySelector('#hop-list .test-area');
+      check('the Test area is a visible box holding the link, paste box, reasoning settings and a Run button', !!ta && !!ta.querySelector('.detect-nv-link') && !!ta.querySelector('[data-detect-input]') && !!ta.querySelector('[data-rf]') && /Run test/.test(ta.textContent));
+      const runBtn = ta && ta.querySelector('.cfg-test-btn');
+      if (runBtn) {
+        click(w, runBtn);
+        const res = await until(() => { const p = d.querySelector('#hop-list .test-area .cfg-test'); return p && /accepted/.test(p.textContent) ? p : null; }, 8000);
+        check('Run test shows the result inside the Test area, with what was sent', !!res && /sent/.test(res.textContent));
+      }
+      const pasteBox = d.querySelector('#hop-list .test-area [data-detect-input]');
+      if (pasteBox) {
+        setVal(w, pasteBox, 'client.chat.completions.create(model="google/gemma-4-31b-it", messages=[], extra_body={"chat_template_kwargs": {"enable_thinking": True}})', 'input');
+        click(w, d.querySelector('#hop-list .test-area [data-act="detect-scan"]'));
+        const ap = await until(() => d.querySelector('#hop-list .test-area [data-act="detect-apply"]'));
+        check('pasting + Scan inside the Test area offers Apply', !!ap);
+        if (ap) {
+          click(w, ap);
+          check('Apply keeps the Test area open and says the settings were filled in', !!d.querySelector('#hop-list .test-area') && /Applied/.test(d.querySelector('#hop-list .test-area').textContent));
+        }
+      }
     }
     const multiCard = d.querySelector('.model-card[data-id="gemma-4-31b"]');
     const multiBtns = multiCard ? multiCard.querySelectorAll('.chain .test-hop-btn') : [];
@@ -204,9 +223,145 @@ async function main() {
     if (multiBtns.length >= 2) {
       click(w, multiBtns[1]);
       const blocks = await until(() => { const b = d.querySelectorAll('#hop-list .hop-block'); return b.length >= 2 ? b : null; });
-      const open = blocks ? Array.from(blocks).map(b => !!b.querySelector('textarea')) : [];
-      check('Test on hop #2 expands only that hop\'s detect panel', open[1] === true && open[0] === false, JSON.stringify(open));
+      const setupBtn2 = blocks && blocks[1].querySelector('.detect-btn');
+      check('Test on a compound hop opens that hop in its normal view (its facts live on the standalone model, so no Setup box here)', !!blocks && !blocks[1].querySelector('.test-area') && !!setupBtn2 && /Setup → gemma-4-31b-nv/.test(setupBtn2.textContent), setupBtn2 && setupBtn2.textContent);
+      check('that hop says where its facts come from, and still lets you choose its own values', !!blocks && /comes from\s*gemma-4-31b-nv/.test(blocks[1].textContent) && !!blocks[1].querySelector('[data-rf]'));
+      w.confirm = () => true;
+      if (setupBtn2) click(w, setupBtn2);
+      const jumped = await until(() => d.getElementById('f-id') && d.getElementById('f-id').value === 'gemma-4-31b-nv' && d.querySelector('#hop-list .test-area'));
+      check('Setup on a compound hop jumps to the standalone provider+model, with its Setup box open', !!jumped && d.querySelectorAll('#hop-list .hop-block').length === 1);
     }
+
+    // ── 4b3. Use default, locked labels and the "Enable thinking" switch for effort-with-off ──
+    const openTest = async (modelId) => {
+      const c = d.querySelector(`.model-card[data-id="${modelId}"]`);
+      const b = c && c.querySelector('.model-card-top .test-hop-btn');
+      if (!b) return null;
+      click(w, b);
+      return await until(() => d.querySelector('#hop-list .test-area'));
+    };
+    const runAndRead = async () => {
+      const before = d.querySelector('#hop-list .test-area .cfg-test');
+      if (before) before.remove();
+      click(w, d.querySelector('#hop-list .test-area .cfg-test-btn'));
+      return await until(() => { const p = d.querySelector('#hop-list .test-area .cfg-test'); return p && !/testing…/.test(p.textContent) ? p : null; }, 8000);
+    };
+    let ta2 = await openTest('gemma-4-31b-nv');
+    check('Test area has a "Use provider default" checkbox', !!ta2 && !!ta2.querySelector('[data-rfuse]'));
+    if (ta2) {
+      const useBox = ta2.querySelector('[data-rfuse]');
+      useBox.checked = true; useBox.dispatchEvent(new w.Event('change', { bubbles: true }));
+      const dimmed = await until(() => { const rf = d.querySelector('#hop-list .test-area [data-rf="enable_thinking"]'); return rf && rf.disabled ? rf : null; });
+      check('ticking it greys out and disables the reasoning controls (settings are kept)', !!dimmed && !!d.querySelector('#hop-list .test-area .rf-dim'));
+      let res2 = await runAndRead();
+      check('with it on, Run test says nothing is sent and the provider decides', !!res2 && /use default/i.test(res2.textContent) && !/enable_thinking/.test(res2.textContent), res2 && res2.textContent);
+      const useBox2 = d.querySelector('#hop-list .test-area [data-rfuse]');
+      useBox2.checked = false; useBox2.dispatchEvent(new w.Event('change', { bubbles: true }));
+      const back = await until(() => { const rf = d.querySelector('#hop-list .test-area [data-rf="enable_thinking"]'); return rf && !rf.disabled ? rf : null; });
+      check('unticking it brings the saved setting straight back, enabled', !!back && back.value === 'true', back && back.value);
+      const lockSel = d.querySelector('#hop-list .test-area [data-rflock-thinking]');
+      lockSel.value = 'always'; lockSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+      const lockedRow = await until(() => d.querySelector('#hop-list .test-area .rf-locked'));
+      check('"Always on" replaces the thinking control with a locked label and no toggle', !!lockedRow && /Always on/.test(lockedRow.textContent) && !d.querySelector('#hop-list .test-area [data-rf="enable_thinking"]'));
+      res2 = await runAndRead();
+      check('an always-on thinking hop sends nothing for it (Run test shows no reasoning field)', !!res2 && /no reasoning field/i.test(res2.textContent) && !/enable_thinking/.test(res2.textContent), res2 && res2.textContent);
+    }
+    ta2 = await openTest('kimi-k3-nv');
+    check('effort model: Test area offers the "which value means OFF" picker', !!ta2 && !!ta2.querySelector('[data-rfoff]'));
+    if (ta2) {
+      const offSel = ta2.querySelector('[data-rfoff]');
+      offSel.value = 'low'; offSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+      const synth = await until(() => d.querySelector('#hop-list .test-area [data-rfsynth]'));
+      check('naming an off word adds an "Enable thinking" ON/OFF switch', !!synth && /Enable thinking/.test(d.querySelector('#hop-list .test-area').textContent));
+      const effSel = d.querySelector('#hop-list .test-area [data-rf="reasoning_effort"]');
+      check('and hides that word from the effort list', !!effSel && !Array.from(effSel.options).some(o => o.value === 'low') && Array.from(effSel.options).some(o => o.value === 'high'), effSel && Array.from(effSel.options).map(o => o.value).join());
+      let res3 = await runAndRead();
+      check('thinking ON sends the effort that was picked (not the off word)', !!res3 && /"reasoning_effort":"max"/.test(res3.textContent), res3 && res3.textContent);
+      const sw = d.querySelector('#hop-list .test-area [data-rfsynth]');
+      sw.value = 'off'; sw.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await until(() => d.querySelector('#hop-list .test-area [data-rfsynth]').value === 'off');
+      res3 = await runAndRead();
+      check('thinking OFF sends the off word as the effort', !!res3 && /"reasoning_effort":"low"/.test(res3.textContent), res3 && res3.textContent);
+      const sw2 = d.querySelector('#hop-list .test-area [data-rfsynth]');
+      sw2.value = 'on'; sw2.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await until(() => d.querySelector('#hop-list .test-area [data-rfsynth]').value === 'on');
+      const lockE = d.querySelector('#hop-list .test-area [data-rflock-effort]');
+      lockE.value = 'max'; lockE.dispatchEvent(new w.Event('change', { bubbles: true }));
+      const lockedE = await until(() => { const r = d.querySelector('#hop-list .test-area .rf-locked'); return r && /Fixed at/.test(r.textContent) ? r : null; });
+      check('a fixed effort shows "Fixed at max", with no effort list and no switch', !!lockedE && !d.querySelector('#hop-list .test-area [data-rf="reasoning_effort"]') && !d.querySelector('#hop-list .test-area [data-rfsynth]'));
+      res3 = await runAndRead();
+      check('a fixed effort sends nothing', !!res3 && /no reasoning field/i.test(res3.textContent), res3 && res3.textContent);
+      // save, close, reopen: the new settings must survive
+      const offSel2 = d.querySelector('#hop-list .test-area [data-rfoff]');
+      click(w, d.getElementById('submit-model'));
+      const saved = await until(() => /Saved/.test(d.getElementById('add-model-status').textContent), 6000);
+      check('saving the hop works with the new settings on it', !!saved, d.getElementById('add-model-status').textContent);
+      await until(() => d.getElementById('add-model-panel').hidden, 6000);
+      const again = await openTest('kimi-k3-nv');
+      const lockedAgain = again && again.querySelector('.rf-locked');
+      check('after saving and reopening, the fixed effort is still fixed at max', !!lockedAgain && /Fixed at\s*max/.test(lockedAgain.textContent), lockedAgain && lockedAgain.textContent);
+      check('and the off-word choice (low) was saved too', !!again && !!again.querySelector('[data-rfoff]') && again.querySelector('[data-rfoff]').value === 'low');
+    }
+
+    // put Kimi back the way it was (the 4b3 checks above saved a fixed effort and an off word on it)
+    if (await (async () => { const eb = d.querySelector('.edit-btn[data-edit="kimi-k3-nv"]'); if (!eb) return false; click(w, eb); return !!(await until(() => d.getElementById('f-id') && d.getElementById('f-id').value === 'kimi-k3-nv' && d.querySelector('#hop-list .hop-block'))); })()) {
+      click(w, d.querySelector('#hop-list .detect-btn'));
+      const fx = await until(() => d.querySelector('#hop-list .test-area [data-rflock-effort]'));
+      if (fx) {
+        fx.value = ''; fx.dispatchEvent(new w.Event('change', { bubbles: true }));
+        const ow = await until(() => { const o = d.querySelector('#hop-list .test-area [data-rfoff]'); return o && !o.disabled ? o : null; });
+        if (ow) { ow.value = ''; ow.dispatchEvent(new w.Event('change', { bubbles: true })); }
+        await until(() => { const o = d.querySelector('#hop-list .test-area [data-rfoff]'); return o && o.value === ''; });
+        click(w, d.getElementById('submit-model'));
+        await until(() => /Saved/.test(d.getElementById('add-model-status').textContent), 6000);
+        await until(() => d.getElementById('add-model-panel').hidden, 6000);
+      }
+    }
+    // ── 4b4. Normal view vs Setup view, locks without a schema, presets ──
+    const openEditor = async (modelId) => {
+      const eb = d.querySelector(`.edit-btn[data-edit="${modelId}"]`);
+      if (!eb) return false;
+      click(w, eb);
+      return !!(await until(() => d.getElementById('f-id') && d.getElementById('f-id').value === modelId && d.querySelector('#hop-list .hop-block')));
+    };
+    check('Edit opens a model', await openEditor('kimi-k3-nv'));
+    check('Normal view: no schema picker, no Setup box, just the small controls', !d.querySelector('#hop-list [data-f="reasoningSchema"]') && !d.querySelector('#hop-list .test-area') && !!d.querySelector('#hop-list [data-rf="reasoning_effort"]'));
+    check('Normal view: an effort-only model says thinking is always on (no switch recorded)', /Thinking:\s*Always on — no thinking switch is recorded/.test(d.querySelector('#hop-list').textContent), d.querySelector('#hop-list .rf-locked') && d.querySelector('#hop-list .rf-locked').textContent);
+    click(w, d.querySelector('#hop-list .detect-btn'));
+    const setupBox = await until(() => d.querySelector('#hop-list .test-area'));
+    check('⚙ Setup opens the admin box, with the schema picker and the locks', !!setupBox && !!d.querySelector('#hop-list [data-f="reasoningSchema"]') && !!setupBox.querySelector('[data-rflock-effort]'));
+    // a model with no schema at all: record the facts, nothing is sent
+    check('Edit opens a model that has no reasoning schema (GLM-5.3 on NVIDIA)', await openEditor('glm-5.3-nv'));
+    check('Normal view: no recorded settings says so plainly', /No reasoning settings are recorded/.test(d.querySelector('#hop-list').textContent));
+    click(w, d.querySelector('#hop-list .detect-btn'));
+    await until(() => d.querySelector('#hop-list .test-area [data-rflock-thinking]'));
+    check('Setup offers the always-on and fixed-effort facts even with no schema', !!d.querySelector('#hop-list .test-area [data-rflock-thinking]') && !!d.querySelector('#hop-list .test-area [data-rflock-effort]'));
+    const lt = d.querySelector('#hop-list .test-area [data-rflock-thinking]');
+    lt.value = 'always'; lt.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await until(() => d.querySelector('#hop-list .test-area [data-rflock-effort]') && d.querySelector('#hop-list .test-area .rf-locked'));
+    const le = d.querySelector('#hop-list .test-area [data-rflock-effort]');
+    le.value = 'max'; le.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await until(() => /Fixed at\s*max/.test(d.querySelector('#hop-list .test-area').textContent));
+    check('both facts show as locked labels', /Always on/.test(d.querySelector('#hop-list .test-area').textContent) && /Fixed at\s*max/.test(d.querySelector('#hop-list .test-area').textContent));
+    // Save as preset, clear the fact, apply the preset: it must come back
+    const presetBtn = await until(() => d.querySelector('#hop-list .save-preset-btn'));
+    check('the 💾 Save-as-preset button appears for a schema-free hop that has locks', !!presetBtn);
+    if (presetBtn) {
+      click(w, presetBtn);
+      await until(() => /✓/.test(d.querySelector('#hop-list .save-preset-btn').textContent), 6000);
+      const le2 = d.querySelector('#hop-list .test-area [data-rflock-effort]');
+      le2.value = ''; le2.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await until(() => !/Fixed at/.test(d.querySelector('#hop-list .test-area').textContent));
+      click(w, d.querySelector('#hop-list .apply-preset-btn'));
+      const back2 = await until(() => /Fixed at\s*max/.test(d.querySelector('#hop-list .test-area').textContent));
+      check('applying the preset brings the saved facts back (always on, fixed at max)', !!back2 && /Always on/.test(d.querySelector('#hop-list .test-area').textContent));
+    }
+    // save the master, then a compound hop must show it
+    click(w, d.getElementById('submit-model'));
+    await until(() => /Saved/.test(d.getElementById('add-model-status').textContent), 6000);
+    await until(() => d.getElementById('add-model-panel').hidden, 6000);
+    check('Edit opens a model that has no reasoning schema (GLM-5.3 on NVIDIA)', await openEditor('glm-5.3-nv'));
+    check('after saving and reopening, the locks are still there and nothing is sent for them', /Always on/.test(d.querySelector('#hop-list').textContent) && /Fixed at\s*max/.test(d.querySelector('#hop-list').textContent));
 
     // ── 4c. Detect controls: link to NVIDIA's page, and reading pasted Python / JS / curl examples ──
     const EX_GLM = `from openai import OpenAI
@@ -305,7 +460,7 @@ else:
     };
     const resultText = () => (d.querySelector('#hop-list .detect-result') || {}).textContent || '';
     let detBtn = await detectOn('glm-5.3-nv', null);
-    check('the hop editor button is labelled "Detect controls"', !!detBtn && /Detect controls/.test(detBtn.textContent), detBtn && detBtn.textContent);
+    check('the hop editor has a ⚙ Setup button', !!detBtn && /Setup/.test(detBtn.textContent), detBtn && detBtn.textContent);
     const nvLinks = [...d.querySelectorAll('#hop-list .detect-nv-link a')].map(a => a.getAttribute('href'));
     check('NVIDIA hop: the panel links to the model\'s page (z-ai/glm-5.3 -> build.nvidia.com/z-ai/glm-5-3) and offers the "_" form too', nvLinks[0] === 'https://build.nvidia.com/z-ai/glm-5-3' && nvLinks[1] === 'https://build.nvidia.com/z-ai/glm-5_3', JSON.stringify(nvLinks));
     check('NVIDIA link opens in a new tab safely', [...d.querySelectorAll('#hop-list .detect-nv-link a')].every(a => a.getAttribute('target') === '_blank' && /noopener/.test(a.getAttribute('rel') || '')));
