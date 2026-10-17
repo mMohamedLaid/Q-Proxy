@@ -1,0 +1,7 @@
+{
+  "name": "q-proxy-ui-tests",
+  "private": true,
+  "description": "Simulated-browser tests for public/admin.html. Separate from the root package.json on purpose (Render never installs this).",
+  "scripts": { "test": "node run-ui-tests.js" },
+  "devDependencies": { "jsdom": "^26.1.0" }
+}
