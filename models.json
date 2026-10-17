@@ -479,6 +479,25 @@
     "rpm": 5,
     "tpm": 250000,
     "rpd": 20
+  },
+  "nvidia-nemotron-3.5-super-vl-120b-a12b-nv": {
+    "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    "provider": "nvidia",
+    "reasoningSchema": "thinking-and-effort",
+    "reasoning": {
+      "thinking_toggle": true
+    },
+    "reasoningFieldEnabled": {
+      "thinking_toggle": true
+    },
+    "reasoningFieldKeys": {
+      "thinking_toggle": "enable_thinking"
+    },
+    "reasoningFieldTransport": {
+      "thinking_toggle": "chat_template_kwargs"
+    },
+    "reasoningFieldOptions": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
-
