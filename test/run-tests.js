@@ -814,6 +814,101 @@ async function main() {
     check('test config: a hop with no model id is a 400', tcx.s === 400, JSON.stringify(tcx));
     tcx = await tc({ provider: 'zai', model: 'glm-4.7-flash' }, { 'Content-Type': 'application/json' });
     check('test config: needs the admin key', tcx.s === 401 || tcx.s === 403, String(tcx.s));
+    // ══ "Use default" flag + normalized reasoning facts (must match the live body for every hop shape) ══
+    const nv = (extra) => ({ provider: 'nvidia', model: 'x/y', ...extra });
+    const shapes = {
+      'toggle on': nv({ reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: true } }),
+      'toggle off': nv({ reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: false } }),
+      'toggle default (nothing configured)': nv({ reasoningSchema: 'chat-template-thinking-toggle' }),
+      'toggle plus clear': nv({ reasoningSchema: 'chat-template-thinking-plus-clear', reasoning: { enable_thinking: false, clear_thinking: true } }),
+      'effort max': nv({ reasoningSchema: 'reasoning-effort-select', reasoning: { reasoning_effort: 'max' }, reasoningFieldOptions: { reasoning_effort: ['low', 'high', 'max'] } }),
+      'effort blank (Custom, nothing typed)': nv({ reasoningSchema: 'reasoning-effort-select', reasoning: { reasoning_effort: '' } }),
+      'unified: toggle only, renamed key': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: false }, reasoningFieldEnabled: { thinking_toggle: true }, reasoningFieldKeys: { thinking_toggle: 'thinking' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs' } }),
+      'unified: effort only, top level': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { reasoning_effort: 'mid' }, reasoningFieldEnabled: { reasoning_effort: true }, reasoningFieldKeys: { reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { reasoning_effort: 'top_level' }, reasoningFieldOptions: { reasoning_effort: ['low', 'mid', 'high'] } }),
+      'unified: both, mixed placement': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true, reasoning_effort: 'high' }, reasoningFieldEnabled: { thinking_toggle: true, reasoning_effort: true }, reasoningFieldKeys: { thinking_toggle: 'enable_thinking', reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs', reasoning_effort: 'top_level' } }),
+      'unified: nothing switched on': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true }, reasoningFieldEnabled: {} }),
+      'raw chat_template_kwargs': nv({ reasoningSchema: 'raw-chat-template-kwargs', reasoning: { __raw: { foo: 1 } } }),
+      'raw top level': nv({ reasoningSchema: 'raw-top-level', reasoning: { __raw: { bar: { baz: 2 } } } }),
+      'thinking locked always-on, effort still sent': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true, reasoning_effort: 'high' }, reasoningFieldEnabled: { thinking_toggle: true, reasoning_effort: true }, reasoningFieldKeys: { thinking_toggle: 'enable_thinking', reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs', reasoning_effort: 'top_level' }, reasoningLocks: { thinking: 'always' } }),
+      'effort fixed (never sent)': nv({ reasoningSchema: 'reasoning-effort-select', reasoning: { reasoning_effort: 'max' }, reasoningLocks: { effort: 'max' } }),
+      'both locked': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true, reasoning_effort: 'max' }, reasoningFieldEnabled: { thinking_toggle: true, reasoning_effort: true }, reasoningLocks: { thinking: 'always', effort: 'max' } }),
+      'effort-only + off word, thinking ON': nv({ reasoningSchema: 'reasoning-effort-select', reasoning: { reasoning_effort: 'high' }, reasoningFieldOptions: { reasoning_effort: ['none', 'high', 'max'] }, reasoningOffValue: 'none', reasoningThinkingOff: false }),
+      'effort-only + off word, thinking OFF': nv({ reasoningSchema: 'reasoning-effort-select', reasoning: { reasoning_effort: 'high' }, reasoningFieldOptions: { reasoning_effort: ['none', 'high', 'max'] }, reasoningOffValue: 'none', reasoningThinkingOff: true }),
+      'off word ignored when a real thinking toggle is active': nv({ reasoningSchema: 'thinking-and-effort', reasoning: { thinking_toggle: true, reasoning_effort: 'high' }, reasoningFieldEnabled: { thinking_toggle: true, reasoning_effort: true }, reasoningFieldKeys: { thinking_toggle: 'thinking', reasoning_effort: 'reasoning_effort' }, reasoningFieldTransport: { thinking_toggle: 'chat_template_kwargs', reasoning_effort: 'top_level' }, reasoningOffValue: 'none', reasoningThinkingOff: true }),
+      'no schema': nv({}),
+    };
+    for (const [name, hopShape] of Object.entries(shapes)) {
+      setScenario(okReply);
+      const rr = await tc(hopShape);
+      check(`facts: "${name}" — the normalized record rebuilds exactly the body the live code sends`, rr.j.factsMatchLive === true || (name === 'no schema' && rr.j.sent === null), JSON.stringify({ sent: rr.j.sent, facts: rr.j.facts, same: rr.j.factsMatchLive }));
+    }
+    setScenario(okReply);
+    tcx = await tc(shapes['toggle off']);
+    check('facts: a plain thinking toggle is recorded as thinking=toggle with its wire key and placement', tcx.j.facts && tcx.j.facts.thinking && tcx.j.facts.thinking.key === 'enable_thinking' && tcx.j.facts.thinking.transport === 'chat_template_kwargs' && tcx.j.facts.thinking.value === false && tcx.j.facts.effort === null, JSON.stringify(tcx.j.facts));
+    tcx = await tc(shapes['effort max']);
+    check('facts: an effort select is recorded with the words the hop really accepts', tcx.j.facts && tcx.j.facts.effort && tcx.j.facts.effort.values.join() === 'low,high,max' && tcx.j.facts.effort.key === 'reasoning_effort' && tcx.j.facts.thinking === null, JSON.stringify(tcx.j.facts));
+    const sentOf = async (shape) => { setScenario(okReply); const rr = await tc(shape); return rr.j; };
+    let lk = await sentOf(shapes['thinking locked always-on, effort still sent']);
+    check('locks: thinking "always on" is never sent, the effort still is, and facts say always_on', JSON.stringify(lk.sent) === '{"reasoning_effort":"high"}' && lk.facts.thinking.mode === 'always_on', JSON.stringify(lk));
+    lk = await sentOf(shapes['effort fixed (never sent)']);
+    check('locks: a fixed effort is never sent, and facts say fixed', lk.sent === null && lk.facts.effort.mode === 'fixed' && lk.facts.effort.value === 'max', JSON.stringify(lk));
+    lk = await sentOf(shapes['both locked']);
+    check('locks: with both locked nothing is sent', lk.sent === null, JSON.stringify(lk));
+    lk = await sentOf(shapes['effort-only + off word, thinking ON']);
+    check('off word: thinking ON sends the chosen effort and facts record a synthetic thinking switch', JSON.stringify(lk.sent) === '{"reasoning_effort":"high"}' && lk.facts.syntheticThinkingSwitch === true, JSON.stringify(lk));
+    lk = await sentOf(shapes['effort-only + off word, thinking OFF']);
+    check('off word: thinking OFF sends the off word as the effort', JSON.stringify(lk.sent) === '{"reasoning_effort":"none"}', JSON.stringify(lk));
+    lk = await sentOf(shapes['off word ignored when a real thinking toggle is active']);
+    check('off word: ignored when the hop has a real, usable thinking toggle', lk.sent && lk.sent.chat_template_kwargs && lk.sent.chat_template_kwargs.thinking === true && lk.sent.reasoning_effort === 'high', JSON.stringify(lk));
+    setScenario(okReply);
+    tcx = await tc({ ...shapes['toggle off'], reasoningUseDefault: true });
+    check('use default: sends NO reasoning field at all, and says the provider decides', tcx.j.sent === null && lastBody().chat_template_kwargs === undefined && /use default/.test(tcx.j.message), JSON.stringify({ r: tcx.j, b: lastBody() }));
+    setScenario(okReply);
+    tcx = await tc({ ...shapes['toggle off'], reasoningUseDefault: false });
+    check('use default: switching it back off uses the saved setting again, untouched', JSON.stringify(tcx.j.sent) === '{"chat_template_kwargs":{"enable_thinking":false}}', JSON.stringify(tcx.j.sent));
+    tcx = await tc({ ...shapes['toggle off'], reasoningUseDefault: 'yes' });
+    check('use default: only a real true switches it on (a stray string does not)', JSON.stringify(tcx.j.sent) === '{"chat_template_kwargs":{"enable_thinking":false}}', JSON.stringify(tcx.j.sent));
+    // ══ Master facts: a compound model's hop takes its reasoning FACTS from the standalone provider+model ══
+    const putModel = async (id, entry) => { const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id, entry }) }); await rr.text(); return rr.ok; };
+    const delModel = async (id) => { const rr = await fetch(BASE + '/admin/api/models/' + encodeURIComponent(id), { method: 'DELETE', headers: admin2 }); await rr.text(); };
+    const sendTo = async (id) => { setScenario(okReply); const rr = await chat({ model: id, messages: [{ role: 'user', content: 'hi' }] }); await rr.text(); return { status: rr.status, body: lastBody() }; };
+    const masterEntry = { model: 'x/inh', provider: 'nvidia', status: 'active', limitType: 'rate-limited', reasoningSchema: 'chat-template-thinking-toggle', reasoning: { enable_thinking: true } };
+    const chainEntry = (hop0) => ({ model: 'x/inh', provider: 'nvidia', status: 'active', limitType: 'rate-limited', ...hop0, fallback: { model: 'glm-4.7-flash', provider: 'zai', status: 'active', limitType: 'rate-limited' } });
+    check('master: scratch master + compound model added', await putModel('zz-inh-master', masterEntry) && await putModel('zz-inh-chain', chainEntry({ reasoning: { enable_thinking: false } })));
+    let sd = await sendTo('zz-inh-chain');
+    check('master: a compound hop with no controls of its own takes the master\'s thinking control and keeps its OWN choice (false)', sd.status === 200 && sd.body.chat_template_kwargs && sd.body.chat_template_kwargs.enable_thinking === false, JSON.stringify(sd));
+    sd = await sendTo('zz-inh-master');
+    check('master: the standalone model itself still sends its own setting (true)', sd.body.chat_template_kwargs && sd.body.chat_template_kwargs.enable_thinking === true, JSON.stringify(sd));
+    check('master: its own stale facts lose to the master (raw foo is not sent)', await putModel('zz-inh-chain', chainEntry({ reasoningSchema: 'raw-top-level', reasoning: { __raw: { foo: 1 } } })));
+    sd = await sendTo('zz-inh-chain');
+    check('master: master facts win over a hop\'s stale copy (thinking control sent, raw foo not)', sd.body.foo === undefined && sd.body.chat_template_kwargs && 'enable_thinking' in sd.body.chat_template_kwargs, JSON.stringify(sd));
+    check('master: updating the master (thinking always on) is picked up by the compound hop at once', await putModel('zz-inh-master', { ...masterEntry, reasoningLocks: { thinking: 'always' } }));
+    sd = await sendTo('zz-inh-chain');
+    check('master: always-on thinking means the compound hop sends no thinking toggle either', sd.body.chat_template_kwargs === undefined, JSON.stringify(sd));
+    await delModel('zz-inh-master');
+    check('master: without a master the compound hop falls back to its own (stale) facts', await putModel('zz-inh-chain', chainEntry({ reasoningSchema: 'raw-top-level', reasoning: { __raw: { foo: 1 } } })));
+    sd = await sendTo('zz-inh-chain');
+    check('master: ...so raw foo is sent again', sd.body.foo === 1, JSON.stringify(sd));
+    await delModel('zz-inh-chain');
+    // a hop with locks but no schema: facts exist, nothing is sent
+    setScenario(okReply);
+    tcx = await tc(nv({ reasoningLocks: { thinking: 'always', effort: 'max' } }));
+    check('locks need no schema: GLM-5.3-style hop (always on, effort fixed, nothing sent) is recorded as facts', tcx.j.sent === null && tcx.j.facts && tcx.j.facts.thinking.mode === 'always_on' && tcx.j.facts.effort.mode === 'fixed' && tcx.j.facts.effort.value === 'max', JSON.stringify(tcx.j));
+    r = await fetch(BASE + '/admin/api/reasoning-vocab?words=medium,Medium,xhigh,mid,very_high,off,banana', { headers: admin2 }); j = await r.json();
+    const vocabLv = Object.fromEntries((j.words || []).map(w => [w.word, w.level]));
+    check('vocab: exact level names match (case-insensitive): "medium", "Medium", "xhigh"', vocabLv.medium === 'medium' && vocabLv.Medium === 'medium' && vocabLv.xhigh === 'xhigh', JSON.stringify(j.words));
+    check('vocab: NO guessed synonyms — "mid", "very_high" and "off" are shown as typed until something confirms them', vocabLv.mid === null && vocabLv.very_high === null && vocabLv.off === null && j.words.find(w => w.word === 'mid').label === 'mid', JSON.stringify(j.words));
+    check('vocab: an unknown word is shown as typed (no level), not dropped or guessed', vocabLv.banana === null && j.words.find(w => w.word === 'banana').label === 'banana', JSON.stringify(j.words));
+    r = await fetch(BASE + '/admin/api/reasoning-vocab', {}); check('vocab: needs the admin key', r.status === 401 || r.status === 403, String(r.status));
+    // The three reasoning hops you actually have in models.json: live body vs facts body
+    const realHops = []; const walkH = (id, e) => { if (e && e.reasoningSchema) realHops.push([id, e]); if (e && e.fallback) walkH(id + '>fallback', e.fallback); };
+    for (const [id, e] of Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT, 'models.json'), 'utf8')))) walkH(id, e);
+    check('facts: models.json really has reasoning hops to compare', realHops.length >= 3, String(realHops.length));
+    for (const [id, e] of realHops) {
+      setScenario(okReply);
+      const rr = await tc({ provider: e.provider, model: e.model, reasoningSchema: e.reasoningSchema, reasoning: e.reasoning, reasoningFieldEnabled: e.reasoningFieldEnabled, reasoningFieldKeys: e.reasoningFieldKeys, reasoningFieldTransport: e.reasoningFieldTransport, reasoningFieldOptions: e.reasoningFieldOptions });
+      check(`facts: your real hop "${id}" — facts body is identical to the live body`, rr.j.factsMatchLive === true && rr.j.sent !== null, JSON.stringify(rr.j.sent));
+    }
     r = await fetch(BASE + '/admin/api/test-model/configured?provider=zai', { headers: admin2 }); j = await r.json();
     check('tester: "load my configured models" lists the Z.ai models from models.json', Array.isArray(j.models) && j.models.includes('glm-4.7-flash') && j.models.includes('glm-4.5-flash'), JSON.stringify(j));
     // proxy names AND provider slugs in the same box
