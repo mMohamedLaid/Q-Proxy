@@ -464,12 +464,16 @@ else:
     const nvLinks = [...d.querySelectorAll('#hop-list .detect-nv-link a')].map(a => a.getAttribute('href'));
     check('NVIDIA hop: the panel links to the model\'s page (z-ai/glm-5.3 -> build.nvidia.com/z-ai/glm-5-3) and offers the "_" form too', nvLinks[0] === 'https://build.nvidia.com/z-ai/glm-5-3' && nvLinks[1] === 'https://build.nvidia.com/z-ai/glm-5_3', JSON.stringify(nvLinks));
     check('NVIDIA link opens in a new tab safely', [...d.querySelectorAll('#hop-list .detect-nv-link a')].every(a => a.getAttribute('target') === '_blank' && /noopener/.test(a.getAttribute('rel') || '')));
+    check('the effort-values box is hidden before any scan (a thinking-only model never sees it); a small link offers it', !d.querySelector('#hop-list [data-detect-values]') && !!d.querySelector('#hop-list [data-act="detect-values-open"]'));
     setVal(w, d.querySelector('#hop-list [data-detect-input]'), EX_GLM);
     click(w, d.querySelector('#hop-list [data-act="detect-scan"]'));
     await until(() => d.querySelector('#hop-list .detect-result'));
     let rt = resultText();
     check('Python OpenAI-client example (GLM-5.3, no reasoning field): reads the request and says "No reasoning parameter"', /No reasoning parameter/.test(rt) && /z-ai\/glm-5\.3/.test(rt) && /temperature/.test(rt) && /max_tokens/.test(rt), rt.slice(0, 300));
     check('...and does not warn about a model mismatch (same model)', !/This example is for/.test(rt));
+    check('...and the effort-values box stays hidden when the scan found no effort field', !d.querySelector('#hop-list [data-detect-values]'));
+    click(w, d.querySelector('#hop-list [data-act="detect-values-open"]'));
+    check('"+ The docs list effort values" reveals the box (for models whose docs describe effort only in words)', !!(await until(() => d.querySelector('#hop-list [data-detect-values]'))));
     const applyNone = d.querySelector('#hop-list [data-act="detect-apply"]');
     check('...and offers "Apply: send no reasoning fields"', !!applyNone && /send no reasoning fields/.test(applyNone.textContent), applyNone && applyNone.textContent);
     if (applyNone) {
@@ -481,6 +485,7 @@ else:
     rt = resultText();
     check('Python requests example (Kimi-K3, with "stream": stream and a headers dict with an if-else): finds reasoning_effort = "max" at the top level', /reasoning_effort/.test(rt) && /"max"/.test(rt) && /top_level/.test(rt), rt.slice(0, 300));
     check('...and says the example shows only ONE value, so the other values are not known from it', /ONE value/.test(rt), rt.slice(0, 400));
+    check('...and the effort-values box appears now that a scan found an effort field', !!d.querySelector('#hop-list [data-detect-values]'));
     await detectOn('gemma-4-31b-nv', EX_GEMMA);
     rt = resultText();
     check('Python dict with True (diffusiongemma): finds enable_thinking inside chat_template_kwargs', /enable_thinking/.test(rt) && /chat_template_kwargs/.test(rt), rt.slice(0, 300));
