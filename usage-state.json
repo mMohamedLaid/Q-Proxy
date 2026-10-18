@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-17T14:22:32.894Z",
+  "savedAt": "2026-10-18T13:20:21.108Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -101,14 +101,20 @@
       "detail": "no longer in literouter's live model list",
       "source": "catalog",
       "since": "2026-10-15T11:11:55.381Z"
+    },
+    "literouter|llama-3-8b-instruct:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-10-18T13:20:09.601Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-17T11:27:00.366Z",
-    "zai": "2026-10-17T11:27:00.807Z",
-    "google": "2026-10-17T11:27:00.980Z",
-    "openrouter": "2026-10-17T11:27:01.746Z",
-    "literouter": "2026-10-17T11:27:01.938Z"
+    "nvidia": "2026-10-18T13:20:07.909Z",
+    "zai": "2026-10-18T13:20:08.291Z",
+    "google": "2026-10-18T13:20:08.529Z",
+    "openrouter": "2026-10-18T13:20:09.398Z",
+    "literouter": "2026-10-18T13:20:09.601Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
