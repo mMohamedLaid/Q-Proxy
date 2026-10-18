@@ -63,7 +63,7 @@ async function main() {
 
   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
     cwd: ROOT,
-    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', QP_NO_CATALOG_WATCH: '1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
+    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', GROQ_API_KEY: 'gq1', AMD_API_KEY: 'amd1', QP_NO_CATALOG_WATCH: '1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', d => { serverLog += d; });
@@ -754,6 +754,42 @@ async function main() {
     check('tester: a model that answers is "works", with its reply, HTTP 200 and a timing', tt.j.verdict === 'works' && tt.j.ok === true && tt.j.reply === 'ok' && tt.j.status === 200 && typeof tt.j.ms === 'number', JSON.stringify(tt));
     const sent = JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
     check('tester: what reaches the provider is one small non-streaming request for exactly that model (256 max tokens by default)', sent.model === 'glm-4.7-flash' && sent.stream === false && sent.max_tokens === 256 && sent.messages.length === 1 && /one word/i.test(sent.messages[0].content), JSON.stringify(sent));
+    // Groq and AMD: each goes to its own base URL with its OWN key (an unwired provider would silently fall through to NVIDIA's)
+    const lastCall = () => JSON.parse(fs.readFileSync(SCEN + '.lastcall', 'utf8'));
+    tt = await tm({ provider: 'groq', model: 'openai/gpt-oss-120b' });
+    check('groq: the tester accepts it and a model that answers is "works"', tt.j.verdict === 'works' && tt.j.ok === true, JSON.stringify(tt));
+    check('groq: the request goes to api.groq.com/openai/v1 with GROQ_API_KEY as the Bearer key', lastCall().url === 'https://api.groq.com/openai/v1/chat/completions' && lastCall().auth === 'Bearer gq1', JSON.stringify(lastCall()));
+    tt = await tm({ provider: 'amd', model: 'DeepSeek-V4-Flash' });
+    check('amd: the tester accepts it and a model that answers is "works"', tt.j.verdict === 'works' && tt.j.ok === true, JSON.stringify(tt));
+    check('amd: the request goes to developer.amd.com.cn/radeon/api/v1 with AMD_API_KEY as the Bearer key', lastCall().url === 'https://developer.amd.com.cn/radeon/api/v1/chat/completions' && lastCall().auth === 'Bearer amd1', JSON.stringify(lastCall()));
+    tt = await tm({ provider: 'zai', model: 'glm-4.7-flash' });
+    check('routing check: Z.ai still uses its own URL and key (the new providers did not disturb it)', lastCall().url === 'https://api.z.ai/api/paas/v4/chat/completions' && lastCall().auth === 'Bearer z1', JSON.stringify(lastCall()));
+    // Groq answers 400 to messages[].name (its docs). The proxy passes messages through as sent, so the name is dropped for Groq only.
+    // (logprobs / logit_bias / top_logprobs / n never reach ANY provider: the upstream request is built from a fixed set of fields.)
+    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-groq', entry: { model: 'openai/gpt-oss-120b', provider: 'groq', status: 'active', limitType: 'rate-limited' } }) }); await r.text();
+    const sentBody = () => JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
+    const fancy = { logprobs: true, top_logprobs: 2, logit_bias: { '50256': -100 }, n: 2, temperature: 0.7, messages: [{ role: 'system', content: 'be brief' }, { role: 'user', name: 'bob', content: 'hi' }] };
+    setScenario(okReply);
+    r = await chat({ model: 'zz-groq', ...fancy }); await r.text();
+    let gb = sentBody();
+    check('groq: messages[].name is removed before sending (Groq answers 400 to it) and the rest of every message is kept', gb.messages.length === 2 && JSON.stringify(gb.messages[0]) === '{"role":"system","content":"be brief"}' && JSON.stringify(gb.messages[1]) === '{"role":"user","content":"hi"}', JSON.stringify(gb));
+    check('groq: model, temperature are untouched; logprobs/top_logprobs/logit_bias/n are not forwarded (the proxy only sends a fixed set of fields)', gb.model === 'openai/gpt-oss-120b' && gb.temperature === 0.7 && !('logprobs' in gb) && !('top_logprobs' in gb) && !('logit_bias' in gb) && !('n' in gb), JSON.stringify(gb));
+    r = await chat({ model: 'gemma-4-31b-nv', ...fancy }); await r.text();
+    gb = sentBody();
+    check('other providers get the name untouched (an NVIDIA hop still receives messages[1].name)', gb.messages[1].name === 'bob' && gb.messages[1].content === 'hi', JSON.stringify(gb));
+    // Sync: both are in the Sync panel, each asks its own /models with its own key; a model the list drops is flagged
+    setScenario({ mode: 'nonstream', models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile'] });
+    r = await fetch(BASE + '/admin/api/sync/groq', { headers: admin2 }); j = await r.json();
+    check('groq sync: asks api.groq.com/openai/v1/models with GROQ_API_KEY; offers the new model, not the one already configured', r.ok && lastCall().url === 'https://api.groq.com/openai/v1/models' && lastCall().auth === 'Bearer gq1' && j.liveCount === 2 && (j.newlyAvailable || []).join() === 'llama-3.3-70b-versatile' && (j.noLongerListed || []).length === 0, JSON.stringify({ c: lastCall(), j }).slice(0, 400));
+    setScenario({ mode: 'nonstream', models: ['llama-3.3-70b-versatile'] });
+    r = await fetch(BASE + '/admin/api/sync/groq', { headers: admin2 }); j = await r.json();
+    check('groq sync: a configured model that Groq no longer lists is reported as "no longer listed"', (j.noLongerListed || []).includes('openai/gpt-oss-120b'), JSON.stringify(j.noLongerListed));
+    setScenario({ mode: 'nonstream', models: ['DeepSeek-V4-Flash', 'GLM-5.3-Flash'] });
+    r = await fetch(BASE + '/admin/api/sync/amd', { headers: admin2 }); j = await r.json();
+    check('amd sync: asks developer.amd.com.cn/radeon/api/v1/models with the AMD key and offers both models (ids exactly as listed, no prefix)', r.ok && lastCall().url === 'https://developer.amd.com.cn/radeon/api/v1/models' && lastCall().auth === 'Bearer amd1' && j.liveCount === 2 && (j.newlyAvailable || []).join() === 'DeepSeek-V4-Flash,GLM-5.3-Flash', JSON.stringify({ c: lastCall(), j }).slice(0, 400));
+    let rw2 = await (async () => { const rr = await fetch(BASE + '/admin/api/sync/amd/raw', { headers: admin2 }); return { s: rr.status, j: await rr.json() }; })();
+    check('amd api call panel: shows the exact URL and a curl line with a placeholder key', rw2.j.url === 'https://developer.amd.com.cn/radeon/api/v1/models' && /Bearer YOUR_RADEON_API_KEY/.test(rw2.j.curl) && rw2.j.hasKey === true, JSON.stringify(rw2.j));
+    r = await fetch(BASE + '/admin/api/models/zz-groq', { method: 'DELETE', headers: admin2 }); await r.text();
     tt = await tm({ provider: 'zai', model: 'x', prompt: 'say hi', maxTokens: 99999 });
     const sent2 = JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
     check('tester: a custom prompt is used and max tokens is capped at 2000', sent2.messages[0].content === 'say hi' && sent2.max_tokens === 2000, JSON.stringify(sent2));
@@ -984,6 +1020,7 @@ async function main() {
     fs.copyFileSync(limitsPath + '.bak', limitsPath); fs.unlinkSync(limitsPath + '.bak');
     try { fs.unlinkSync(SCEN); } catch (_) {}
     try { fs.unlinkSync(SCEN + '.lastbody'); } catch (_) {}
+    try { fs.unlinkSync(SCEN + '.lastcall'); } catch (_) {}
   }
 
   console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASS');
