@@ -45,6 +45,7 @@ const mockAxios = {
     if (!/\/chat\/completions$/.test(url)) throw new Error('mock: unexpected POST ' + url);
     const sc = scenario();
     try { fs.writeFileSync((process.env.MOCK_FILE || 'test/scenario.json') + '.lastbody', JSON.stringify(body)); } catch (_) {}   // what actually reached the provider
+    try { const hd = config.headers || {}; fs.writeFileSync((process.env.MOCK_FILE || 'test/scenario.json') + '.lastcall', JSON.stringify({ url, auth: hd.Authorization || hd.authorization || null })); } catch (_) {}   // where it went and with which key
     // 'hang': the provider never answers (a request stuck in its queue). Only an
     // abort via config.signal ends it — and that is recorded in <MOCK_FILE>.aborted
     // so a test can prove the proxy really cancelled the upstream call.
@@ -75,9 +76,10 @@ const mockAxios = {
     };
   },
   // GET .../models -> scenario.models (array of ids), for the Admin sync endpoints.
-  get: async (url) => {
+  get: async (url, config = {}) => {
     if (/\/models$/.test(url)) {
       const sc = scenario();
+      try { const hd = config.headers || {}; fs.writeFileSync((process.env.MOCK_FILE || 'test/scenario.json') + '.lastcall', JSON.stringify({ url, auth: hd.Authorization || hd.authorization || null })); } catch (_) {}   // which list was asked for, with which key
       if (sc.modelsStatus) {   // scenario.modelsStatus (+ modelsBody) = the provider's /models answers with an error
         const err = new Error('Request failed with status code ' + sc.modelsStatus);
         err.response = { status: sc.modelsStatus, data: sc.modelsBody || 'mock error' };
@@ -96,3 +98,4 @@ Module._load = function (request, parent, isMain) {
   if (request === 'axios') return mockAxios;
   return origLoad.apply(this, arguments);
 };
+
