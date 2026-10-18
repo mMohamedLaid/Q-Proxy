@@ -497,6 +497,10 @@
     width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
   }
   .field input[type="text"], .field input[type="number"], .field input[type="date"] { font-family: var(--font-mono); }
+  /* Textareas had no dark styling (only inputs/selects did), so they showed the browser's white with pale text. Low specificity on purpose: #tester-*, #limits-paste and inline styles still win. */
+  textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; color-scheme: dark; box-sizing: border-box; }
+  textarea::placeholder { color: var(--text-faint); }
+  textarea:focus { outline: none; border-color: var(--accent); }
   .hop-block { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; background: #0D1119; }
   .hop-block-label { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; justify-content: space-between; }
   .hop-controls { display: flex; gap: 4px; text-transform: none; }
@@ -679,8 +683,8 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', deepseek: 'DeepSeek' };
-  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
+  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', deepseek: 'DeepSeek' };
+  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
   let currentModels = {};
   let providerTab = '';   // 'All' / a provider / custom bundles; restored from the saved settings just below
   // ── remembered view settings (kept in this browser; the admin key is stored separately, see "Stay signed in") ──
