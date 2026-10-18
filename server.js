@@ -1,6 +1,6 @@
 // server.js - Q-proxy
 // OpenAI-compatible router across NVIDIA NIM, Z.AI, Google, OpenRouter,
-// Literouter, MegaNova (and DeepSeek, currently disabled). Quartermaster,
+// Literouter, MegaNova, Groq, AMD (and DeepSeek, currently disabled). Quartermaster,
 // not the agent: doesn't do the talking, just makes sure someone always
 // picks up when you call.
 const express = require('express');
@@ -153,6 +153,9 @@ const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const GOOGLE_RELAY_BASE = process.env.GOOGLE_RELAY_BASE || 'https://generativelanguage.googleapis.com/v1beta/openai';
 const DEEPSEEK_API_KEY  = process.env.DEEPSEEK_API_KEY; // worthless. thought it gave free tokens at first login.
 const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY; 
+const GROQ_API_KEY      = process.env.GROQ_API_KEY;     // the name Groq's own docs use
+// AMD Radeon API (developer.amd.com.cn). AMD's own docs call the key RADEON_API_KEY; AMD_API_KEY (the name Mastra uses) works too.
+const AMD_API_KEY       = process.env.RADEON_API_KEY || process.env.AMD_API_KEY;
 
 // Both key lists are unbounded — set as many PREFIX_KEY_1, PREFIX_KEY_2,
 // PREFIX_KEY_3... env vars as you have keys for. Numbers don't need to be
@@ -589,6 +592,8 @@ function estimateRequestTokens(req, provider) {
 // model-or         → OpenRouter specifically (round-robin/drain across keys)
 // model-lr         → Literouter specifically
 // model-mn         → MegaNova specifically
+// model-gq         → Groq specifically
+// model-amd        → AMD Radeon API specifically
 // model-ds         → DeepSeek direct API (disabled — $0 balance)
 //
 // A "container"/"bundle" entry (custom: true) is built by copying an
@@ -625,6 +630,8 @@ function estimateRequestTokens(req, provider) {
 //   OpenRouter:   https://openrouter.ai/api/v1
 //   Literouter:   https://api.literouter.com/v1  (~100 req/hr soft cap per model, not truly infinite)
 //   MegaNova:     https://api.meganova.ai/v1
+//   Groq:         https://api.groq.com/openai/v1   (key: GROQ_API_KEY)
+//   AMD:          https://developer.amd.com.cn/radeon/api/v1   (key: RADEON_API_KEY or AMD_API_KEY)
 //   DeepSeek:     DISABLED — $0 balance, no free tokens
 // ============================================================
 const MODELS_PATH = path.join(__dirname, 'models.json');
@@ -1390,6 +1397,8 @@ function getProviderConfig(provider) {
     // only a fallback for callers that don't have that context.
     case 'literouter': return { base: 'https://api.literouter.com/v1',               key: LITEROUTER_KEYS[0] };
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+    case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
+    case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
 }
@@ -1407,8 +1416,24 @@ function getProviderConfigReadOnly(provider) {
     case 'openrouter': return { base: 'https://openrouter.ai/api/v1',                key: OPENROUTER_KEYS[0] };
     case 'literouter': return { base: 'https://api.literouter.com/v1',               key: LITEROUTER_KEYS[0] };
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+    case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
+    case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
+}
+
+// Groq's own docs (console.groq.com/docs/openai) say an HTTP 400 follows if `messages[].name` is supplied (also logprobs,
+// logit_bias, top_logprobs and n != 1, but this proxy never forwards those: it builds the upstream request from a fixed set of
+// fields). Messages are passed through as the client sent them, and roleplay clients do send `name`, so it is dropped for Groq
+// ONLY. `body` is this hop's own shallow copy and messages is replaced, never edited, so a fallback hop on another provider
+// still gets the client's original messages. Returns the names it removed (empty = nothing to do).
+function stripGroqUnsupported(body) {
+  const removed = [];
+  if (Array.isArray(body.messages) && body.messages.some(m => m && typeof m === 'object' && 'name' in m)) {
+    body.messages = body.messages.map(m => { if (m && typeof m === 'object' && 'name' in m) { const { name, ...rest } = m; return rest; } return m; });
+    removed.push('messages[].name');
+  }
+  return removed;
 }
 
 // ============================================================
@@ -2027,6 +2052,10 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
 
     const extraBody = getReasoningBody(providerConfig);
     const body = { ...nimRequest, model: providerConfig.model, ...(extraBody || {}) };
+    if (providerConfig.provider === 'groq') {
+      const dropped = stripGroqUnsupported(body);
+      if (dropped.length) log('INFO', `Groq answers 400 to ${dropped.join(', ')} — removed from the request to ${providerConfig.model}`);
+    }
     // "maxTokens" on a hop is a FLOOR, not just a default: reasoning models
     // spend max_tokens on thinking AND the reply from one pool, so a client
     // asking for a normal reply length (e.g. 4096) starves the reply. The
@@ -3146,7 +3175,7 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // works / paid (needs balance) / gone / key rejected / daily quota used up / rate limited / rejected / error.
 // It does not touch usage counters, cooldowns or warnings, so testing never changes how the proxy behaves.
 // It does use one real request of the provider's quota, and the provider's FIRST key when there are several.
-const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'deepseek']);
+const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'groq', 'amd', 'deepseek']);
 const TEST_VERDICT_LABEL = {
   'works': 'works', 'works-empty': 'works (no text)', 'paid': 'paid — needs balance', 'gone': 'model not found',
   'auth': 'key rejected', 'quota': 'quota / credits used up', 'rate-limited': 'rate limited (alive)',
@@ -3458,7 +3487,7 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
 // that would have caught the glm-5.2 deprecation, and the way to
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
-const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter']);
+const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
 
 // Snapshot of Literouter's account dashboard (Sep 2026) — the free-tier
 // list's own daily caps, and the Premium Basic list: specifically the
@@ -3628,6 +3657,8 @@ const PROVIDER_SUFFIX = {
   openrouter: 'or',
   literouter: 'lr',
   meganova: 'mn',
+  groq: 'gq',
+  amd: 'amd',
   deepseek: 'ds'
 };
 
@@ -3916,7 +3947,7 @@ function classifyOpenRouterModel(m) {
 // The exact call behind "Check <provider> for updates", for testing it by hand. Without ?send=1 it only describes the call
 // (URL + a curl line with a placeholder key). With ?send=1 it makes the call from the server (the real key never leaves
 // the server and is not echoed) and returns the provider's raw answer.
-const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY' };
+const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY', groq: 'YOUR_GROQ_API_KEY', amd: 'YOUR_RADEON_API_KEY' };
 app.get('/admin/api/sync/:provider/raw', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: `No live catalog check for "${provider}".`, type: 'invalid_request_error', code: 400 } });
@@ -4199,4 +4230,3 @@ bootstrapConfigAndStart().catch(e => {
   log('ERROR', `Fatal error during startup: ${e.message}`);
   process.exit(1);
 });
-
