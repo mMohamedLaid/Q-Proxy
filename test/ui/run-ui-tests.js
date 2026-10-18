@@ -461,9 +461,13 @@ else:
     const resultText = () => (d.querySelector('#hop-list .detect-result') || {}).textContent || '';
     let detBtn = await detectOn('glm-5.3-nv', null);
     check('the hop editor has a ⚙ Setup button', !!detBtn && /Setup/.test(detBtn.textContent), detBtn && detBtn.textContent);
+    const provOpts = [...d.querySelectorAll('#hop-list select[data-f="provider"] option')].map(o => o.value + '=' + o.textContent);
+    check('the provider dropdown offers Groq and AMD', provOpts.includes('groq=Groq') && provOpts.includes('amd=AMD'), provOpts.join(', '));
     const nvLinks = [...d.querySelectorAll('#hop-list .detect-nv-link a')].map(a => a.getAttribute('href'));
     check('NVIDIA hop: the panel links to the model\'s page (z-ai/glm-5.3 -> build.nvidia.com/z-ai/glm-5-3) and offers the "_" form too', nvLinks[0] === 'https://build.nvidia.com/z-ai/glm-5-3' && nvLinks[1] === 'https://build.nvidia.com/z-ai/glm-5_3', JSON.stringify(nvLinks));
     check('NVIDIA link opens in a new tab safely', [...d.querySelectorAll('#hop-list .detect-nv-link a')].every(a => a.getAttribute('target') === '_blank' && /noopener/.test(a.getAttribute('rel') || '')));
+    const cssText = [...d.querySelectorAll('style')].map(x => x.textContent).join('\n');
+    check('textareas have a dark style rule (they used to be white with pale text, almost unreadable)', /(^|[\s}])textarea\s*\{[^}]*background:\s*var\(--bg\)/.test(cssText) && /textarea\s*\{[^}]*color:\s*var\(--text\)/.test(cssText));
     check('the effort-values box is hidden before any scan (a thinking-only model never sees it); a small link offers it', !d.querySelector('#hop-list [data-detect-values]') && !!d.querySelector('#hop-list [data-act="detect-values-open"]'));
     setVal(w, d.querySelector('#hop-list [data-detect-input]'), EX_GLM);
     click(w, d.querySelector('#hop-list [data-act="detect-scan"]'));
@@ -521,6 +525,16 @@ else:
       check('opening/closing a warning group is remembered', ui2.warnOpen && ui2.warnOpen[k] === !was, JSON.stringify(ui2.warnOpen));
     } else console.log('SKIP warning groups (no warnings in this run)');
 
+    const tabLabels = [...d.querySelectorAll('#provider-tabs .provider-tab-btn')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
+    check('provider tabs include Groq and AMD (empty until a model is added)', tabLabels.some(l => /^Groq \(0\)/.test(l)) && tabLabels.some(l => /^AMD \(0\)/.test(l)), tabLabels.join(' | '));
+    const groqTab = d.querySelector('#provider-tabs [data-provider-tab="groq"]');
+    if (groqTab) {
+      click(w, groqTab); await sleep(300);
+      const gs = d.querySelector('.sync-btn[data-provider="groq"]');
+      check('the Groq tab has its sync button (Groq is in the Sync panel) and shows no error', !!gs && /Groq/.test(gs.textContent), gs && gs.textContent.trim());
+      const allTab = d.querySelector('#provider-tabs [data-provider-tab="__all__"]');
+      if (allTab) { click(w, allTab); await sleep(300); }
+    }
     // ── 6. Provider tab remembered + API call panel ──
     const tabs = [...d.querySelectorAll('#provider-tabs button, #provider-tabs [data-tab], #provider-tabs [data-provider]')];
     check('provider tabs render', tabs.length >= 2, tabs.length + '');
