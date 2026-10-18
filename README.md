@@ -38,6 +38,17 @@ The two providers' quotas work differently, so they're tracked differently:
 
 Literouter has no request-time reasoning parameters at all (no `chat_template_kwargs`, no `extra_body`) — thinking on/off is picked via the model slug itself (e.g. a `-thinking` or `-non-reasoning` suffix on the model name), so Literouter hops should always leave `reasoningSchema` unset.
 
+## Groq and AMD
+
+**Keys** (Render → Environment, one each): **`GROQ_API_KEY`** (the name Groq's docs use) and **`RADEON_API_KEY`** (the name AMD's docs use; `AMD_API_KEY` works too, and `RADEON_API_KEY` wins if both are set). Providers: `groq` (base `https://api.groq.com/openai/v1`) and `amd` (base `https://developer.amd.com.cn/radeon/api/v1`). In the Admin they appear as Groq and AMD, new models get the suffixes `-gq` / `-amd`, and both are in the Model tester and the Sync panel (live list + "no longer listed" warnings; no free/paid grouping yet).
+
+**Groq** (Groq's docs, read 2026-10-18). Its docs say `messages[].name` gets an HTTP 400, so Q-Proxy removes it for Groq hops only (the other fields Groq rejects - logprobs, logit_bias, top_logprobs, n other than 1 - are never forwarded by this proxy anyway). Model ids are written the way Groq writes them (`openai/gpt-oss-120b`, `llama-3.3-70b-versatile`). Limits apply per *organization*, so a second key from the same org adds no quota; Groq's table says it shows Developer-plan limits, so no free-plan numbers are stored here.
+
+**AMD Radeon API** (AMD's docs at amd-aim.github.io/radeon-cloud-docs, read 2026-10-18):
+- Bearer key. Model ids have **no prefix**: `DeepSeek-V4-Flash` and `DeepSeek-V4-Flash-Vision-Exp` are the two the docs quote exactly; `GET /models` is their source of truth for the rest, so use the Sync panel to see the real ids.
+- Limits on the shared free API: 30 requests/min per key, 8 concurrent per key, 120/min per IP, and 20/min per account, plus a daily spend cap per account that resets at 00:00 UTC+8 (no amount stated). A 429 carries `Retry-After` (60 for per-minute limits). Q-Proxy does not enforce these; a 429 simply sends the request to the next hop.
+- Reasoning: send `reasoning_effort` (top level; `low` and `medium` are accepted by every model). **`thinking` and `reasoning.enabled` get a 400**, so do not use a thinking-toggle field on an AMD hop. Unknown fields are *dropped silently*, so a 200 from "Test this config" does not prove a field was used. Thinking text comes back in `message.reasoning` (handled). Per their docs: the DeepSeek-V4 models do not think unless `reasoning_effort` is sent; Qwen3.8 and GLM-5.3-Flash think by default; MiMo-V2.6-Flash needs `none` to switch thinking off; MiniCPM5-2B has no `reasoning_effort`.
+
 ## Per-model key rotation (Literouter, Google AI Studio)
 
 When a hop has more than one key configured and an actual limit to track, each **model** — not each provider — keeps its own key until that key specifically runs out for that model, then moves only that model to the next key. Other models on the same provider are unaffected and keep whatever key they're each individually on. All models revert to key 1 at the provider's own daily reset. Concretely:
@@ -206,4 +217,3 @@ The Admin panel's **Model tester** sends one tiny real request straight to a pro
 - **THINK / REPLY** blocks are stitched live in the Admin log, and a copy of each is written to the Render console when the stream finishes (every line prefixed with the request id), so Render no longer has only per-chunk lines.
 - **Waiting notices.** From the moment a request arrives until the model's *first output* (thinking counts as output) an Admin/console line appears once 10s pass with nothing back, then again at 30s, 60s and every minute: `⏳ still waiting for nvidia/… to start answering — 2m 0s and no output yet (queue/connect time, not thinking)`. Fast models never print one. When output finally starts after a long wait you get `✓ first output arrived after 4m 14s`, and the end-of-stream line shows both clocks: time streaming, and time since the request arrived.
 - **Client hang-up cancels the upstream call.** When the client stops or disconnects, the in-flight request to the provider is aborted — including one still waiting in the provider's queue — instead of running to the end for nobody. (Before this, a stopped generation kept running and competed with the retry for the same provider capacity.)
-
