@@ -499,5 +499,13 @@
     "reasoningFieldOptions": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "glm-5.3-flash-amd": {
+    "model": "GLM-5.3-Flash",
+    "provider": "amd",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
