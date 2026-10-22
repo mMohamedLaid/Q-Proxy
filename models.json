@@ -507,5 +507,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "deepseek-v3.1-free-lr": {
+    "model": "deepseek-v3.1:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
