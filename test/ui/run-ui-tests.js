@@ -64,6 +64,10 @@ const setVal = (w, el, v, ev = 'input') => { el.value = v; el.dispatchEvent(new 
 
 async function main() {
   const dir = stageProject();
+  // one stand-in logo file (a plain grey square, not anyone's logo) so the "a logo file replaces the letter badge" path is exercised
+  fs.rmSync(path.join(dir, 'public', 'logos'), { recursive: true, force: true });   // the repo's own logo files (if you add some) must not change what this run expects
+  fs.mkdirSync(path.join(dir, 'public', 'logos'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'public', 'logos', 'groq.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#888"/></svg>');
   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
     cwd: dir,
     env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: KEY, NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', QP_NO_CATALOG_WATCH: '1', PORT: String(PORT), MOCK_FILE: path.join(dir, 'test', 'scenario.json') },
@@ -525,8 +529,39 @@ else:
       check('opening/closing a warning group is remembered', ui2.warnOpen && ui2.warnOpen[k] === !was, JSON.stringify(ui2.warnOpen));
     } else console.log('SKIP warning groups (no warnings in this run)');
 
+    // ── view as: user / admin ──
+    const va = d.querySelector('#view-as');
+    await until(() => va && va.options.length > 1, 4000);
+    check('view-as dropdown lists Admin first, then the owner Q', va && va.options[0].textContent.startsWith('View: Admin') && [...va.options].some(o => o.value === 'Q' && /owner/.test(o.textContent)), va && [...va.options].map(o => o.textContent).join(' | '));
+    va.value = 'Q'; va.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
+    await until(() => !d.querySelector('#view-as-banner').hidden, 3000);
+    check('view as Q: banner shows, editing controls are hidden by the body class', /Viewing as\s*Q/.test(d.querySelector('#view-as-banner').textContent) && d.body.classList.contains('viewing-user'));
+    va.value = ''; va.dispatchEvent(new d.defaultView.Event('change', { bubbles: true }));
+    await until(() => d.querySelector('#view-as-banner').hidden, 3000);
+    check('back to Admin: banner gone, controls back', !d.body.classList.contains('viewing-user'));
+    d.querySelector('#add-form-toggle').click();
+    check('the model form has the "Private to" field', !!d.querySelector('#f-private'));
+    d.querySelector('#cancel-model').click();
+
+    // ── brand, provider badges, label links, view-as hiding ──
+    check('header carries the Q-Proxy mark and name; the page title and favicon match', !!d.querySelector('header.top .brand svg.qmark use[href="#q-mark"]') && d.querySelector('header.top h1').textContent === 'Q-Proxy' && d.title === 'Q-Proxy — Admin' && /^data:image\/svg\+xml,/.test((d.querySelector('link[rel="icon"]') || {}).href || ''), d.title);
+    check('the login card has the mark too, and the Q symbol is defined once', !!d.querySelector('.login-card svg.qmark') && d.querySelectorAll('symbol#q-mark').length === 1);
+    const tabs2 = [...d.querySelectorAll('#provider-tabs .provider-tab-btn')];
+    const nvTab = tabs2.find(b => b.dataset.providerTab === 'nvidia'), gqTab = tabs2.find(b => b.dataset.providerTab === 'groq');
+    check('provider tabs carry a letter badge, and the letter is CSS so the tab text stays clean', !!nvTab && !!nvTab.querySelector('.pbadge[data-l="N"]') && /^NVIDIA NIM \(\d+\)$/.test(nvTab.textContent.replace(/\s+/g, ' ').trim()), nvTab && nvTab.innerHTML);
+    check('a logo file in public/logos replaces the letter badge (Groq has one in this run, NVIDIA does not)', !!gqTab && !!gqTab.querySelector('.pbadge-img img[src="/admin/logos/groq.svg"]') && !!nvTab && !nvTab.querySelector('img'), gqTab && gqTab.innerHTML);
+    check('the badge also shows on model cards and hop chips', d.querySelectorAll('.model-card .model-combo .pbadge').length > 0 && d.querySelectorAll('.hop .pbadge').length > 0);
+    check('toolbar labels point at their fields (click the name, the field gets focus)', [...d.querySelectorAll('.toolbar-field > label')].every(l => l.getAttribute('for') && d.getElementById(l.getAttribute('for'))), [...d.querySelectorAll('.toolbar-field > label')].map(l => l.getAttribute('for')).join());
+    check('the admin-only panels are marked, and "view as" hides them with the editing buttons', d.querySelectorAll('.admin-only').length >= 8 && /body\.viewing-user\s*:is\([^)]*\.admin-only[^)]*\.del-btn|body\.viewing-user\s*:is\([^)]*\.del-btn[^)]*\.admin-only/.test(cssText), String(d.querySelectorAll('.admin-only').length));
+    d.querySelector('#add-form-toggle').click();
+    await until(() => d.querySelector('#add-model-panel label[for]'), 2000);
+    const flds = [...d.querySelectorAll('#add-model-panel .field > label[for]')];
+    check('form labels get linked to their fields after each redraw (Private to, Model slug, Provider …)', flds.length >= 5 && flds.every(l => d.getElementById(l.getAttribute('for'))) && flds.some(l => /Model slug/.test(l.textContent)) && !!d.querySelector('label[for="f-private"]'), String(flds.length));
+    check('the "Custom bundle" tick-box label is a normal sentence, not a field-name label', !!d.querySelector('#add-model-panel label.check-label #f-custom'));
+    d.querySelector('#cancel-model').click();
+
     const tabLabels = [...d.querySelectorAll('#provider-tabs .provider-tab-btn')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
-    check('provider tabs include Groq and AMD (empty until a model is added)', tabLabels.some(l => /^Groq \(0\)/.test(l)) && tabLabels.some(l => /^AMD \(0\)/.test(l)), tabLabels.join(' | '));
+    check('provider tabs include Groq and AMD (whatever their counts are)', tabLabels.some(l => /^Groq \(\d+\)/.test(l)) && tabLabels.some(l => /^AMD \(\d+\)/.test(l)), tabLabels.join(' | '));
     const groqTab = d.querySelector('#provider-tabs [data-provider-tab="groq"]');
     if (groqTab) {
       click(w, groqTab); await sleep(300);
