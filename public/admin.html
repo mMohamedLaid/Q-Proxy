@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Q — Admin</title>
+<title>Q-Proxy — Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0A0D12">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id=%22g%22%20x1=%224%22%20y1=%222%22%20x2=%2228%22%20y2=%2230%22%20gradientUnits=%22userSpaceOnUse%22%3E%3Cstop%20offset=%220%22%20stop-color=%22%236EE7DA%22/%3E%3Cstop%20offset=%221%22%20stop-color=%22%232BA89E%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width=%2232%22%20height=%2232%22%20rx=%229%22%20fill=%22url(%23g)%22/%3E%3Cpath%20d=%22M17.01%2022.86A7.4%207.4%200%201%201%2022.86%2017.01%22%20fill=%22none%22%20stroke=%22%2304211F%22%20stroke-width=%223.4%22%20stroke-linecap=%22round%22/%3E%3Cpath%20d=%22M16.45%2016.45L24.51%2024.51%22%20fill=%22none%22%20stroke=%22%2304211F%22%20stroke-width=%223.4%22%20stroke-linecap=%22round%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,9 +28,14 @@
     --experimental: #A78BFA;
     --disabled: #5B6478;
     --unlimited: #60A5FA;
-    --font-display: 'Space Grotesk', sans-serif;
-    --font-body: 'Inter', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --warn: #E6A028;
+    --ok: #4ADE80;
+    --inset: #0D1119;
+    --control-h: 36px;
+    --font-display: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -43,9 +52,17 @@
   }
   a { color: var(--accent); }
   button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
-  button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+  button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  /* One look for every text field, dropdown and checkbox. Zero specificity (:where), so any component can still override it. */
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]), select) {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    height: var(--control-h); padding: 0 10px; min-width: 0;
+  }
+  :where(input[type=checkbox], input[type=radio]) { accent-color: var(--accent); }
+  ::placeholder { color: var(--text-faint); }
 
   /* ---------- Login gate ---------- */
   #login-gate {
@@ -55,28 +72,33 @@
     width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; padding: 32px 28px;
   }
-  .login-card h1 { font-family: var(--font-display); font-size: 20px; margin: 0 0 6px; }
+  .login-card .qmark { margin-bottom: 18px; }
+  .login-card h1 { font-family: var(--font-display); font-size: 22px; letter-spacing: -0.01em; margin: 0 0 6px; }
   .login-card p { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
-  .login-card input {
-    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; color: var(--text); font-family: var(--font-mono); margin-bottom: 12px;
-  }
-  .login-card button, .btn-primary {
-    width: 100%; background: var(--accent); color: #04211F; border: none; border-radius: 8px;
-    padding: 10px 12px; font-weight: 600; cursor: pointer;
-  }
-  .login-card button:hover, .btn-primary:hover { filter: brightness(1.08); }
+  .login-card input[type="password"] { width: 100%; height: 40px; padding: 0 12px; font-family: var(--font-mono); }
+  .login-card .stay-label { margin: 12px 0 14px; }
+  .btn-primary { background: var(--accent); color: #04211F; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:disabled { filter: none; }
+  .login-card .btn-primary { width: 100%; height: 40px; padding: 0 12px; }
   .login-error { color: var(--broken); font-size: 13px; margin-top: 10px; min-height: 18px; }
 
   /* ---------- Shell ---------- */
   #dashboard { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
-  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
-  header.top h1 {
-    font-family: var(--font-display); font-size: 22px; letter-spacing: -0.01em; margin: 0;
-    display: flex; align-items: center; gap: 10px;
-  }
+  header.top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .qmark { width: 30px; height: 30px; flex: none; display: block; }
+  .qmark-lg { width: 48px; height: 48px; }
+  header.top h1 { font-family: var(--font-display); font-size: 21px; letter-spacing: -0.01em; margin: 0; line-height: 1.1; }
+  .brand-sub { color: var(--text-faint); font-size: 12px; padding-left: 10px; border-left: 1px solid var(--border); }
+  .header-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .live { display: inline-flex; align-items: center; gap: 8px; }
   .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--free); box-shadow: 0 0 0 0 rgba(52,211,153,.6); animation: pulse 2.4s infinite; }
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,.5);} 70% { box-shadow: 0 0 0 8px rgba(52,211,153,0);} 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0);} }
+  .view-as { height: 32px; font-size: 12.5px; }
+  #view-as-banner { background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; font-size: 12.5px; }
+  /* "View as <user>": hide everything that edits, and every panel that is the Admin's alone */
+  body.viewing-user :is(.edit-btn, .test-hop-btn, .del-btn, .sync-btn, .sync-api-btn, .sync-item-btn, #add-form-toggle, #add-model-panel, .admin-only) { display: none !important; }
   header.top .meta { color: var(--text-faint); font-size: 12px; font-family: var(--font-mono); }
 
   /* ---------- Summary stat row ---------- */
@@ -112,15 +134,8 @@
     margin-bottom: 12px;
   }
   .toolbar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-  .toolbar-field label { display: block; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
-  .toolbar-field input, .toolbar-field select {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
-    color: var(--text);
-  }
+  .toolbar-field label, .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text-dim); margin-bottom: 5px; }
+  .toolbar-field input, .toolbar-field select { width: 100%; }
   .toolbar-field input { font-family: var(--font-mono); }
   .toolbar-help { margin-top: 8px; color: var(--text-faint); font-size: 11.5px; }
   .active-filters {
@@ -150,16 +165,7 @@
     padding: 0;
   }
   .filter-chip button:hover { color: var(--broken); }
-  .clear-filters-btn {
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-dim);
-    border-radius: 8px;
-    padding: 4px 8px;
-    font-size: 11.5px;
-    cursor: pointer;
-  }
-  .clear-filters-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .clear-filters-btn { padding: 4px 8px; font-size: 11.5px; border-radius: 8px; }
 
   .quick-usage {
     background: var(--surface);
@@ -204,14 +210,17 @@
     margin-bottom: 10px;
   }
   .provider-tab-btn {
+    display: inline-flex; align-items: center; gap: 7px;
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text-dim);
     border-radius: 999px;
-    padding: 6px 11px;
+    padding: 5px 12px 5px 7px;
     font-size: 11.5px;
     cursor: pointer;
   }
+  .provider-tab-btn:not(:has(.pbadge)) { padding-left: 12px; }
+  .provider-tab-btn:hover { border-color: var(--text-faint); }
   .provider-tab-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
   .provider-reset-banner {
     display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 11.5px;
@@ -225,21 +234,16 @@
     display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
     background: var(--surface-2); border-bottom: 1px solid var(--border);
   }
-  .provider-group-head .pname { font-family: var(--font-display); font-size: 14px; }
-  .sync-btn {
-    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
-    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
-  }
-  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .sync-api-btn { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; margin-left: 8px; }
-  .sync-api-btn:hover, .sync-api-btn.on { border-color: var(--accent); color: var(--accent); }
+  .provider-group-head .pname { font-family: var(--font-display); font-size: 14px; display: inline-flex; align-items: center; gap: 9px; }
+  .sync-btn { border-radius: 6px; padding: 5px 10px; font-size: 12px; }
+  .sync-api-btn { border-radius: 8px; padding: 6px 12px; font-size: 12px; margin-left: 8px; }
   .sync-api { margin: 8px 0 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
   .sa-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; flex-wrap: wrap; }
   .sa-label { color: var(--text-faint); min-width: 150px; font-size: 11.5px; }
-  .sa-code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
-  .sa-status { margin-top: 8px; font-weight: 600; } .sa-status.ok { color: #4ADE80; } .sa-status.bad { color: var(--broken); }
-  .sa-raw { margin: 8px 0 0; max-height: 280px; overflow: auto; background: rgba(0,0,0,.35); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-all; }
-  .sync-result { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: #0D1119; }
+  .sa-code { font-family: var(--font-mono); font-size: 12px; word-break: break-all; }
+  .sa-status { margin-top: 8px; font-weight: 600; } .sa-status.ok { color: var(--ok); } .sa-status.bad { color: var(--broken); }
+  .sa-raw { margin: 8px 0 0; max-height: 280px; overflow: auto; background: rgba(0,0,0,.35); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: var(--font-mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; }
+  .sync-result { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: var(--inset); }
   .sync-result-head { color: var(--text-dim); margin-bottom: 8px; }
   .sync-result-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .sync-result-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: rgba(255,255,255,.02); }
@@ -274,28 +278,19 @@
     font-size: 10px; color: var(--text-faint); background: rgba(255,255,255,.04);
     border-radius: 4px; padding: 1px 5px; white-space: nowrap;
   }
-  .sync-item-info.warn { color: #E6A028; background: rgba(230,160,40,.1); }
-  .sync-item-btn {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-dim);
-    font-size: 11px;
-    padding: 3px 7px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
+  .sync-item-info.warn { color: var(--warn); background: rgba(230,160,40,.1); }
+  .sync-item-btn { border-radius: 6px; font-size: 11px; padding: 3px 7px; white-space: nowrap; }
   .sync-item-btn.add:hover { border-color: var(--free); color: var(--free); }
   .sync-item-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
   .sync-result-note { color: var(--text-faint); font-size: 11.5px; }
   .sync-partial-note {
-    background: rgba(230,160,40,.08); border: 1px solid rgba(230,160,40,.35); color: #E6A028;
+    background: rgba(230,160,40,.08); border: 1px solid rgba(230,160,40,.35); color: var(--warn);
     border-radius: 6px; padding: 6px 10px; font-size: 11.5px; margin-bottom: 8px; line-height: 1.4;
   }
 
   .model-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
     gap: 12px;
     align-items: start;
     padding: 14px 16px;
@@ -303,11 +298,11 @@
   .model-card { padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
   .model-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
   .model-id { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
-  .model-combo { color: var(--text-faint); font-size: 11.5px; margin-bottom: 8px; font-family: var(--font-mono); }
+  .model-combo { display: flex; align-items: center; gap: 8px; color: var(--text-faint); font-size: 11.5px; margin-bottom: 10px; font-family: var(--font-mono); }
   .model-meta { display: grid; gap: 4px; margin-bottom: 10px; }
-  .model-meta-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
-  .model-meta-k { color: var(--text-faint); min-width: 90px; text-transform: uppercase; font-size: 10.5px; letter-spacing: .04em; }
-  .model-meta-v { color: var(--text-dim); font-family: var(--font-mono); }
+  .model-meta-row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12px; }
+  .model-meta-k { color: var(--text-faint); text-transform: uppercase; font-size: 10.5px; letter-spacing: .04em; }
+  .model-meta-v { color: var(--text-dim); font-family: var(--font-mono); overflow-wrap: anywhere; }
   .badge {
     font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600;
     padding: 2px 7px; border-radius: 100px; border: 1px solid transparent;
@@ -320,22 +315,13 @@
   .badge.credits { color: var(--credits); background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.3); }
   .badge.unlimited { color: var(--unlimited); background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); }
   .badge.paid { color: var(--credits); background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.3); }
-  .del-btn {
-    margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-faint);
-    border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
-  }
-  .del-btn:hover { border-color: var(--broken); color: var(--broken); }
-  .edit-btn {
-    margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-faint);
-    border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
-  }
-  .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .test-hop-btn { font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); background: transparent; color: inherit; border-radius: 6px; cursor: pointer; }
-  .test-hop-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* Test / Edit / Remove stay together as one group on the right of the card's first row */
+  .card-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .edit-btn, .del-btn { border-radius: 6px; padding: 3px 9px; font-size: 11.5px; }
+  .test-hop-btn { font-size: 11px; padding: 2px 8px; border-radius: 6px; }
   .rf-dim { opacity: .45; }
   .rf-locked { font-size: 12px; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 6px; background: var(--surface); }
   .hop-block.flash { outline: 2px solid var(--accent); }
-  .del-btn { margin-left: 6px; }
   .model-notes { color: var(--text-dim); font-size: 12.5px; margin: 4px 0 10px; }
   .model-notes.expiry { color: var(--credits); }
   .model-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -357,7 +343,7 @@
     border-radius: 7px; padding: 6px 9px; display: flex; flex-direction: column; gap: 2px; min-width: 0;
   }
   .hop.hop-active-recent { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
-  .hop .hop-provider { color: var(--text-faint); font-size: 10px; text-transform: uppercase; }
+  .hop .hop-provider { display: flex; align-items: center; gap: 6px; color: var(--text-faint); font-size: 10px; text-transform: uppercase; }
   .hop .hop-order { color: var(--accent); font-size: 10px; }
   .hop .hop-model { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .hop .hop-usage { color: var(--text-faint); font-size: 10px; }
@@ -372,10 +358,11 @@
   .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
   .usage-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
   .usage-card h3 { font-family: var(--font-display); font-size: 13.5px; margin: 0 0 10px; }
-  .usage-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
+  .usage-row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
   .usage-row:last-child { border-bottom: none; }
-  .usage-row .k { color: var(--text-dim); }
-  .usage-row .v { font-family: var(--font-mono); }
+  .usage-row .k { color: var(--text-dim); flex: 0 1 auto; max-width: 55%; overflow-wrap: break-word; }
+  .usage-row .v { font-family: var(--font-mono); text-align: right; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .live-tag, .est-tag { white-space: nowrap; }
   .live-tag { font-size: 9.5px; text-transform: uppercase; background: rgba(52,211,153,.12); color: var(--free); border: 1px solid rgba(52,211,153,.3); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
   .est-tag { font-size: 9.5px; text-transform: uppercase; background: rgba(255,255,255,.05); color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
 
@@ -386,8 +373,10 @@
   table.usage-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); }
 
   /* ---------- Logs ---------- */
-  .logs-toolbar { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
-  .logs-toolbar select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .logs-toolbar { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+  .logs-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+  .logs-row .push { margin-left: auto; }
+  #log-rid-filter { width: 112px; font-family: var(--font-mono); font-size: 12px; }
   .log-auto-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
   .logs-view {
     background: #0A0D13; border: 1px solid var(--border); border-radius: 8px;
@@ -398,7 +387,7 @@
   .log-line .lvl { flex-shrink: 0; font-weight: 600; width: 46px; }
   .log-line .msg { color: var(--text-dim); flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
   .log-line.lvl-ERROR .lvl, .log-line.lvl-ERROR .msg { color: var(--broken); }
-  .log-line.lvl-WARN .lvl, .log-line.lvl-WARN .msg { color: #E6A028; }
+  .log-line.lvl-WARN .lvl, .log-line.lvl-WARN .msg { color: var(--warn); }
   .log-line.lvl-INFO .lvl { color: var(--text-faint); }
   /* Stitched model text (reasoning / reply) — full-width block under the header line */
   .etag { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600; font-size: 10.5px; letter-spacing: .02em; }
@@ -408,8 +397,8 @@
   .etag-up    { background: rgba(244,114,182,.16); color: #F9A8D4; }
   .etag-cut   { background: rgba(167,139,250,.18); color: #C4B5FD; }
   .etag-gone  { background: rgba(148,163,184,.18); color: #CBD5E1; }
-  .log-line.lvl-THINK .lvl { color: #A78BFA; }
-  .log-line.lvl-REPLY .lvl { color: #4ADE80; }
+  .log-line.lvl-THINK .lvl { color: var(--experimental); }
+  .log-line.lvl-REPLY .lvl { color: var(--ok); }
   .log-line.lvl-THINK .msg, .log-line.lvl-REPLY .msg { flex-basis: 100%; line-height: 1.5; }
   .log-line.lvl-THINK .msg { color: #B9B3D6; }
   .log-line.lvl-REPLY .msg { color: var(--text); }
@@ -420,9 +409,7 @@
   .log-line .rid { flex-shrink: 0; font-size: 10.5px; color: var(--text-faint); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; cursor: pointer; }
   .log-line .rid:hover { color: var(--text); border-color: var(--text-faint); }
   /* form controls inside the tester + log toolbar: the browser's default light controls were unreadable on the dark page */
-  .tester-row select, .tester-max input, #log-order { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; color-scheme: dark; }
-  #tester-models, #tester-prompt { color: var(--text); color-scheme: dark; }
-  #tester-models::placeholder, #tester-prompt::placeholder { color: var(--text-faint); }
+  .tester-row select, .tester-max input, #log-order { background: var(--surface-2); font-size: 13px; }
   .copyable { cursor: copy; border-radius: 4px; }
   .copyable:hover { background: rgba(255,255,255,.08); text-decoration: underline dotted; text-underline-offset: 3px; }
   #toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); background: #1f2937; color: #fff; border: 1px solid var(--border); border-radius: 999px; padding: 9px 18px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 9999; }
@@ -430,35 +417,35 @@
   /* a saved key (or ?key=) means we sign in automatically: never flash the login box while that is happening */
   .autologin #login-gate { display: none; }
   #autologin-note { display: none; }
-  .autologin #autologin-note { display: flex; position: fixed; inset: 0; align-items: center; justify-content: center; color: var(--text-faint); font-size: 13px; }
+  .autologin #autologin-note { display: flex; flex-direction: column; gap: 14px; position: fixed; inset: 0; align-items: center; justify-content: center; color: var(--text-faint); font-size: 13px; }
   .warn-cat { margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
   .warn-cat > summary { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; list-style: none; font-size: 13.5px; font-weight: 600; border-left: 3px solid var(--broken); }
   .warn-cat > summary::-webkit-details-marker { display: none; }
-  .warn-cat > summary::before { content: '▸'; color: var(--text-faint); width: 10px; transition: transform .12s; }
+  .warn-cat > summary::before { content: '▸'; color: var(--text-faint); width: 10px; display: inline-block; text-align: center; line-height: 1; transition: transform .12s; }
   .warn-cat[open] > summary::before { transform: rotate(90deg); }
   .warn-cat > summary:hover { background: rgba(255,255,255,.04); }
   .wc-count { margin-left: auto; background: rgba(255,255,255,.08); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; color: var(--text-dim); }
   .wc-body { padding: 4px 8px 8px; }
   .wc-body .warn-item { margin: 6px 0 0; }
   .warn-info { color: var(--text-dim); font-size: 12.5px; padding: 6px 4px; }
-  .warn-info span { color: #4ADE80; }
+  .warn-info span { color: var(--ok); }
   .stay-label { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; margin: 10px 0 2px; cursor: pointer; }
   .stay-label input { width: auto; margin: 0; }
-  .signout-btn { margin-left: auto; padding: 5px 11px; font-size: 12px; }
+  .signout-btn { height: 32px; padding: 0 12px; font-size: 12px; }
   .tester-help { color: var(--text-dim); font-size: 12.5px; margin: 0 0 10px; line-height: 1.5; }
   .tester-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
   .tester-max { color: var(--text-dim); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
   .tester-max input { width: 74px; }
-  #tester-models, #tester-prompt { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-  #tester-models { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  #tester-models, #tester-prompt { width: 100%; background: var(--surface-2); }
+  #tester-models { font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
   #tester-prompt { margin-top: 8px; }
   .tester-results { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
   .tester-line { display: grid; grid-template-columns: minmax(130px, 1.2fr) minmax(130px, 1fr) 90px 60px 3fr; gap: 8px; align-items: baseline; padding: 6px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
-  .tester-line .tm { font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+  .tester-line .tm { font-family: var(--font-mono); word-break: break-all; }
   .tester-line .tv { font-weight: 600; }
   .tester-line .tx { color: var(--text-dim); word-break: break-word; }
-  .tv-works { color: #4ADE80; } .tv-works-empty { color: #A3E635; }
-  .tv-paid, .tv-rate-limited, .tv-quota { color: #E6A028; } .tv-pending { color: var(--text-faint); }
+  .tv-works { color: var(--ok); } .tv-works-empty { color: #A3E635; }
+  .tv-paid, .tv-rate-limited, .tv-quota { color: var(--warn); } .tv-pending { color: var(--text-faint); }
   .tv-gone, .tv-auth, .tv-error, .tv-rejected, .tv-no-key { color: var(--broken); }
   @media (max-width: 720px) { .tester-line { grid-template-columns: 1fr 1fr; } .tester-line .tx { grid-column: 1 / -1; } }
   .log-chips { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -467,8 +454,8 @@
   .log-chip.on { color: var(--text); border-color: var(--text-faint); background: rgba(255,255,255,.08); }
   .log-chips.all .log-chip[data-lvl] { color: var(--text-dim); }      /* nothing picked = every level shown */
   .log-chip.on.lc-ERROR, .log-chips.all .lc-ERROR { color: var(--broken); }
-  .log-chip.on.lc-WARN, .log-chips.all .lc-WARN { color: #E6A028; }
-  .log-chip.on.lc-THINK { color: #A78BFA; } .log-chip.on.lc-REPLY { color: #4ADE80; } .log-chip.on.lc-PROMPT { color: #5EEAD4; }
+  .log-chip.on.lc-WARN, .log-chips.all .lc-WARN { color: var(--warn); }
+  .log-chip.on.lc-THINK { color: var(--experimental); } .log-chip.on.lc-REPLY { color: var(--ok); } .log-chip.on.lc-PROMPT { color: #5EEAD4; }
   /* request chunks + folding */
   .log-group { border-bottom: 1px solid var(--border); }
   .log-group-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.04); cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 1; }
@@ -476,7 +463,7 @@
   .log-group-head .gid { font-weight: 600; color: var(--text); }
   .log-group-head .gmeta { color: var(--text-faint); font-size: 11px; }
   .gbadge { font-size: 10.5px; font-weight: 600; color: var(--text-faint); }
-  .gbadge.lvl-ERROR { color: var(--broken); } .gbadge.lvl-WARN { color: #E6A028; }
+  .gbadge.lvl-ERROR { color: var(--broken); } .gbadge.lvl-WARN { color: var(--warn); }
   .caret { display: inline-block; width: 12px; color: var(--text-faint); flex-shrink: 0; }
   .log-line .fold { cursor: pointer; user-select: none; }
   .log-line .fold:hover { color: var(--text); }
@@ -492,16 +479,24 @@
   #add-form-toggle:hover { border-color: var(--accent); color: var(--accent); }
   #add-model-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
-  .field label { display: block; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
-  .field input, .field select {
-    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
-  }
+  .field input:not([type=checkbox]):not([type=radio]), .field select { width: 100%; }
   .field input[type="text"], .field input[type="number"], .field input[type="date"] { font-family: var(--font-mono); }
+  /* a tick-box with a sentence next to it (the base .field label style is for short field names) */
+  .check-label, .field .check-label { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12.5px; font-weight: 400; color: var(--text-dim); line-height: 1.45; cursor: pointer; }
+  .check-label input { margin-top: 2px; flex: none; }
+  /* wide screens: give every field name the height of two lines, so inputs in one row line up even when a name wraps */
+  @media (min-width: 721px) {
+    .hop-block > .form-grid > .field > label:first-child { min-height: 36px; display: flex; align-items: flex-end; }
+  }
   /* Textareas had no dark styling (only inputs/selects did), so they showed the browser's white with pale text. Low specificity on purpose: #tester-*, #limits-paste and inline styles still win. */
   textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; color-scheme: dark; box-sizing: border-box; }
   textarea::placeholder { color: var(--text-faint); }
   textarea:focus { outline: none; border-color: var(--accent); }
-  .hop-block { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; background: #0D1119; }
+  .mono-area { width: 100%; margin-top: 8px; font-family: var(--font-mono); font-size: 11.5px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row.mt8 { margin-top: 8px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .hop-block { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 10px; background: var(--inset); }
   .hop-block-label { font-size: 11.5px; color: var(--accent); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; justify-content: space-between; }
   .hop-controls { display: flex; gap: 4px; text-transform: none; }
   .hop-mini-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 5px; width: 22px; height: 22px; cursor: pointer; font-size: 11px; line-height: 1; }
@@ -511,25 +506,54 @@
   .cfg-test code { display: block; margin-top: 4px; font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
   .hop-mini-btn.remove:hover { border-color: var(--broken); color: var(--broken); }
   .form-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-  .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; padding: 9px 14px; cursor: pointer; font-size: 13px; }
-  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-remove-hop { background: transparent; border: 1px solid rgba(248,113,113,.3); color: var(--broken); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; cursor: pointer; margin-top: 8px; }
+  /* Quiet outline buttons: one look and one hover for all of them; the classes above only set the size. */
+  .btn-secondary, .sync-btn, .sync-api-btn, .sync-item-btn, .edit-btn, .del-btn, .test-hop-btn, .clear-filters-btn, .btn-remove-hop {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; line-height: 1.3;
+  }
+  .btn-secondary:hover, .sync-btn:hover, .sync-api-btn:hover, .sync-api-btn.on, .sync-item-btn:hover, .edit-btn:hover, .test-hop-btn:hover, .clear-filters-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .del-btn:hover, .sync-item-btn.remove:hover, .btn-remove-hop:hover { border-color: var(--broken); color: var(--broken); }
+  .sync-item-btn.add:hover { border-color: var(--free); color: var(--free); }
+  .btn-secondary { border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+  .btn-secondary.btn-danger, .btn-secondary.btn-danger:hover { border-color: rgba(248,113,113,.3); color: var(--broken); }
+  .btn-remove-hop { border-color: rgba(248,113,113,.3); color: var(--broken); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; margin-top: 8px; }
   #add-model-status { font-size: 13px; margin-top: 10px; min-height: 18px; }
 
+  /* Provider badge: a letter on a muted tint chosen from the provider's id. A logo file in public/logos/ replaces it. */
+  .pbadge { --h: 200; display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 5px;
+    font: 600 10.5px/1 var(--font-display); text-transform: uppercase;
+    color: hsl(var(--h) 55% 78%); background: hsl(var(--h) 30% 20%); border: 1px solid hsl(var(--h) 28% 31%); }
+  .pbadge::before { content: attr(data-l); }
+  .hop .pbadge { width: 15px; height: 15px; font-size: 9px; border-radius: 4px; }
+  .quick-usage-main .pbadge, .usage-table .pbadge, .tester-line .pbadge { width: 15px; height: 15px; font-size: 9px; border-radius: 4px; margin-right: 7px; vertical-align: -3px; }
+  .pbadge-img { background: #EEF2F7; border-color: transparent; padding: 2px; }
+  .pbadge-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .empty-note { color: var(--text-faint); font-size: 12.5px; padding: 14px 16px; }
   .empty-note.big { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 18px; }
 </style>
 </head>
 <body>
 
+<!-- Q-Proxy mark: a ring with a gap and a line passing through it (a request through the proxy). Defined once, used with <use href="#q-mark">. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="q-grad" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6EE7DA"/><stop offset="1" stop-color="#2BA89E"/></linearGradient>
+    <symbol id="q-mark" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="9" fill="url(#q-grad)"/>
+      <path d="M17.01 22.86A7.4 7.4 0 1 1 22.86 17.01" fill="none" stroke="#04211F" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M16.45 16.45L24.51 24.51" fill="none" stroke="#04211F" stroke-width="3.4" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
 <script>try { if (localStorage.getItem('qproxy-admin-key') || /[?&]key=/.test(location.search)) document.documentElement.classList.add('autologin'); } catch (_) {}</script>
-<div id="autologin-note">Signing in…</div>
+<div id="autologin-note"><svg class="qmark qmark-lg" aria-hidden="true"><use href="#q-mark"/></svg><span>Signing in…</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="login-gate">
   <div class="login-card">
-    <h1>Q</h1>
+    <svg class="qmark qmark-lg" aria-hidden="true"><use href="#q-mark"/></svg>
+    <h1>Q-Proxy</h1>
     <p>Enter your admin key to open the dashboard. Set the same value as <code>ADMIN_KEY</code> in your Render environment.</p>
-    <input type="password" id="key-input" placeholder="Admin key" autocomplete="off">
+    <input type="password" id="key-input" placeholder="Admin key" aria-label="Admin key" autocomplete="off">
     <label class="stay-label"><input type="checkbox" id="stay-signed-in" checked> Stay signed in on this device</label>
     <button id="key-submit" class="btn-primary">Unlock</button>
     <div class="login-error" id="login-error"></div>
@@ -538,20 +562,28 @@
 
 <div id="dashboard" hidden>
   <header class="top">
-    <h1><span class="pulse-dot"></span> Q</h1>
-    <span class="meta" id="header-meta">—</span>
-    <button type="button" class="btn-secondary signout-btn" id="signout-btn" title="Forget the saved admin key on this device">Sign out</button>
+    <div class="brand">
+      <svg class="qmark" aria-hidden="true"><use href="#q-mark"/></svg>
+      <h1>Q-Proxy</h1>
+      <span class="brand-sub">Admin</span>
+    </div>
+    <div class="header-tools">
+      <span class="live" title="This page refreshes itself while it is open"><span class="pulse-dot"></span><span class="meta" id="header-meta">—</span></span>
+      <select id="view-as" class="view-as" aria-label="View the panel as" title="Look at the panel the way one user sees it: their models and their own log lines only"><option value="">View: Admin (everything)</option></select>
+      <button type="button" class="btn-secondary signout-btn" id="signout-btn" title="Forget the saved admin key on this device">Sign out</button>
+    </div>
   </header>
 
-  <div class="stats" id="stats"></div>
-  <section id="warnings"></section>
-  <section id="limits-banner" hidden></section>
-  <section id="limits-panel" hidden>
+  <div id="view-as-banner" hidden></div>
+  <div class="stats admin-only" id="stats"></div>
+  <section id="warnings" class="admin-only"></section>
+  <section id="limits-banner" class="admin-only" hidden></section>
+  <section id="limits-panel" class="admin-only" hidden>
     <div class="warn-item" style="display:block;">
       <span class="id">Refresh Google limits</span><br>
       <span class="msg">Open <b>AI Studio → Rate limit</b>, select the whole models table (name, category, RPM, TPM, RPD) and paste it here. Nothing changes until you press Apply. Rows missing from your paste are kept; existing Google hops pick up the new numbers.</span>
-      <textarea id="limits-paste" rows="7" placeholder="Paste the AI Studio rate-limit table here…" style="width:100%;margin-top:8px;font-family:var(--font-mono);font-size:11.5px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;"></textarea>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <textarea id="limits-paste" class="mono-area" rows="7" placeholder="Paste the AI Studio rate-limit table here…" aria-label="AI Studio rate-limit table"></textarea>
+      <div class="row mt8">
         <button class="btn-secondary" id="limits-preview-btn">Preview changes</button>
         <button class="btn-primary" id="limits-apply-btn" disabled>Apply</button>
         <button class="btn-secondary" id="limits-close-btn">Close</button>
@@ -566,31 +598,31 @@
     <div class="models-toolbar">
       <div class="toolbar-grid">
         <div class="toolbar-field" style="grid-column: span 2;">
-          <label>Search</label>
+          <label for="filter-search">Search</label>
           <input type="text" id="filter-search" placeholder="Search id, model slug, provider, notes, status, tags…">
         </div>
         <div class="toolbar-field">
-          <label>Provider</label>
+          <label for="filter-provider">Provider</label>
           <select id="filter-provider"><option value="all">All providers</option></select>
         </div>
         <div class="toolbar-field">
-          <label>Status</label>
+          <label for="filter-status">Status</label>
           <select id="filter-status"><option value="all">All status</option></select>
         </div>
         <div class="toolbar-field">
-          <label>Limit type</label>
+          <label for="filter-limit">Limit type</label>
           <select id="filter-limit"><option value="all">All limits</option></select>
         </div>
         <div class="toolbar-field">
-          <label>Model family</label>
+          <label for="filter-family">Model family</label>
           <select id="filter-family"><option value="all">All families</option></select>
         </div>
         <div class="toolbar-field">
-          <label>Include tokens</label>
+          <label for="filter-include">Include tokens</label>
           <input type="text" id="filter-include" placeholder="e.g. deepseek provider:nvidia">
         </div>
         <div class="toolbar-field">
-          <label>Exclude tokens</label>
+          <label for="filter-exclude">Exclude tokens</label>
           <input type="text" id="filter-exclude" placeholder="e.g. experimental credits">
         </div>
       </div>
@@ -603,7 +635,7 @@
     <div id="providers"></div>
   </section>
 
-  <section>
+  <section class="admin-only">
     <div class="section-head"><h2>Usage &amp; credits</h2></div>
     <div class="usage-grid" id="usage-grid"></div>
     <details class="usage-table-wrap">
@@ -612,16 +644,16 @@
     </details>
   </section>
 
-  <section>
+  <section class="admin-only">
     <div class="section-head"><h2>Model tester</h2><span class="count" id="tester-count"></span></div>
     <p class="tester-help">Sends one tiny real request straight to the provider and tells you whether the model answers, needs money, or is gone. It skips your routing and fallbacks and isn't counted in your usage, but it does use one real request of that provider's quota (and its first key).</p>
     <div class="tester-row">
-      <select id="tester-provider"></select>
+      <select id="tester-provider" aria-label="Provider to test on"></select>
       <button type="button" class="btn-secondary" id="tester-load" title="Fill the box with the models you have configured for this provider">Load my configured models</button>
       <label class="tester-max">Max tokens <input type="number" id="tester-max" value="256" min="16" max="2000"></label>
     </div>
-    <textarea id="tester-models" rows="4" placeholder="One per line. Either a provider's own model id (glm-4.7-flash — tested on the provider selected above) or one of your own model names from models.json (kimi, glm-5.3-flash-lr — every hop of it is tested). To force a provider's id when it is also one of your names, write provider:id (zai:glm-5.3)."></textarea>
-    <input type="text" id="tester-prompt" placeholder="Prompt (optional — default: Reply with exactly one word: ok)">
+    <textarea id="tester-models" rows="4" aria-label="Models to test" placeholder="One per line. Either a provider's own model id (glm-4.7-flash — tested on the provider selected above) or one of your own model names from models.json (kimi, glm-5.3-flash-lr — every hop of it is tested). To force a provider's id when it is also one of your names, write provider:id (zai:glm-5.3)."></textarea>
+    <input type="text" id="tester-prompt" aria-label="Test prompt" placeholder="Prompt (optional — default: Reply with exactly one word: ok)">
     <div class="tester-row">
       <button type="button" class="btn-primary" id="tester-run">Test</button>
       <button type="button" class="btn-secondary" id="tester-stop" hidden>Stop</button>
@@ -633,7 +665,7 @@
   <section>
     <div class="section-head"><h2>Logs</h2><span class="count"><span id="log-count"></span></span></div>
     <div class="logs-toolbar">
-<div class="log-chips" id="log-level-chips" role="group" aria-label="Show these levels">
+      <div class="log-chips" id="log-level-chips" role="group" aria-label="Show these levels">
         <button type="button" class="log-chip on" id="log-chip-all" title="Show every level">All</button>
         <button type="button" class="log-chip lc-ERROR" data-lvl="ERROR">ERROR</button>
         <button type="button" class="log-chip lc-WARN" data-lvl="WARN">WARN</button>
@@ -642,33 +674,37 @@
         <button type="button" class="log-chip lc-REPLY" data-lvl="REPLY">REPLY</button>
         <button type="button" class="log-chip lc-PROMPT" data-lvl="PROMPT" title="What was sent">PROMPT</button>
       </div>
-      <select id="log-order" title="Order of the lines (or of the chunks when grouped)">
-        <option value="asc">Oldest first ↓</option>
-        <option value="desc">Newest first ↑</option>
-      </select>
-      <label class="log-auto-label" title="Put each request's lines together in one collapsible chunk, ordered by when the request started"><input type="checkbox" id="log-group"> Group by request</label>
-      <input type="text" id="log-rid-filter" placeholder="request #id" title="Show only one request's lines. Click any #id in the log to fill this in." style="width:96px;">
-      <button type="button" class="btn-secondary" id="log-refresh-btn">Refresh</button>
-      <button type="button" class="btn-secondary" id="log-collapse-btn" title="Fold every request chunk and every THINK / REPLY / PROMPT block">Collapse all</button>
-      <button type="button" class="btn-secondary" id="log-expand-btn">Expand all</button>
-      <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh" checked> Auto-refresh (5s)</label>
-      <span class="log-tz-note" id="log-tz-note"></span>
-      <button type="button" class="btn-secondary" id="log-clear-btn" style="border-color: rgba(248,113,113,.3); color: var(--broken);">Clear</button>
+      <div class="logs-row">
+        <select id="log-order" aria-label="Order of the lines" title="Order of the lines (or of the chunks when grouped)">
+          <option value="asc">Oldest first ↓</option>
+          <option value="desc">Newest first ↑</option>
+        </select>
+        <label class="log-auto-label" title="Put each request's lines together in one collapsible chunk, ordered by when the request started"><input type="checkbox" id="log-group"> Group by request</label>
+        <input type="text" id="log-rid-filter" placeholder="request #id" aria-label="Show one request" title="Show only one request's lines. Click any #id in the log to fill this in.">
+        <label class="log-auto-label"><input type="checkbox" id="log-auto-refresh" checked> Auto-refresh (5s)</label>
+        <span class="log-tz-note" id="log-tz-note"></span>
+      </div>
+      <div class="logs-row">
+        <button type="button" class="btn-secondary" id="log-refresh-btn">Refresh</button>
+        <button type="button" class="btn-secondary" id="log-collapse-btn" title="Fold every request chunk and every THINK / REPLY / PROMPT block">Collapse all</button>
+        <button type="button" class="btn-secondary" id="log-expand-btn">Expand all</button>
+        <button type="button" class="btn-secondary btn-danger push" id="log-clear-btn">Clear</button>
+      </div>
     </div>
     <div class="logs-view" id="logs-view"></div>
   </section>
 
-  <section>
+  <section class="admin-only">
     <div class="section-head">
       <h2>Reasoning schemas</h2>
       <span class="count" id="schema-count"></span>
     </div>
-    <div id="schema-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+    <div id="schema-list" class="stack"></div>
     <button type="button" class="btn-secondary" id="schema-new-btn">+ New schema (raw JSON)</button>
     <div id="schema-editor" hidden></div>
   </section>
 
-  <section>
+  <section class="admin-only">
     <button id="add-form-toggle">+ Add a model</button>
     <div id="add-model-panel" hidden></div>
   </section>
@@ -685,7 +721,49 @@
 
   const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', deepseek: 'DeepSeek' };
   const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
+
+  // ---------- provider badges ----------
+  // A small letter badge per provider on a muted tint picked from the provider's position in PROVIDER_LABELS (never a brand colour).
+  // If the server has public/logos/<provider>.svg (or .png / .webp), that file is shown instead — GET /admin/api/logos lists them.
+  // The letter is drawn by CSS (data-l), so it never ends up in a tab's or a row's text.
+  let providerLogos = {};
+  function providerBadge(id) {
+    if (!id) return '';
+    const key = String(id).toLowerCase();
+    const label = PROVIDER_LABELS[id] || String(id);
+    if (providerLogos[key]) return `<span class="pbadge pbadge-img" title="${escapeHtml(label)}"><img src="${escapeHtml(providerLogos[key])}" alt="" loading="lazy"></span>`;
+    const idx = Object.keys(PROVIDER_LABELS).indexOf(id);
+    let hue = idx >= 0 ? Math.round((idx * 137.508 + 20) % 360) : 0;
+    if (idx < 0) for (const ch of key) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+    const letter = (label.match(/[A-Za-z0-9]/) || ['?'])[0];
+    return `<span class="pbadge" style="--h:${hue}" data-l="${escapeHtml(letter)}" title="${escapeHtml(label)}" aria-hidden="true"></span>`;
+  }
+
+  // ---------- label links ----------
+  // Pairs each field's <label> with its input/select/textarea (click the name → the field gets focus; screen readers read the name).
+  // The forms are built from strings on every redraw, so this runs again whenever one of them changes.
+  let fieldSeq = 0;
+  function linkLabels(root) {
+    $$('.field, .toolbar-field', root || document).forEach(f => {
+      const label = Array.from(f.children).find(c => c.tagName === 'LABEL' && !c.getAttribute('for'));
+      const ctl = label && f.querySelector('input:not([type=checkbox]):not([type=radio]), select, textarea');
+      if (!ctl || label.contains(ctl)) return;
+      if (!ctl.id) ctl.id = 'fld-' + (++fieldSeq);
+      label.setAttribute('for', ctl.id);
+    });
+  }
   let currentModels = {};
+  // "View as": '' = Admin (everything). A user name shows only what that user sees (their models, their own log lines).
+  let viewAs = '';
+  const canSee = (entry) => !viewAs || !Array.isArray(entry.private) || !entry.private.length || entry.private.includes(viewAs);
+  async function loadUsers() {
+    try {
+      const r = await api('/admin/api/users');
+      const sel = $('#view-as');
+      sel.innerHTML = '<option value="">View: Admin (everything)</option>' + (r.users || []).map(n => `<option value="${escapeHtml(n)}">View as ${escapeHtml(n)}${n === r.owner ? ' (owner)' : ''}</option>`).join('');
+      sel.value = viewAs;
+    } catch (_) { /* the list is a convenience; the panel works without it */ }
+  }
   let providerTab = '';   // 'All' / a provider / custom bundles; restored from the saved settings just below
   // ── remembered view settings (kept in this browser; the admin key is stored separately, see "Stay signed in") ──
   const PREFS_KEY = 'qproxy-ui';
@@ -850,6 +928,7 @@
   function applyFilters(items) {
     return items.filter(item => {
       const e = item.entry;
+      if (!canSee(e)) return false;
       if (filterState.provider !== 'all' && e.provider !== filterState.provider) return false;
       if (filterState.status !== 'all' && (e.status || 'active') !== filterState.status) return false;
       if (filterState.limitType !== 'all' && (e.limitType || 'rate-limited') !== filterState.limitType) return false;
@@ -1042,7 +1121,7 @@
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
         ${showOrder ? `<span class="hop-order">#${i + 1}</span>` : ''}
-        <span class="hop-provider">${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span>
+        <span class="hop-provider">${providerBadge(hop.provider)}<span>${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span></span>
         <span class="hop-model copyable" data-copy="${escapeHtml(hop.model)}" title="Click to copy">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
         ${hops.length > 1 ? `<button type="button" class="test-hop-btn" data-test="${escapeHtml(entryId)}" data-hop="${i}" title="Open this hop's settings with the test area ready">🧪 Test</button>` : ''}
@@ -1156,7 +1235,7 @@
       const meta = quickUsageTab === 'recent'
         ? `${timeAgo(u.lastUsed)} · ${u.count} ok${u.errors ? `, ${u.errors} err` : ''}${idsText}`
         : `${u.count} ok${u.errors ? `, ${u.errors} err` : ''} · ${timeAgo(u.lastUsed)}${idsText}`;
-      return `<div class="quick-usage-item"><div class="quick-usage-main">${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • <span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
+      return `<div class="quick-usage-item"><div class="quick-usage-main">${providerBadge(u.provider)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • <span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
     }).join('') : '<div class="sync-result-note">No usage data yet. These lists appear after requests start flowing.</div>';
 
     $('#quick-usage').innerHTML = `
@@ -1418,11 +1497,14 @@
         <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
         ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
         ${entry.custom ? `<span class="badge rate-limited">🗂 custom bundle</span>` : ''}
-        ${hops.length === 1 ? `<button class="test-hop-btn" data-test="${escapeHtml(id)}" data-hop="0" title="Open this model's settings with the test area ready">🧪 Test</button>` : ''}
-        <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
-        <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
+        ${Array.isArray(entry.private) && entry.private.length ? `<span class="badge rate-limited" title="Only these users (and the Admin) can see and call this model">🔒 private: ${escapeHtml(entry.private.join(', '))}</span>` : ''}
+        <span class="card-actions">
+          ${hops.length === 1 ? `<button class="test-hop-btn" data-test="${escapeHtml(id)}" data-hop="0" title="Open this model's settings with the test area ready">🧪 Test</button>` : ''}
+          <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
+          <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
+        </span>
       </div>
-      <div class="model-combo">${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</div>
+      <div class="model-combo">${providerBadge(entry.provider)}<span>${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</span></div>
       <div class="model-meta">
         <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
         <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
@@ -1543,7 +1625,7 @@
       const label = provider === '__all__' ? 'All' : provider === '__custom__' ? '🗂 Custom bundles' : (PROVIDER_LABELS[provider] || provider);
       const count = provider === '__all__' ? filtered.length : (groups[provider]?.length || 0);
       return `<button type="button" class="provider-tab-btn ${providerTab === provider ? 'active' : ''}" data-provider-tab="${provider}">
-        ${escapeHtml(label)} (${count})
+        ${provider === '__all__' || provider === '__custom__' ? '' : providerBadge(provider)}${escapeHtml(label)} (${count})
       </button>`;
     }).join('');
     $$('.provider-tab-btn').forEach(btn => btn.addEventListener('click', e => {
@@ -1578,7 +1660,7 @@
       const cards = items.length ? `<div class="model-cards">${items.map(item => renderModelCard(item)).join('')}</div>` : '';
       return `<div class="provider-group">
         <div class="provider-group-head">
-          <span class="pname">${PROVIDER_LABELS[provider] || provider} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span>
+          <span class="pname">${providerBadge(provider)}<span>${escapeHtml(PROVIDER_LABELS[provider] || provider)} <span style="color:var(--text-faint);font-weight:400;">(${items.length})</span></span></span>
           <span>${syncBtn}${(!isAllTab && SYNCABLE.has(provider)) ? `<button type="button" class="sync-api-btn ${syncApi[provider] && syncApi[provider].open ? 'on' : ''}" data-sync-api="${provider}" title="Show the exact API call behind this check, so you can test it by hand">API call</button>` : ''}</span>
         </div>
         ${isAllTab ? '' : renderSyncApi(provider)}
@@ -1638,7 +1720,7 @@
     $('#usage-grid').innerHTML = cards.join('');
 
     const tbody = $('#usage-table tbody');
-    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td><span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
+    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${providerBadge(u.provider)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td><span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
     tbody.innerHTML = rows || '<tr><td colspan="6" class="sync-result-note">No requests recorded yet.</td></tr>';
   }
 
@@ -1728,6 +1810,7 @@
       const qs = [];
       if (logLevels.size) qs.push(`level=${encodeURIComponent([...logLevels].join(','))}`);
       if (currentLogRid) qs.push(`rid=${encodeURIComponent(currentLogRid)}`);
+      if (viewAs) qs.push(`as=${encodeURIComponent(viewAs)}`);
       const res = await api('/admin/api/logs' + (qs.length ? '?' + qs.join('&') : ''));
       renderLogs(res, force === true);
     } catch (err) {
@@ -1783,7 +1866,7 @@
         try { out = await api('/admin/api/test-model', { method: 'POST', body: { provider: t.provider, model: t.model, prompt, maxTokens } }); }
         catch (e) { out = { verdict: 'error', label: 'error', message: e.message }; }
         const detail = out.reply || out.message || '';
-        row.innerHTML = `<span class="tm">${nameHtml}</span><span class="tv tv-${escapeHtml(out.verdict)}">${escapeHtml(out.label || out.verdict)}</span><span>${escapeHtml(PROVIDER_LABELS[t.provider] || t.provider)}${out.status ? ' · HTTP ' + out.status : ''}</span><span>${out.ms != null ? out.ms + ' ms' : ''}</span><span class="tx" title="${escapeHtml(detail)}">${escapeHtml(detail.slice(0, 160))}</span>`;
+        row.innerHTML = `<span class="tm">${nameHtml}</span><span class="tv tv-${escapeHtml(out.verdict)}">${escapeHtml(out.label || out.verdict)}</span><span>${providerBadge(t.provider)}${escapeHtml(PROVIDER_LABELS[t.provider] || t.provider)}${out.status ? ' · HTTP ' + out.status : ''}</span><span>${out.ms != null ? out.ms + ' ms' : ''}</span><span class="tx" title="${escapeHtml(detail)}">${escapeHtml(detail.slice(0, 160))}</span>`;
         done++;
       }
       $('#tester-count').textContent = stopFlag ? `stopped after ${done} of ${targets.length}` : `${done} tested`;
@@ -1868,6 +1951,20 @@
     rerenderLogs();
   });
   $('#log-expand-btn').addEventListener('click', () => { logCollapsed.clear(); rerenderLogs(); });
+  linkLabels(document);
+  ['#add-model-panel', '#schema-editor'].forEach(sel => {
+    const box = $(sel);
+    if (box) new MutationObserver(() => linkLabels(box)).observe(box, { childList: true, subtree: true });
+  });
+  $('#view-as').addEventListener('change', async e => {
+    viewAs = e.target.value;
+    document.body.classList.toggle('viewing-user', !!viewAs);
+    const b = $('#view-as-banner');
+    b.hidden = !viewAs;
+    b.innerHTML = viewAs ? `👁 Viewing as <b>${escapeHtml(viewAs)}</b> — only the models and log lines this user can see. Editing is hidden. Switch back to <b>Admin</b> in the header dropdown.` : '';
+    await loadAll();
+    await loadLogs(true);
+  });
   $('#log-rid-filter').addEventListener('input', e => { currentLogRid = e.target.value.replace(/^#/, '').trim(); loadLogs(true); });
   $('#logs-view').addEventListener('click', e => {
     const fold = e.target.closest && e.target.closest('.fold');
@@ -2037,6 +2134,7 @@
   // instead of forcing a full retype.
   let hopState = [];
   let editingId = null; // null = adding new; string = editing that id (id locked)
+  let editingPrivate = []; // top-level "private" list (user names) for the entry being edited
   let editingCustomFlag = false; // top-level "custom bundle" flag for the entry being edited
 
   function emptyHop() {
@@ -2171,7 +2269,7 @@
         </div>
       </div>
       <div class="form-actions">
-        <button class="btn-primary" style="width:auto;" id="schema-save-btn">Save schema</button>
+        <button class="btn-primary" id="schema-save-btn">Save schema</button>
         <button class="btn-secondary" id="schema-cancel-btn">Cancel</button>
       </div>
       <div id="schema-editor-status" style="margin-top:6px;font-size:12px;"></div>
@@ -2516,14 +2614,14 @@
     if (d.noControls) {
       lines.push(`<strong>No reasoning parameter in this example.</strong> If a parameter is not in the provider's own example, its endpoint most likely does not take it. Applying makes this hop send <strong>no reasoning field</strong>.`);
       return `<div class="detect-result" style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
-      <button type="button" class="btn-primary" style="margin-top:8px;width:auto;" data-act="detect-apply" data-idx="${i}">Apply: send no reasoning fields</button>`;
+      <button type="button" class="btn-primary" style="margin-top:8px;" data-act="detect-apply" data-idx="${i}">Apply: send no reasoning fields</button>`;
     }
     if (d.toggle) lines.push(`Thinking toggle: <code>${escapeHtml(d.toggle.key)}</code> = <strong>${d.toggle.value}</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.toggle.transport)})</span>`);
     if (d.effort) lines.push(`Reasoning effort: <code>${escapeHtml(d.effort.key)}</code>${d.effort.guessedKey ? ' <span style="color:var(--text-faint);">(no effort key found — using values list only, check the key name)</span>' : ''} = <strong>"${escapeHtml(d.effort.value)}"</strong> <span style="color:var(--text-faint);">(via ${escapeHtml(d.effort.transport)})</span>, accepted: ${(d.effort.options || []).map(v => escapeHtml(v)).join(', ')}`);
     if (d.special) lines.push(`<span style="color:var(--broken);">Special case</span> — found field(s) that don't fit a plain toggle/effort shape (${d.extraKeys.map(e => escapeHtml(e.key)).join(', ')}). Applying will switch this hop to the <strong>Raw</strong> schema with everything detected pasted in, instead of forcing it into structured controls.`);
     if (d.effort && !d.effort.guessedKey && (d.effort.options || []).length <= 1) lines.push(`<span style="color:var(--text-faint);">An example shows only ONE value (<code>${escapeHtml(d.effort.value)}</code>); the other values it accepts are not in it — add them in the box above if the page lists them.</span>`);
     return `<div class="detect-result" style="margin-top:10px;font-size:11.5px;line-height:1.7;background:var(--bg);border-radius:6px;padding:8px 10px;">${lines.join('<br>')}</div>
-      <button type="button" class="btn-primary" style="margin-top:8px;width:auto;" data-act="detect-apply" data-idx="${i}">Apply detected config${d.special ? ' (as raw)' : ''}</button>`;
+      <button type="button" class="btn-primary" style="margin-top:8px;" data-act="detect-apply" data-idx="${i}">Apply detected config${d.special ? ' (as raw)' : ''}</button>`;
   }
 
   // NVIDIA's public page for a model: build.nvidia.com/<org>/<name>, with the dots of the id turned into dashes
@@ -2647,6 +2745,7 @@
   function openForm(id, entry, opts) {
     editingId = id || null;
     editingCustomFlag = Boolean(entry && entry.custom);
+    editingPrivate = entry && Array.isArray(entry.private) ? entry.private.slice() : [];
     hopState = entry ? flattenEntry(entry) : [emptyHop()];
     $('#add-form-toggle').hidden = true;
     $('#add-model-panel').hidden = false;
@@ -2682,16 +2781,21 @@
           ${editingId ? '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Change this to rename the model — this is the id clients pass in the API\'s "model" field, independent of the actual provider/model slug configured below.</div>' : ''}
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
-            <input type="checkbox" id="f-custom" ${editingCustomFlag ? 'checked' : ''} style="width:auto;">
+          <label class="check-label">
+            <input type="checkbox" id="f-custom" ${editingCustomFlag ? 'checked' : ''}>
             Custom bundle — this entry's real identity is "one logical model across several providers," not really owned by hop 1's provider. Shows it in a dedicated "Custom" tab in addition to its normal provider tab(s).
           </label>
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="f-private">🔒 Private to (user names)</label>
+          <input type="text" id="f-private" value="${escapeHtml(editingPrivate.join(', '))}" placeholder="e.g. Q">
+          <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Comma-separated; leave it empty for a normal public model. Only these users (and you, in the Admin) can list or call it — everyone else gets "model not found". The names are the ones under "View as".</div>
         </div>
       </div>
       <div id="hop-list"></div>
       <button type="button" class="btn-secondary" id="add-hop-btn" style="margin-top:2px;">+ Add fallback hop</button>
       <div class="form-actions">
-        <button class="btn-primary" style="width:auto;" id="submit-model">${editingId ? 'Save changes' : 'Save model'}</button>
+        <button class="btn-primary" id="submit-model">${editingId ? 'Save changes' : 'Save model'}</button>
         <button class="btn-secondary" id="cancel-model">Cancel</button>
       </div>
       <div id="add-model-status"></div>
@@ -3350,6 +3454,8 @@
     if (!filledHops.length) { status.style.color = 'var(--broken)'; status.textContent = 'At least one hop needs a model slug filled in.'; return; }
     const entry = nestHops(filledHops);
     if ($('#f-custom').checked) entry.custom = true;
+    const priv = $('#f-private').value.split(',').map(x => x.trim()).filter(Boolean);
+    if (priv.length) entry.private = [...new Set(priv)];
     try {
       const body = { id, entry };
       if (editingId && editingId !== id) body.previousId = editingId;
@@ -3375,10 +3481,12 @@
   let modelPresets = {};
 
   async function loadAll() {
-    const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes] = await Promise.all([
+    const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes, logosRes] = await Promise.all([
       api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status'), api('/admin/api/presets'),
-      api('/admin/api/warnings').catch(() => ({ hops: [], catalogCheckedAt: {} }))
+      api('/admin/api/warnings').catch(() => ({ hops: [], catalogCheckedAt: {} })),
+      api('/admin/api/logos').catch(() => ({ logos: {} }))   // optional: letter badges are used when there are no logo files
     ]);
+    providerLogos = (logosRes && logosRes.logos) || {};
     currentModels = modelsRes.models;
     lastHopWarnings = Object.fromEntries(((warnRes && warnRes.hops) || []).map(w => [w.key, w]));
     lastCatalogChecked = (warnRes && warnRes.catalogCheckedAt) || {};
@@ -3421,6 +3529,7 @@
     try {
       await api('/admin/api/models');
       await loadAll();
+      await loadUsers();
       // Only hide the login gate once everything has actually succeeded —
       // if loadAll() throws, we stay on the login screen with the error
       // visible instead of hiding it behind an already-dismissed gate.
