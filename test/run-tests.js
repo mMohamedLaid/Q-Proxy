@@ -158,7 +158,7 @@ async function main() {
     // ── /health usage counting ────────────────────────────────────────
     r = await fetch(BASE + '/health');
     j = await r.json();
-    const me = (j.users || []).find(u => u.name === 'me');
+    const me = (j.users || []).find(u => u.name === 'Q');
     check('/health now counts unlimited-key usage', me && me.used >= 1, JSON.stringify(j.users));
 
     // ── admin: sync-remove must not drop hop fields ───────────────────
@@ -348,13 +348,13 @@ async function main() {
       chat({ model: 'gemma-4-31b-nv', stream: true, messages: [{ role: 'user', content: 'hi B' }] })]);
     await readSSE(pa); await readSSE(pb); await sleep(250);
     const par = serverLog.slice(mark);
-    const rids = [...par.matchAll(/REQUEST → model: gemma-4-31b-nv[^\n]*/g)].length && [...par.matchAll(/#([a-z0-9]{4}) \[me\] REQUEST/g)].map(m => m[1]);
+    const rids = [...par.matchAll(/REQUEST → model: gemma-4-31b-nv[^\n]*/g)].length && [...par.matchAll(/#([a-z0-9]{4}) \[Q\] REQUEST/g)].map(m => m[1]);
     check('rid: two parallel requests get different ids', rids.length === 2 && rids[0] !== rids[1], JSON.stringify(rids));
     const ridA = rids[0];
     const aLines = par.split('\n').filter(l => l.includes('#' + ridA));
     check('rid: every line of a request carries its id (request, provider, stream-complete)', aLines.some(l => /REQUEST/.test(l)) && aLines.some(l => /→ provider:/.test(l)) && aLines.some(l => /stream complete/.test(l)), aLines.join('\n').slice(0, 500));
-    check('console: compiled THINK block copied to Render logs, every line tagged', new RegExp(`\\[THINK\\] #${ridA} \\[me\\] reasoning[^\\n]*\\n#${ridA} │ plan A`).test(par), par.slice(0, 900));
-    check('console: compiled REPLY block copied too', new RegExp(`\\[REPLY\\] #${ridA} \\[me\\] reply[^\\n]*\\n#${ridA} │ the answer`).test(par));
+    check('console: compiled THINK block copied to Render logs, every line tagged', new RegExp(`\\[THINK\\] #${ridA} \\[Q\\] reasoning[^\\n]*\\n#${ridA} │ plan A`).test(par), par.slice(0, 900));
+    check('console: compiled REPLY block copied too', new RegExp(`\\[REPLY\\] #${ridA} \\[Q\\] reply[^\\n]*\\n#${ridA} │ the answer`).test(par));
     r = await fetch(BASE + '/admin/api/logs?rid=' + ridA, { headers: admin2 }); j = await r.json();
     const lv = j.logs.map(l => l.level);
     check('admin logs: ?rid= returns only that request, incl. PROMPT + THINK + REPLY', j.logs.length > 0 && j.logs.every(l => l.rid === ridA) && ['PROMPT', 'THINK', 'REPLY'].every(x => lv.includes(x)), JSON.stringify(lv));
@@ -784,12 +784,74 @@ async function main() {
     setScenario({ mode: 'nonstream', models: ['llama-3.3-70b-versatile'] });
     r = await fetch(BASE + '/admin/api/sync/groq', { headers: admin2 }); j = await r.json();
     check('groq sync: a configured model that Groq no longer lists is reported as "no longer listed"', (j.noLongerListed || []).includes('openai/gpt-oss-120b'), JSON.stringify(j.noLongerListed));
-    setScenario({ mode: 'nonstream', models: ['DeepSeek-V4-Flash', 'GLM-5.3-Flash'] });
+    setScenario({ mode: 'nonstream', models: ['ZZ-Amd-One', 'ZZ-Amd-Two'] });
     r = await fetch(BASE + '/admin/api/sync/amd', { headers: admin2 }); j = await r.json();
-    check('amd sync: asks developer.amd.com.cn/radeon/api/v1/models with the AMD key and offers both models (ids exactly as listed, no prefix)', r.ok && lastCall().url === 'https://developer.amd.com.cn/radeon/api/v1/models' && lastCall().auth === 'Bearer amd1' && j.liveCount === 2 && (j.newlyAvailable || []).join() === 'DeepSeek-V4-Flash,GLM-5.3-Flash', JSON.stringify({ c: lastCall(), j }).slice(0, 400));
+    check('amd sync: asks developer.amd.com.cn/radeon/api/v1/models with the AMD key and offers both models (ids exactly as listed, no prefix)', r.ok && lastCall().url === 'https://developer.amd.com.cn/radeon/api/v1/models' && lastCall().auth === 'Bearer amd1' && j.liveCount === 2 && (j.newlyAvailable || []).join() === 'ZZ-Amd-One,ZZ-Amd-Two', JSON.stringify({ c: lastCall(), j }).slice(0, 400));
     let rw2 = await (async () => { const rr = await fetch(BASE + '/admin/api/sync/amd/raw', { headers: admin2 }); return { s: rr.status, j: await rr.json() }; })();
     check('amd api call panel: shows the exact URL and a curl line with a placeholder key', rw2.j.url === 'https://developer.amd.com.cn/radeon/api/v1/models' && /Bearer YOUR_RADEON_API_KEY/.test(rw2.j.curl) && rw2.j.hasKey === true, JSON.stringify(rw2.j));
     r = await fetch(BASE + '/admin/api/models/zz-groq', { method: 'DELETE', headers: admin2 }); await r.text();
+
+    // ── owner name, private models, per-user logs ─────────────────────
+    r = await fetch(BASE + '/health'); j = await r.json();
+    check('owner key is named Q by default (MY_NAME not set)', (j.users || []).some(u => u.name === 'Q') && !(j.users || []).some(u => u.name === 'me'), JSON.stringify(j.users));
+    r = await fetch(BASE + '/admin/api/users', { headers: admin2 }); j = await r.json();
+    check('/admin/api/users lists the owner for the "view as" dropdown', j.owner === 'Q' && j.users.includes('Q'), JSON.stringify(j));
+    const mkModel = async (id, extra) => { const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id, entry: { model: 'gpt-x', provider: 'groq', status: 'active', limitType: 'rate-limited', ...extra } }) }); const jj = await rr.json(); return { s: rr.status, j: jj }; };
+    let pm = await mkModel('zz-priv-q', { private: ['Q', ' Q '] });
+    check('saving a private model keeps the list de-duplicated and trimmed', pm.s === 200 && JSON.stringify(pm.j.entry.private) === '["Q"]', JSON.stringify(pm.j));
+    pm = await mkModel('zz-priv-other', { private: ['somebody-else'] });
+    pm = await mkModel('zz-priv-bad', { private: 'Q' });
+    check('a private list that is not a list of names is refused', pm.s === 400, JSON.stringify(pm.j));
+    const ids = async (hdr) => (await (await fetch(BASE + '/v1/models', { headers: hdr })).json()).data.map(m => m.id);
+    let l1 = await ids({ Authorization: 'Bearer testkey' }), l2 = await ids({}), l3 = await ids({ Authorization: 'Bearer wrong' });
+    check('/v1/models: the owner sees the model private to Q but not one private to someone else', l1.includes('zz-priv-q') && !l1.includes('zz-priv-other'), JSON.stringify(l1.filter(x => x.startsWith('zz-'))));
+    check('/v1/models: no key or a wrong key sees neither private model, but still sees public ones', !l2.includes('zz-priv-q') && !l3.includes('zz-priv-q') && l2.includes('gemma-4-31b-nv'), JSON.stringify(l2.filter(x => x.startsWith('zz-'))));
+    setScenario(okReply);
+    r = await chat({ model: 'zz-priv-q', messages: [{ role: 'user', content: 'hi' }] }); let pj = await r.text();
+    check('calling a model private to you works', r.ok, r.status + ' ' + pj.slice(0, 120));
+    r = await chat({ model: 'zz-priv-other', messages: [{ role: 'user', content: 'hi' }] }); pj = await r.text();
+    check('calling a model private to someone else answers "not found", as if it did not exist', r.status === 404 && /not found/i.test(pj), r.status + ' ' + pj.slice(0, 120));
+    // logs: each line is tagged with its user; the Admin sees all, a user sees only theirs minus admin-only lines
+    const logsAs = async (as) => (await (await fetch(BASE + '/admin/api/logs' + (as ? '?as=' + encodeURIComponent(as) : ''), { headers: admin2 })).json()).logs;
+    const allLogs = await logsAs(''), qLogs = await logsAs('Q'), noLogs = await logsAs('nobody');
+    check('admin log view includes the owner\'s raw prompt and system lines', allLogs.some(l => l.level === 'PROMPT' && l.user === 'Q') && allLogs.some(l => !l.user), String(allLogs.length));
+    check('view as Q: their request lines are there', qLogs.some(l => /REQUEST →/.test(l.msg)), String(qLogs.length));
+    check('view as Q: no system lines, no raw prompt, no provider/routing details', qLogs.length > 0 && qLogs.every(l => l.user === 'Q' && l.level !== 'PROMPT' && !/→ provider:|fallback path/.test(l.msg)), JSON.stringify(qLogs.filter(l => l.level === 'PROMPT' || !l.user || /→ provider:/.test(l.msg)).slice(0, 2)));
+    check('view as a user with no traffic: empty — nothing of Q\'s leaks across', noLogs.length === 0, String(noLogs.length));
+    // errors: a provider-key problem is the owner's, not the user's; a rate/timeout problem is shown to the user
+    setScenario({ mode: 'upstream-error', status: 401, body: '{"error":{"message":"bad key"}}' });
+    r = await chat({ model: 'zz-priv-q', messages: [{ role: 'user', content: 'hi' }] }); await r.text();
+    setScenario({ mode: 'upstream-error', status: 504, body: '{"error":{"message":"gateway"}}' });
+    r = await chat({ model: 'zz-priv-q', messages: [{ role: 'user', content: 'hi' }] }); await r.text();
+    const qErr = (await logsAs('Q')).filter(l => l.level === 'ERROR'), allErr = (await logsAs('')).filter(l => l.level === 'ERROR' && l.user === 'Q');
+    check('admin sees both errors (AUTH and GATEWAY_TIMEOUT)', allErr.some(l => /\[AUTH\]/.test(l.msg)) && allErr.some(l => /\[GATEWAY_TIMEOUT\]/.test(l.msg)), allErr.map(l => l.msg.slice(0, 60)).join(' | '));
+    check('user view: the gateway-timeout error is shown, the bad-provider-key error is not', qErr.some(l => /\[GATEWAY_TIMEOUT\]/.test(l.msg)) && !qErr.some(l => /\[AUTH\]/.test(l.msg)), qErr.map(l => l.msg.slice(0, 60)).join(' | '));
+    for (const id of ['zz-priv-q', 'zz-priv-other']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+
+    // ── optional provider logos: public/logos/<provider>.svg|png|webp ──
+    const logoDir = path.join(ROOT, 'public', 'logos'), hadLogoDir = fs.existsSync(logoDir);
+    r = await fetch(BASE + '/admin/api/logos'); await r.text();
+    check('logos list: needs the admin key', r.status === 401, String(r.status));
+    r = await fetch(BASE + '/admin/api/logos', { headers: admin2 }); j = await r.json();
+    check('logos list: answers with a plain id -> url map (empty while the folder holds no logo files, which is fine: the Admin then uses letter badges); the README is never listed', r.ok && j.logos && typeof j.logos === 'object' && !('zz-test' in j.logos) && !Object.keys(j.logos).some(k => /readme/i.test(k)), JSON.stringify(j));
+    fs.mkdirSync(logoDir, { recursive: true });
+    const logoFile = path.join(logoDir, 'zz-test.svg');
+    fs.writeFileSync(logoFile, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#888"/></svg>');
+    try {
+      r = await fetch(BASE + '/admin/api/logos', { headers: admin2 }); j = await r.json();
+      check('logos list: a file named <provider>.svg is listed under its provider id', j.logos && j.logos['zz-test'] === '/admin/logos/zz-test.svg', JSON.stringify(j));
+      r = await fetch(BASE + '/admin/logos/zz-test.svg'); const svgText = await r.text();
+      check('logo file: served as an image, with a CSP that blocks scripts, and no admin key needed (an <img> tag cannot send one)', r.ok && /image\/svg\+xml/.test(r.headers.get('content-type') || '') && /default-src 'none'/.test(r.headers.get('content-security-policy') || '') && /<svg/.test(svgText), r.status + ' ' + r.headers.get('content-type'));
+      r = await fetch(BASE + '/admin/logos/README.txt'); await r.text();
+      check('logo folder: only plain <name>.svg|png|webp files are served (README.txt is not)', r.status === 404, String(r.status));
+      r = await fetch(BASE + '/admin/logos/..%2Fserver.js'); await r.text();
+      check('logo folder: a path that climbs out of it is refused', r.status === 404, String(r.status));
+      r = await fetch(BASE + '/admin/logos/nothere.svg'); await r.text();
+      check('logo file: a name with no file is a plain 404', r.status === 404, String(r.status));
+    } finally {
+      try { fs.unlinkSync(logoFile); } catch (_) {}
+      if (!hadLogoDir) { try { fs.rmdirSync(logoDir); } catch (_) {} }
+    }
     tt = await tm({ provider: 'zai', model: 'x', prompt: 'say hi', maxTokens: 99999 });
     const sent2 = JSON.parse(fs.readFileSync(SCEN + '.lastbody', 'utf8'));
     check('tester: a custom prompt is used and max tokens is capped at 2000', sent2.messages[0].content === 'say hi' && sent2.max_tokens === 2000, JSON.stringify(sent2));
