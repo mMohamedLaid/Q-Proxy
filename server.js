@@ -38,18 +38,21 @@ function fmtServerTs(iso) {
 // so two requests running in parallel (a stopped-and-retried generation, an
 // agent firing several calls) can be told apart in Render's console (search
 // the id) and in the Admin panel (click the chip to filter).
-function log(level, msg, target = 'both', rid = null) {
+function log(level, msg, target = 'both', rid = null, user = null) {
   const ts = new Date().toISOString();
   if (target !== 'admin') console.log(`[${fmtServerTs(ts)}] [${level}] ${rid ? '#' + rid + ' ' : ''}${msg}`);
   if (target !== 'console') {
-    recentLogs.unshift(rid ? { ts, level, msg, rid } : { ts, level, msg });
+    const entry = { ts, level, msg };
+    if (rid) entry.rid = rid;
+    if (user) entry.user = user;   // who this line belongs to; untagged lines are system lines (admin-only)
+    recentLogs.unshift(entry);
     if (recentLogs.length > RECENT_LOGS_MAX) recentLogs.length = RECENT_LOGS_MAX;
   }
 }
 function newRequestId() { return Math.random().toString(36).slice(2, 6).padEnd(4, '0'); }
 // A log() bound to one request id. Used by shadowing `const log = logWith(rid)`
 // at the top of a request-scoped function, so none of its call sites change.
-function logWith(rid) { return (level, msg, target = 'both') => log(level, msg, target, rid); }
+function logWith(rid, user = null) { return (level, msg, target = 'both') => log(level, msg, target, rid, user); }
 // One multi-line block (the stitched think / reply) copied to the Render
 // console when a stream finishes. Every line carries the request id so the
 // block stays attributable even if Render shows the lines interleaved with
@@ -101,7 +104,7 @@ function reloadProviderLimits() {
 // Auto-refresh on you can watch a long think grow — without rebuilding a
 // big string on every token. Capped so one huge reply can't eat memory.
 const ADMIN_STREAM_LOG_MAX_CHARS = Number(process.env.ADMIN_STREAM_LOG_MAX_CHARS) || 150000;
-function openLiveLog(level, label, rid) {
+function openLiveLog(level, label, rid, user) {
   let body = '';
   let status = 'streaming…';
   let capped = false;
@@ -109,6 +112,7 @@ function openLiveLog(level, label, rid) {
     ts: new Date().toISOString(),
     level,
     rid: rid || undefined,
+    user: user || undefined,
     get msg() {
       const text = body.replace(/\n{3,}/g, '\n\n').trim();
       return `${label} — ${status}\n${text}${capped ? '\n… [cut off here in the Admin log only — Render logs and the client still got everything]' : ''}`;
@@ -126,9 +130,9 @@ function openLiveLog(level, label, rid) {
     text() { return body.replace(/\n{3,}/g, '\n\n').trim(); }
   };
 }
-function logStitchedText(level, label, text) {
+function logStitchedText(level, label, text, rid, user) {
   if (!text) return;
-  const l = openLiveLog(level, label);
+  const l = openLiveLog(level, label, rid, user);
   l.append(text);
   l.close(`${text.length} chars`);
 }
@@ -456,6 +460,39 @@ function getProviderQuotaSnapshot(provider) {
 }
 
 // ============================================================
+// WHO SEES WHICH LOG LINE
+// A line tagged with a user's name is theirs; a line with no tag is a system
+// line (boot, GitHub sync, admin actions) and only the Admin sees it. A user
+// sees their own request lines — but not the raw prompt, routing details
+// (which provider/hop answered) or errors that are really the owner's problem
+// (a bad provider key, exhausted quota, a retired model, a rejected parameter).
+// ============================================================
+const USER_VISIBLE_TAGS = new Set(['NO_HOP', 'RATE_LIMIT', 'TIMEOUT', 'GATEWAY_TIMEOUT', 'CONTEXT_TOO_LONG', 'MODERATED',
+  'UPSTREAM_DEGRADED', 'UPSTREAM_5XX', 'STREAM_CUT', 'TOKEN_CAP', 'CLIENT_GONE']);
+const USER_HIDDEN_INFO = /→ provider:|fallback path|still waiting for/;
+function logVisibleToUser(entry, name) {
+  if (!entry || !name || entry.user !== name) return false;
+  if (entry.level === 'PROMPT' || entry.level === 'DEBUG') return false;
+  const msg = String(entry.msg || '');
+  if (entry.level === 'WARN' || entry.level === 'ERROR') {
+    const m = msg.match(/^\[[^\]]*\]\s+\[([A-Z0-9_]+)\]/);
+    if (m) return USER_VISIBLE_TAGS.has(m[1]);
+    return /^\[[^\]]*\]\s+Rate limit hit/.test(msg);
+  }
+  return !USER_HIDDEN_INFO.test(msg);
+}
+
+// A private model carries "private": ["Q", ...] — only those key names (and the Admin) can list or call it.
+function canUseModel(entry, userName) {
+  if (!entry || !Array.isArray(entry.private) || !entry.private.length) return true;
+  return entry.private.includes(userName);
+}
+function userNameFromReq(req) {
+  const k = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  return (k && buildKeyMap()[k]?.name) || null;
+}
+
+// ============================================================
 // USER KEYS / RATE LIMITING
 // ── Keys come from env vars, NOT hardcoded.
 // ── Set MY_KEY (and USER1_KEY etc.) in Render environment panel.
@@ -463,13 +500,16 @@ function getProviderQuotaSnapshot(provider) {
 // ── To rotate a key: just change the env var, no redeploy needed.
 // ============================================================
 const MODE = 'solo'; // 'solo' | 'shared'
+// The owner's display name (log tags, private models, the Admin "view as" list).
+// Set MY_NAME in Render to change it; defaults to "Q". It is only a label — never the key itself.
+const OWNER_NAME = (process.env.MY_NAME || '').trim() || 'Q';
 
 const SOLO_KEYS = {
-  [process.env.MY_KEY]: { name: 'me', limit: null }
+  [process.env.MY_KEY]: { name: OWNER_NAME, limit: null }
 };
 
 const SHARED_KEYS = {
-  [process.env.MY_KEY]:    { name: 'me',    limit: null },
+  [process.env.MY_KEY]:    { name: OWNER_NAME, limit: null },
   [process.env.USER1_KEY]: { name: 'user1', limit: null },
   // [process.env.USER2_KEY]: { name: 'user2', limit: null },
   // [process.env.USER3_KEY]: { name: 'user3', limit: null },
@@ -482,7 +522,7 @@ function buildKeyMap() {
     if (k && k !== 'undefined') keys[k] = v;
   }
   if (MODE !== 'solo') {
-    const userKeys = Object.entries(keys).filter(([_, v]) => v.limit === null && v.name !== 'me');
+    const userKeys = Object.entries(keys).filter(([_, v]) => v.limit === null && v.name !== OWNER_NAME);
     const perUser = userKeys.length > 0 ? Math.floor(20 / userKeys.length) : 0;
     for (const [k, v] of userKeys) keys[k] = { ...v, limit: perUser };
   }
@@ -2339,7 +2379,8 @@ app.get('/budget', (req, res) => {
 // MODELS LIST
 // ============================================================
 app.get('/v1/models', (req, res) => {
-  const models = Object.keys(MODEL_MAPPING).map(m => ({
+  const who = userNameFromReq(req);
+  const models = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who)).map(m => ({
     id: m, object: 'model', created: Date.now(), owned_by: 'q'
   }));
   res.json({ object: 'list', data: models });
@@ -2350,13 +2391,14 @@ app.get('/v1/models', (req, res) => {
 // ============================================================
 app.post('/v1/chat/completions', async (req, res) => {
   const rid = newRequestId();
-  const log = logWith(rid);   // every line this request writes carries #rid
+  let log = logWith(rid);   // every line this request writes carries #rid (and, once the key is known, the user's name)
   let waitTimer = null;
   const clearWait = () => { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; } };
   const authHeader = req.headers['authorization'] || '';
   const userKey = authHeader.replace('Bearer ', '').trim();
   const keyMap = buildKeyMap();
   const userName = keyMap[userKey]?.name || 'unknown';
+  log = logWith(rid, userName);
 
   const rateCheck = checkRateLimit(userKey);
   if (!rateCheck.allowed) {
@@ -2414,7 +2456,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
     const mapping = MODEL_MAPPING[model];
-    if (!mapping) {
+    if (!mapping || !canUseModel(mapping, userName)) {
       return res.status(404).json({
         error: { message: `Model "${model}" not found. GET /v1/models for full list.`, type: 'invalid_request_error', code: 404 }
       });
@@ -2575,12 +2617,12 @@ app.post('/v1/chat/completions', async (req, res) => {
       let thinkLogged = 0;
       const logReasoning = (t) => {
         if (!t) return;
-        if (!reasoningLog) reasoningLog = openLiveLog('THINK', `[${userName}] reasoning`, rid);
+        if (!reasoningLog) reasoningLog = openLiveLog('THINK', `[${userName}] reasoning`, rid, userName);
         reasoningLog.append(t);
       };
       const logContent = (t) => {
         if (!t) return;
-        if (!contentLog) contentLog = openLiveLog('REPLY', `[${userName}] reply`, rid);
+        if (!contentLog) contentLog = openLiveLog('REPLY', `[${userName}] reply`, rid, userName);
         contentLog.append(t);
       };
       // Think-tag models: mirror the buffered thinking text into the Admin
@@ -2863,8 +2905,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       const toolCalls = response.data.choices[0]?.message?.tool_calls;
       const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
       if (hasToolCalls) log('INFO', `[${userName}] tool_calls: ${toolCalls.map(t => t.function?.name).join(', ')}`);
-      logStitchedText('THINK', `[${userName}] reasoning`, finalReasoning);
-      logStitchedText('REPLY', `[${userName}] reply`, content);
+      logStitchedText('THINK', `[${userName}] reasoning`, finalReasoning, rid, userName);
+      logStitchedText('REPLY', `[${userName}] reply`, content, rid, userName);
 
       const openaiResponse = {
         id: `chatcmpl-${Date.now()}`,
@@ -3015,6 +3057,11 @@ function requireAdmin(req, res, next) {
 //    saveModels(). See the GitHub sync notes above for what survives
 //    a restart on Render Free and what doesn't.
 // ============================================================
+app.get('/admin/api/users', requireAdmin, (req, res) => {
+  const names = [...new Set(Object.values(buildKeyMap()).map(v => v.name))];
+  res.json({ owner: OWNER_NAME, users: names });
+});
+
 app.get('/admin/api/models', requireAdmin, (req, res) => {
   res.json({ models: MODEL_MAPPING });
 });
@@ -3046,6 +3093,12 @@ app.post('/admin/api/models', requireAdmin, async (req, res) => {
   const shapeError = validateHopShape(entry);
   if (shapeError) {
     return res.status(400).json({ error: { message: shapeError, type: 'invalid_request_error', code: 400 } });
+  }
+  if (entry.private !== undefined) {
+    const ok = Array.isArray(entry.private) && entry.private.every(n => typeof n === 'string' && n.trim());
+    if (!ok) return res.status(400).json({ error: { message: '"private" must be a list of user names.', type: 'invalid_request_error', code: 400 } });
+    entry.private = [...new Set(entry.private.map(n => n.trim()))];
+    if (!entry.private.length) delete entry.private;
   }
   const isRename = previousId && typeof previousId === 'string' && previousId !== id;
   if (isRename) {
@@ -3314,7 +3367,9 @@ app.get('/admin/api/logs', requireAdmin, (req, res) => {
   const levels = new Set(String(req.query.level || '').toUpperCase().split(',').map(x => x.trim()).filter(Boolean));
   const ridQ = String(req.query.rid || '').replace(/^#/, '').trim();
   const limit = Math.min(Number(req.query.limit) || RECENT_LOGS_MAX, RECENT_LOGS_MAX);
-  const filtered = recentLogs.filter(l => (!levels.size || levels.has(l.level)) && (!ridQ || l.rid === ridQ));
+  // ?as=<user name> shows exactly what that user would see (their own lines, minus admin-only ones); no ?as = everything.
+  const as = String(req.query.as || '').trim();
+  const filtered = recentLogs.filter(l => (!levels.size || levels.has(l.level)) && (!ridQ || l.rid === ridQ) && (!as || logVisibleToUser(l, as)));
   // recentLogs is newest-first internally (that's what makes capping via
   // recentLogs.length = MAX correctly drop the OLDEST entries) — but
   // that's an implementation detail. Take the most recent `limit`
@@ -4199,6 +4254,31 @@ app.post('/admin/api/sync/:provider/remove', requireAdmin, async (req, res) => {
 // ============================================================
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ── Optional provider logos ──────────────────────────────────
+// Put <provider>.svg (or .png / .webp) in public/logos/ — e.g. nvidia.svg, groq.svg — and the Admin shows that file instead
+// of the letter badge. The folder is optional; with no files in it nothing changes. The file list needs the admin key; the
+// files themselves are plain images (an <img> tag can't send a header), served only from that folder, only under a plain
+// file name, and with a CSP that blocks any script an SVG might carry if someone opens it directly.
+const LOGO_DIR = path.join(__dirname, 'public', 'logos');
+const LOGO_FILE = /^([a-z0-9_-]+)\.(svg|png|webp)$/i;
+app.get('/admin/api/logos', requireAdmin, (req, res) => {
+  const logos = {};
+  try {
+    for (const f of fs.readdirSync(LOGO_DIR).sort()) {
+      const m = f.match(LOGO_FILE);
+      if (m && !logos[m[1].toLowerCase()]) logos[m[1].toLowerCase()] = `/admin/logos/${f}`;
+    }
+  } catch (_) { /* no public/logos folder: letter badges only */ }
+  res.json({ logos });
+});
+app.get('/admin/logos/:file', (req, res) => {
+  const f = String(req.params.file || '');
+  if (!LOGO_FILE.test(f)) return res.status(404).end();
+  res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+  res.set('Cache-Control', 'public, max-age=300');
+  res.sendFile(path.join(LOGO_DIR, f), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
 
 app.use((req, res) => {
