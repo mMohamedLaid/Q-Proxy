@@ -38,6 +38,18 @@ The two providers' quotas work differently, so they're tracked differently:
 
 Literouter has no request-time reasoning parameters at all (no `chat_template_kwargs`, no `extra_body`) — thinking on/off is picked via the model slug itself (e.g. a `-thinking` or `-non-reasoning` suffix on the model name), so Literouter hops should always leave `reasoningSchema` unset.
 
+## Owner name, private models, per-user logs
+
+- **Owner name:** the `MY_KEY` user is called **Q** in logs and lists. Set `MY_NAME` in Render's Environment to change it. It is only a label, never the key.
+- **Private models:** give a model `"private": ["Q"]` (Admin → edit model → "🔒 Private to"). Only those key names, and the Admin, can list or call it; everyone else gets "model not found". No list = public, as before.
+- **Logs per user:** every request line is tagged with its user. The Admin sees everything. Admin → header → **View as** shows what one user sees: their own lines only, without system lines, the raw prompt, routing details, or owner-side errors (bad provider key, quota, retired model, rejected parameter). Timeouts, rate limits, context-too-long, moderation, cut streams and "all models failed" are shown to the user.
+
+## Admin look: logo and provider badges
+
+- The Admin has the Q-Proxy mark (header, login screen, browser tab) and a small letter badge for each provider (tabs, group headers, model cards, hop chips).
+- **Your own provider logos (optional):** save a file as `public/logos/<provider>.svg` (or `.png` / `.webp`) — for example `groq.svg`, `nvidia.svg` — and the Admin shows it instead of that provider's letter badge. The name is the provider id: `nvidia`, `zai`, `google`, `openrouter`, `literouter`, `meganova`, `groq`, `amd`, `deepseek`. Delete the file to go back to the badge. Only files named like that are served.
+- **View as <user>** (Admin header) now also hides every editing control and the Admin-only panels (stats, setup warnings, usage, tester, schemas, add model), so you see just the models and logs that user sees.
+
 ## Groq and AMD
 
 **Keys** (Render → Environment, one each): **`GROQ_API_KEY`** (the name Groq's docs use) and **`RADEON_API_KEY`** (the name AMD's docs use; `AMD_API_KEY` works too, and `RADEON_API_KEY` wins if both are set). Providers: `groq` (base `https://api.groq.com/openai/v1`) and `amd` (base `https://developer.amd.com.cn/radeon/api/v1`). In the Admin they appear as Groq and AMD, new models get the suffixes `-gq` / `-amd`, and both are in the Model tester and the Sync panel (live list + "no longer listed" warnings; no free/paid grouping yet).
