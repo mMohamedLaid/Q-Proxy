@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-22T12:40:41.245Z",
+  "savedAt": "2026-10-22T13:24:41.413Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -122,9 +122,9 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3",
       "count": 167,
-      "errors": 23,
-      "lastUsed": "2026-10-22T12:40:00.698Z",
-      "lastStatus": "ok",
+      "errors": 24,
+      "lastUsed": "2026-10-22T13:24:11.795Z",
+      "lastStatus": 504,
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
