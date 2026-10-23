@@ -525,8 +525,71 @@
   .pbadge::before { content: attr(data-l); }
   .hop .pbadge { width: 15px; height: 15px; font-size: 9px; border-radius: 4px; }
   .quick-usage-main .pbadge, .usage-table .pbadge, .tester-line .pbadge { width: 15px; height: 15px; font-size: 9px; border-radius: 4px; margin-right: 7px; vertical-align: -3px; }
+  /* Split badge: provider (upper-left) / maker of the model (lower-right), divided by a "/". Each half has its own hover text. */
+  .pbadge2 { position: relative; display: inline-block; flex: none; width: 24px; height: 24px; border-radius: 6px; overflow: hidden; vertical-align: middle;
+    border: 1px solid var(--border); background: var(--inset); }
+  .pbadge2::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom right, transparent calc(50% - .75px), rgba(255,255,255,.35) calc(50% - .75px), rgba(255,255,255,.35) calc(50% + .75px), transparent calc(50% + .75px)); }
+  .pb-half { position: absolute; inset: 0; background: #1b2434; }
+  .pb-prov { clip-path: polygon(0 0, 100% 0, 0 100%); }
+  .pb-model { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+  .pb-in { position: absolute; width: 56%; height: 56%; display: grid; place-items: center; font: 600 9px/1 var(--font-display); font-style: normal; text-transform: uppercase;
+    color: hsl(var(--h, 200) 55% 78%); }
+  .pb-in::before { content: attr(data-l); }
+  .pb-prov .pb-in { left: 1px; top: 1px; } .pb-model .pb-in { right: 1px; bottom: 1px; }
+  .pb-img { background: transparent; } .pb-img::before { content: none; }
+  .pb-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .pb-half:has(.pb-img) { background: #EEF2F7; }
+  .hop .pbadge2, .quick-usage-main .pbadge2, .usage-table .pbadge2 { width: 20px; height: 20px; margin-right: 7px; }
   .pbadge-img { background: #EEF2F7; border-color: transparent; padding: 2px; }
   .pbadge-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* user mode (/dashboard): same page, read-only */
+  .user-only { display: none; }
+  html.user-mode .user-only { display: block; }
+  html.user-mode :is(#view-as, #view-as-banner, .brand-sub, #quick-usage, #provider-reset-timer, #log-clear-btn) { display: none !important; }
+  .acct-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 18px; }
+  .acct-row label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .acct-inputrow { display: flex; gap: 8px; align-items: center; }
+  .acct-inputrow input { flex: 1; min-width: 0; }
+  .acct-url { flex: 1; min-width: 0; background: var(--inset); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  .acct-hint { color: var(--text-faint); font-size: 12px; margin-top: 6px; }
+  /* a single-hop model has no chain to show: just its usage / warning line */
+  .chain:empty { display: none; }
+  .hop.hop-compact { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; background: none; border: 0; padding: 0; }
+  .mine-edit-btn, .mine-del-btn { border-radius: 6px; padding: 3px 9px; font-size: 11.5px; }
+  .mine-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .mine-del-btn:hover { border-color: var(--broken); color: var(--broken); }
+  .mine-bar { display: none; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+  html.user-mode .mine-bar { display: flex; }
+  #mine-broken { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mine-broken-chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid rgba(245,158,11,.4); border-radius: 8px; padding: 3px 8px; font-size: 12px; color: #f59e0b; }
+  .mine-card { background: var(--surface); border: 1px solid var(--accent-dim); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .mine-card h3 { margin: 0 0 10px; font: 600 14px var(--font-display); }
+  .mine-hop { display: grid; grid-template-columns: auto minmax(160px, 1.2fr) minmax(0, 2fr) auto; gap: 10px; align-items: start; padding: 10px; margin-bottom: 8px; background: var(--inset); border: 1px solid var(--border); border-radius: 10px; }
+  @media (max-width: 720px) { .mine-hop { grid-template-columns: auto 1fr; } .mine-hop .mine-settings, .mine-hop .mine-hop-btns { grid-column: 1 / -1; } }
+  .mine-hop select { width: 100%; }
+  .mine-settings { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--text-dim); }
+  .mine-set { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-size: 12px; }
+  .mine-set input[type=number], .mine-set input[type=text] { width: 110px; }
+  .mine-hop-btns { display: flex; gap: 4px; }
+  .mine-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  #mine-status { font-size: 12.5px; }
+  .ua-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .ua-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 18px; }
+  .ua-h { font: 600 12px var(--font-display); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin: 0 0 8px; }
+  .ua-user { font: 600 13px var(--font-display); margin: 12px 0 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ua-user:first-child { margin-top: 0; }
+  .ua-bundle { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; margin-bottom: 8px; font-size: 12.5px; }
+  .ua-bundle .ua-name { font-family: var(--font-mono); font-weight: 600; }
+  .ua-bundle .ua-meta { color: var(--text-faint); font-size: 11.5px; }
+  .ua-bundle ol { margin: 6px 0 0; padding-left: 20px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
+  .ua-broken { color: #f59e0b; font-size: 11.5px; }
+  .ua-ev { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; align-items: baseline; }
+  .ua-ev .ua-when { color: var(--text-faint); font-family: var(--font-mono); font-size: 11px; }
+  .ua-ev .ua-act { font-weight: 600; }
+  .ua-ev .ua-act.create { color: var(--ok); } .ua-ev .ua-act.update { color: var(--accent); } .ua-ev .ua-act.delete { color: var(--broken); }
+  .ua-ev .ua-detail { grid-column: 1 / -1; color: var(--text-dim); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  .variant-line { font-size: 12px; color: var(--text-dim); margin: 6px 0 2px; }
   .empty-note { color: var(--text-faint); font-size: 12.5px; padding: 14px 16px; }
   .empty-note.big { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 18px; }
 </style>
@@ -545,7 +608,7 @@
   </defs>
 </svg>
 
-<script>try { if (localStorage.getItem('qproxy-admin-key') || /[?&]key=/.test(location.search)) document.documentElement.classList.add('autologin'); } catch (_) {}</script>
+<script>try { var qpUser = window.QP_MODE === 'user'; if (qpUser) { document.title = 'Q-Proxy'; document.documentElement.classList.add('user-mode'); } if (localStorage.getItem(qpUser ? 'qproxy-user-key' : 'qproxy-admin-key') || (!qpUser && /[?&]key=/.test(location.search))) document.documentElement.classList.add('autologin'); } catch (_) {}</script>
 <div id="autologin-note"><svg class="qmark qmark-lg" aria-hidden="true"><use href="#q-mark"/></svg><span>Signing in…</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="login-gate">
@@ -575,6 +638,22 @@
   </header>
 
   <div id="view-as-banner" hidden></div>
+  <section class="user-only" id="account-bar">
+    <div class="section-head"><h2>Your account</h2><span class="count">Signed in as <b id="acct-who"></b></span></div>
+    <div class="acct-row">
+      <form id="acct-form">
+        <label for="acct-name">Display name</label>
+        <div class="acct-inputrow"><input type="text" id="acct-name" maxlength="24" autocomplete="nickname"><button type="submit" class="btn-primary" id="acct-save">Save</button></div>
+        <div class="acct-hint">A label the admin sees next to your key. Your key stays your identity, so the name never changes what you can use. Empty clears it.</div>
+      </form>
+      <div>
+        <label for="acct-base">Connect an app</label>
+        <div class="acct-inputrow"><code id="acct-base" class="acct-url"></code><button type="button" class="btn-secondary" id="acct-copy">Copy</button></div>
+        <div class="acct-hint">Any OpenAI-compatible app: this base URL, and your key as the API key.</div>
+      </div>
+    </div>
+    <div class="sync-result-note" id="acct-msg" role="status"></div>
+  </section>
   <div class="stats admin-only" id="stats"></div>
   <section id="warnings" class="admin-only"></section>
   <section id="limits-banner" class="admin-only" hidden></section>
@@ -595,6 +674,12 @@
 
   <section>
     <div class="section-head"><h2>Models by provider</h2><span class="count split"><span id="model-count"></span><span id="model-visible-count"></span></span></div>
+    <div class="user-only mine-bar" id="mine-bar">
+      <button type="button" class="btn-primary" id="mine-new">+ New bundle</button>
+      <span class="acct-hint" id="mine-count"></span>
+      <div id="mine-broken"></div>
+    </div>
+    <div class="user-only" id="mine-editor" hidden></div>
     <div class="models-toolbar">
       <div class="toolbar-grid">
         <div class="toolbar-field" style="grid-column: span 2;">
@@ -662,6 +747,19 @@
     <div class="tester-results" id="tester-results"></div>
   </section>
 
+  <section class="admin-only" id="user-activity">
+    <div class="section-head"><h2>User activity</h2><span class="count" id="ua-count"></span></div>
+    <p class="tester-help">The custom bundles users built on their dashboard, and a history of what each one created, changed or deleted. Pick the users you want to follow; nothing else is shown.</p>
+    <div class="ua-bar">
+      <div class="log-chips" id="ua-chips" role="group" aria-label="Show these users"></div>
+      <button type="button" class="btn-secondary" id="ua-refresh">Refresh</button>
+    </div>
+    <div class="ua-grid">
+      <div><h3 class="ua-h">Bundles</h3><div id="ua-bundles"></div></div>
+      <div><h3 class="ua-h">Recent changes</h3><div id="ua-events"></div></div>
+    </div>
+  </section>
+
   <section>
     <div class="section-head"><h2>Logs</h2><span class="count"><span id="log-count"></span></span></div>
     <div class="logs-toolbar">
@@ -673,6 +771,10 @@
         <button type="button" class="log-chip lc-THINK" data-lvl="THINK" title="Reasoning">THINK</button>
         <button type="button" class="log-chip lc-REPLY" data-lvl="REPLY">REPLY</button>
         <button type="button" class="log-chip lc-PROMPT" data-lvl="PROMPT" title="What was sent">PROMPT</button>
+      </div>
+      <div class="logs-row admin-only" id="log-user-row">
+        <span class="log-tz-note">Lines from</span>
+        <div class="log-chips" id="log-user-chips" role="group" aria-label="Show lines from these users"></div>
       </div>
       <div class="logs-row">
         <select id="log-order" aria-label="Order of the lines" title="Order of the lines (or of the chunks when grouped)">
@@ -713,8 +815,12 @@
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
-  const SAVED_KEY = (() => { try { return localStorage.getItem('qproxy-admin-key') || ''; } catch (_) { return ''; } })();
-  let ADMIN_KEY = params.get('key') || SAVED_KEY;
+  // "User mode": the same dashboard served at /dashboard (server.js sets window.QP_MODE). It signs in with a chat key instead of the
+  // admin key, talks to /dashboard/api/* (own models, own logs only), and is read-only: the Admin-only panels and every editing button stay hidden.
+  const USER_MODE = window.QP_MODE === 'user';
+  const KEY_STORE = USER_MODE ? 'qproxy-user-key' : 'qproxy-admin-key';
+  const SAVED_KEY = (() => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (_) { return ''; } })();
+  let ADMIN_KEY = USER_MODE ? SAVED_KEY : (params.get('key') || SAVED_KEY);
 
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -739,6 +845,40 @@
     return `<span class="pbadge" style="--h:${hue}" data-l="${escapeHtml(letter)}" title="${escapeHtml(label)}" aria-hidden="true"></span>`;
   }
 
+  // ---------- who made the model ----------
+  // The provider (who serves it) and the maker (who built it) are often different companies: Z.AI's GLM served by AMD, Google's Gemma
+  // served by NVIDIA or OpenRouter. The maker is read from the model name; if it can't be told, only the provider badge is shown.
+  // `key` doubles as the logo file name in public/logos/ (chatgpt.svg, claude.svg, deepseek.svg…); makers without a file get a letter badge.
+  const MAKERS = { zai: 'Z.AI', deepseek: 'DeepSeek', google: 'Google', chatgpt: 'OpenAI', claude: 'Anthropic', nvidia: 'NVIDIA', amd: 'AMD',
+    moonshot: 'Moonshot AI', qwen: 'Qwen', minimax: 'MiniMax', meta: 'Meta', mistral: 'Mistral AI' };
+  const MAKER_BY_PREFIX = { 'z-ai': 'zai', zai: 'zai', zhipu: 'zai', 'deepseek-ai': 'deepseek', deepseek: 'deepseek', google: 'google', openai: 'chatgpt',
+    anthropic: 'claude', nvidia: 'nvidia', amd: 'amd', moonshotai: 'moonshot', qwen: 'qwen', minimax: 'minimax', 'meta-llama': 'meta', meta: 'meta', mistralai: 'mistral' };
+  const MAKER_BY_NAME = [[/glm-/, 'zai'], [/deepseek/, 'deepseek'], [/gemma|gemini|palm/, 'google'], [/gpt-|chatgpt/, 'chatgpt'], [/claude/, 'claude'],
+    [/nemotron/, 'nvidia'], [/kimi|moonshot/, 'moonshot'], [/qwen/, 'qwen'], [/minimax/, 'minimax'], [/llama/, 'meta'], [/mistral|ministral|mixtral/, 'mistral']];
+  function makerOf(model) {
+    const m = String(model || '').toLowerCase().replace(/^models\//, '');
+    const slash = m.indexOf('/');
+    if (slash > 0 && MAKER_BY_PREFIX[m.slice(0, slash)]) return MAKER_BY_PREFIX[m.slice(0, slash)];
+    for (const [re, k] of MAKER_BY_NAME) if (re.test(m)) return k;
+    return null;
+  }
+  function badgeHalf(key, label) {
+    if (providerLogos[key]) return `<i class="pb-in pb-img"><img src="${escapeHtml(providerLogos[key])}" alt="" loading="lazy"></i>`;
+    let hue = 0; for (const ch of key) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+    return `<i class="pb-in" style="--h:${hue}" data-l="${escapeHtml((String(label).match(/[A-Za-z0-9]/) || ['?'])[0])}"></i>`;
+  }
+  // Provider and model in one icon. Same company (or maker unknown) → the plain provider badge. Different → split by a "/":
+  // upper-left = provider ("Provider: …" on hover), lower-right = the model's maker ("Model by: …" on hover).
+  function providerModelBadge(provider, model) {
+    const maker = makerOf(model);
+    if (!provider || !maker || maker === String(provider).toLowerCase()) return providerBadge(provider);
+    const pLabel = PROVIDER_LABELS[provider] || String(provider), mLabel = MAKERS[maker] || maker;
+    const pk = String(provider).toLowerCase();
+    return `<span class="pbadge2" role="img" aria-label="Provider: ${escapeHtml(pLabel)}; model by ${escapeHtml(mLabel)}">`
+      + `<span class="pb-half pb-prov" title="Provider: ${escapeHtml(pLabel)}">${badgeHalf(pk, pLabel)}</span>`
+      + `<span class="pb-half pb-model" title="Model by: ${escapeHtml(mLabel)}">${badgeHalf(maker, mLabel)}</span></span>`;
+  }
+
   // ---------- label links ----------
   // Pairs each field's <label> with its input/select/textarea (click the name → the field gets focus; screen readers read the name).
   // The forms are built from strings on every redraw, so this runs again whenever one of them changes.
@@ -756,11 +896,56 @@
   // "View as": '' = Admin (everything). A user name shows only what that user sees (their models, their own log lines).
   let viewAs = '';
   const canSee = (entry) => !viewAs || !Array.isArray(entry.private) || !entry.private.length || entry.private.includes(viewAs);
+  // ---------- who did what: user chips on the logs, and the User activity section ----------
+  let knownUsers = [], userLabels = {}, logSeenUsers = new Set();
+  const logUsersOff = new Set();   // users whose log lines are hidden; '' = system lines (no user tag). Restored from the saved settings below.
+  const uaFocus = new Set();       // users picked in "User activity"; empty = everyone
+  let uaData = { bundles: {}, events: [] };
+  const userLabel = u => (userLabels[u] ? `${userLabels[u]} · ${u}` : u);
+  function renderLogUserChips() {
+    const users = [...new Set([...knownUsers, ...logSeenUsers])].sort((a, b) => (a === ownerId ? -1 : b === ownerId ? 1 : a.localeCompare(b)));
+    const chip = (key, label, title) => `<button type="button" class="log-chip ${logUsersOff.has(key) ? '' : 'on'}" data-luser="${escapeHtml(key)}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
+    $('#log-user-chips').innerHTML = `<button type="button" class="log-chip ${logUsersOff.size ? '' : 'on'}" id="log-user-all" title="Show lines from everyone and the system">All</button>`
+      + chip('', 'System', 'Boot, GitHub sync, admin actions — lines that belong to no user')
+      + users.map(u => chip(u, userLabel(u), 'Show / hide this user\'s lines')).join('');
+  }
+  let ownerId = '';
+  function userChipsHtml(users, focus, attr) {
+    return `<button type="button" class="log-chip ${focus.size ? '' : 'on'}" ${attr}-all>All</button>` + users.map(u => `<button type="button" class="log-chip ${focus.has(u) ? 'on' : ''}" ${attr}="${escapeHtml(u)}">${escapeHtml(userLabel(u))}</button>`).join('');
+  }
+  async function loadUserActivity() {
+    if (USER_MODE) return;
+    try { uaData = await api('/admin/api/user-bundles'); } catch (_) { return; }
+    renderUserActivity();
+  }
+  function renderUserActivity() {
+    const users = [...new Set([...knownUsers, ...Object.keys(uaData.bundles || {}), ...(uaData.events || []).map(e => e.user)])].sort((a, b) => (a === ownerId ? -1 : b === ownerId ? 1 : a.localeCompare(b)));
+    const shown = u => !uaFocus.size || uaFocus.has(u);
+    $('#ua-chips').innerHTML = userChipsHtml(users, uaFocus, 'data-uafocus');
+    const nb = Object.entries(uaData.bundles || {}).reduce((n, [u, set]) => n + (shown(u) ? Object.keys(set).length : 0), 0);
+    const evs = (uaData.events || []).filter(e => shown(e.user)).slice().reverse();
+    $('#ua-count').textContent = `${nb} bundle${nb === 1 ? '' : 's'} · ${evs.length} change${evs.length === 1 ? '' : 's'}`;
+    const hopText = h => {
+      const e = currentModels[h.ref], hop = e && flattenHops(e)[h.hop || 0];
+      const ov = h.overrides || {}, bits = [...Object.entries(ov.reasoning || {}).map(([k, v]) => `${k}=${v}`), ...(ov.timeoutMs ? [`time limit ${ov.timeoutMs} ms`] : [])];
+      return `${escapeHtml(h.ref)}${h.hop ? ' #' + (h.hop + 1) : ''}${hop ? ` <span class="ua-meta">(${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)} · ${escapeHtml(hop.model)})</span>` : ' <span class="ua-broken">(model removed)</span>'}${bits.length ? ` — <b>${escapeHtml(bits.join(', '))}</b>` : ''}`;
+    };
+    const parts = [];
+    for (const u of users) {
+      const set = (uaData.bundles || {})[u]; if (!set || !shown(u) || !Object.keys(set).length) continue;
+      parts.push(`<div class="ua-user">${escapeHtml(userLabel(u))} <button type="button" class="btn-secondary" data-uaview="${escapeHtml(u)}" title="Look at the panel the way this user sees it">View as</button></div>`);
+      for (const [id, d] of Object.entries(set)) parts.push(`<div class="ua-bundle"><span class="ua-name">${escapeHtml(id)}</span>${d.broken ? ' <span class="ua-broken">⚠ broken: every hop is gone</span>' : ''} <span class="ua-meta">· changed ${escapeHtml(timeAgo(d.updatedAt))}</span>${d.notes ? `<div class="ua-meta">${escapeHtml(d.notes)}</div>` : ''}<ol>${d.hops.map(h => `<li>${hopText(h)}</li>`).join('')}</ol></div>`);
+    }
+    $('#ua-bundles').innerHTML = parts.join('') || '<div class="empty-note">No bundles from the users shown.</div>';
+    $('#ua-events').innerHTML = evs.slice(0, 100).map(e => `<div class="ua-ev"><span class="ua-when" title="${escapeHtml(e.ts)} (UTC)">${escapeHtml(fmtLogTs(e.ts).replace(/\.\d{3}\s+/, ' '))}</span><span><b>${escapeHtml(userLabel(e.user))}</b> <span class="ua-act ${escapeHtml(e.action)}">${escapeHtml(e.action)}</span> <span class="ua-name" style="font-family:var(--font-mono)">${escapeHtml(e.id || '')}</span></span><span></span>${e.detail ? `<span class="ua-detail">${escapeHtml(e.detail)}</span>` : ''}</div>`).join('') || '<div class="empty-note">No changes from the users shown.</div>';
+  }
   async function loadUsers() {
     try {
       const r = await api('/admin/api/users');
+      knownUsers = r.users || []; userLabels = r.names || {}; ownerId = r.owner || '';
+      renderLogUserChips(); renderUserActivity();
       const sel = $('#view-as');
-      sel.innerHTML = '<option value="">View: Admin (everything)</option>' + (r.users || []).map(n => `<option value="${escapeHtml(n)}">View as ${escapeHtml(n)}${n === r.owner ? ' (owner)' : ''}</option>`).join('');
+      sel.innerHTML = '<option value="">View: Admin (everything)</option>' + (r.users || []).map(n => `<option value="${escapeHtml(n)}">View as ${escapeHtml(r.names && r.names[n] ? r.names[n] + ' · ' + n : n)}${n === r.owner ? ' (owner)' : ''}</option>`).join('');
       sel.value = viewAs;
     } catch (_) { /* the list is a convenience; the panel works without it */ }
   }
@@ -769,6 +954,8 @@
   const PREFS_KEY = 'qproxy-ui';
   function loadPrefs() { try { const v = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
   const savedPrefs = loadPrefs();
+  if (savedPrefs.logs && Array.isArray(savedPrefs.logs.usersOff)) savedPrefs.logs.usersOff.forEach(u => logUsersOff.add(String(u)));
+  if (Array.isArray(savedPrefs.uaFocus)) savedPrefs.uaFocus.forEach(u => uaFocus.add(String(u)));
   let quickUsageTab = savedPrefs.quickTab === 'recent' ? 'recent' : 'used';
   const warnOpen = (savedPrefs.warnOpen && typeof savedPrefs.warnOpen === 'object') ? Object.assign({}, savedPrefs.warnOpen) : {};   // category key -> open?
   if (typeof savedPrefs.providerTab === 'string') providerTab = savedPrefs.providerTab;
@@ -795,9 +982,17 @@
   const FAMILY_HINTS = ['deepseek', 'gemini', 'gemma', 'glm', 'kimi', 'gpt-oss', 'qwen', 'minimax', 'nemotron', 'llama', 'mistral', 'grok', 'devstral', 'mimo'];
   const DIRECT_SUFFIX_RE = /-(nv|z|g|or|lr|mn|ds)$/;
 
+  // In user mode only these three Admin calls exist, each mapped to its /dashboard/api twin (own models, own logs, logos).
+  const USER_PATHS = { '/admin/api/models': '/dashboard/api/models', '/admin/api/logs': '/dashboard/api/logs', '/admin/api/logos': '/dashboard/api/logos' };
   async function api(pathname, opts) {
     opts = opts || {};
-    const headers = Object.assign({ 'X-Admin-Key': ADMIN_KEY }, opts.headers || {});
+    let headers;
+    if (USER_MODE) {
+      const qi = pathname.indexOf('?'), base = qi < 0 ? pathname : pathname.slice(0, qi), rest = qi < 0 ? '' : pathname.slice(qi);
+      if (!USER_PATHS[base] && !base.startsWith('/dashboard/')) throw new Error('Not available on your page.');
+      pathname = (USER_PATHS[base] || base) + rest;
+      headers = Object.assign({ Authorization: 'Bearer ' + ADMIN_KEY }, opts.headers || {});
+    } else headers = Object.assign({ 'X-Admin-Key': ADMIN_KEY }, opts.headers || {});
     if (opts.body) headers['Content-Type'] = 'application/json';
     const res = await fetch(pathname, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
     let data = null;
@@ -1094,7 +1289,16 @@
     return '';
   }
 
-  function renderChain(entry, usageIndex, showOrder, entryId) {
+  // A model that is the same provider + model as another one, but with its own reasoning / token settings, is a variant of it
+  // (deepseek-r1 → deepseek-r1-nothink). Returns the id of the plain one to point back to, or null.
+  function variantBase(id, entry, hops) {
+    if (hops.length !== 1) return null;
+    const hasParams = h => !!(h.reasoningSchema || (h.reasoning && Object.keys(h.reasoning).length) || h.reasoningFieldKeys || h.reasoningFieldOptions || h.maxTokens);
+    if (!hasParams(entry)) return null;
+    const plain = Object.entries(currentModels).filter(([oid, o]) => oid !== id && o && o.provider === entry.provider && o.model === entry.model && !o.fallback && !hasParams(o)).map(([oid]) => oid).sort();
+    return plain.length ? plain[0] : null;
+  }
+  function renderChain(entry, usageIndex, showOrder, entryId, compact) {
     const hops = flattenHops(entry);
     // find which hop was most recently actually used
     let mostRecentIdx = -1, mostRecentTime = 0;
@@ -1107,7 +1311,7 @@
     });
     return hops.map((hop, i) => {
       const u = usageFor(usageIndex, hop.provider, hop.model);
-      const usageStr = u ? `${u.count} ok${u.errors ? ', ' + u.errors + ' err' : ''} · ${timeAgo(u.lastUsed)}` : 'no requests yet';
+      const usageStr = USER_MODE ? '' : u ? `${u.count} ok${u.errors ? ', ' + u.errors + ' err' : ''} · ${timeAgo(u.lastUsed)}` : 'no requests yet';
       // "ran out" surfacing: a hop that has been skipped recently (rate
       // limit, TPM budget, deprecated/inactive, transient failure — see
       // trackSkip in server.js) shows a small warning badge with the
@@ -1119,9 +1323,13 @@
       const warnBadge = (hw && limitsDiffer) ? `<span class="hop-warn-badge" data-kind="${escapeHtml(hw.kind)}" title="${escapeHtml(hw.detail)} (${hw.source === 'catalog' ? "from the provider's live list" : hw.source === 'request' ? 'seen in a real request' : 'from the saved table'}${hw.since ? ', since ' + escapeHtml(hw.since.slice(0, 10)) : ''})">⚠ ${escapeHtml((WARN_KIND[hw.kind] || [hw.kind])[0])}</span>` : '';
       const recent = i === mostRecentIdx ? ' hop-active-recent' : '';
       const arrow = i > 0 ? '<span class="chain-arrow">→</span>' : '';
+      if (compact) {   // single hop: the card already names the provider and the model, so only what is new (usage, warnings) is shown
+        const bits = `${usageStr ? `<span class="hop-usage">${usageStr}</span>` : ''}${skipBadge}${warnBadge}${renderHopKeyBreakdown(hop)}`;
+        return bits.trim() ? `<div class="hop hop-compact${recent}">${bits}</div>` : '';
+      }
       return `${arrow}<div class="hop${recent}" title="${escapeHtml(hop.model)}">
         ${showOrder ? `<span class="hop-order">#${i + 1}</span>` : ''}
-        <span class="hop-provider">${providerBadge(hop.provider)}<span>${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span></span>
+        <span class="hop-provider">${providerModelBadge(hop.provider, hop.model)}<span>${escapeHtml(PROVIDER_LABELS[hop.provider] || hop.provider)}</span></span>
         <span class="hop-model copyable" data-copy="${escapeHtml(hop.model)}" title="Click to copy">${escapeHtml(hop.model)}</span>
         <span class="hop-usage">${usageStr}</span>
         ${hops.length > 1 ? `<button type="button" class="test-hop-btn" data-test="${escapeHtml(entryId)}" data-hop="${i}" title="Open this hop's settings with the test area ready">🧪 Test</button>` : ''}
@@ -1216,6 +1424,7 @@
   }
 
   function renderQuickUsage(models, usageList) {
+    if (USER_MODE) return;   // "most used / recently used" are the owner's provider numbers
     const usageToIds = {};
     Object.entries(models).forEach(([id, entry]) => {
       flattenHops(entry).forEach(h => {
@@ -1235,7 +1444,7 @@
       const meta = quickUsageTab === 'recent'
         ? `${timeAgo(u.lastUsed)} · ${u.count} ok${u.errors ? `, ${u.errors} err` : ''}${idsText}`
         : `${u.count} ok${u.errors ? `, ${u.errors} err` : ''} · ${timeAgo(u.lastUsed)}${idsText}`;
-      return `<div class="quick-usage-item"><div class="quick-usage-main">${providerBadge(u.provider)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • <span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
+      return `<div class="quick-usage-item"><div class="quick-usage-main">${providerModelBadge(u.provider, u.model)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)} • <span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></div><div class="quick-usage-meta">${escapeHtml(meta)}</div></div>`;
     }).join('') : '<div class="sync-result-note">No usage data yet. These lists appear after requests start flowing.</div>';
 
     $('#quick-usage').innerHTML = `
@@ -1480,7 +1689,7 @@
     const id = item.id;
     const entry = item.entry;
     const hops = flattenHops(entry);
-    const aggregate = isAggregateModelId(id);
+    const aggregate = hops.length > 1;   // the "#1 … → #2" chain and fallback rows only when there really are several hops
     const fallbackDepth = Math.max(0, hops.length - 1);
     const fallbackCountRow = aggregate
       ? `<div class="model-meta-row"><span class="model-meta-k">Fallbacks</span><span class="model-meta-v">${fallbackDepth}</span></div>`
@@ -1497,14 +1706,15 @@
         <span class="badge ${entry.limitType || 'rate-limited'}">${entry.limitType || 'rate-limited'}</span>
         ${entry.reasoningSchema ? `<span class="badge rate-limited">reasoning: ${escapeHtml(entry.reasoningSchema)}</span>` : ''}
         ${entry.custom ? `<span class="badge rate-limited">🗂 custom bundle</span>` : ''}
-        ${Array.isArray(entry.private) && entry.private.length ? `<span class="badge rate-limited" title="Only these users (and the Admin) can see and call this model">🔒 private: ${escapeHtml(entry.private.join(', '))}</span>` : ''}
+        ${USER_MODE && currentMine[id] ? `<span class="badge rate-limited" title="You made this bundle; only you can use it">✎ yours</span>` : (Array.isArray(entry.private) && entry.private.length ? `<span class="badge rate-limited" title="Only these users (and the Admin) can see and call this model">🔒 private: ${escapeHtml(entry.private.join(', '))}</span>` : '')}
         <span class="card-actions">
+          ${USER_MODE && currentMine[id] ? `<button type="button" class="btn-secondary mine-edit-btn" data-mine-edit="${escapeHtml(id)}">Edit</button><button type="button" class="btn-secondary mine-del-btn" data-mine-del="${escapeHtml(id)}">Delete</button>` : ''}
           ${hops.length === 1 ? `<button class="test-hop-btn" data-test="${escapeHtml(id)}" data-hop="0" title="Open this model's settings with the test area ready">🧪 Test</button>` : ''}
           <button class="edit-btn" data-edit="${escapeHtml(id)}">Edit</button>
           <button class="del-btn" data-del="${escapeHtml(id)}">Remove</button>
         </span>
       </div>
-      <div class="model-combo">${providerBadge(entry.provider)}<span>${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</span></div>
+      <div class="model-combo">${providerModelBadge(entry.provider, entry.model)}<span>${escapeHtml(PROVIDER_LABELS[entry.provider] || entry.provider)} • ${escapeHtml(entry.model || 'n/a')}</span></div>
       <div class="model-meta">
         <div class="model-meta-row"><span class="model-meta-k">Model slug</span><span class="model-meta-v">${escapeHtml(entry.model || 'n/a')}</span></div>
         <div class="model-meta-row"><span class="model-meta-k">Provider</span><span class="model-meta-v">${escapeHtml(entry.provider || 'n/a')}</span></div>
@@ -1515,7 +1725,8 @@
       </div>
       ${notesLine}
       <div class="model-tags">${tags}</div>
-      <div class="chain">${renderChain(entry, lastRenderUsageIndex, aggregate, id)}</div>
+      ${(() => { const vb = variantBase(id, entry, hops); return vb ? `<div class="variant-line">↳ variant of <span class="copyable" data-copy="${escapeHtml(vb)}" title="Click to copy">${escapeHtml(vb)}</span> — same model, different settings</div>` : ''; })()}
+      <div class="chain">${renderChain(entry, lastRenderUsageIndex, aggregate, id, !aggregate)}</div>
     </div>`;
   }
 
@@ -1720,7 +1931,7 @@
     $('#usage-grid').innerHTML = cards.join('');
 
     const tbody = $('#usage-table tbody');
-    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${providerBadge(u.provider)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td><span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
+    const rows = lastUsageList.slice().sort((a,b) => (b.count||0) - (a.count||0)).map(u => `<tr><td>${providerModelBadge(u.provider, u.model)}${escapeHtml(PROVIDER_LABELS[u.provider] || u.provider)}</td><td><span class="copyable" data-copy="${escapeHtml(u.model)}" title="Click to copy">${escapeHtml(u.model)}</span></td><td>${u.count}</td><td>${u.errors}</td><td>${timeAgo(u.lastUsed)}</td><td>${escapeHtml(u.lastStatus || '—')}</td></tr>`).join('');
     tbody.innerHTML = rows || '<tr><td colspan="6" class="sync-result-note">No requests recorded yet.</td></tr>';
   }
 
@@ -1734,6 +1945,7 @@
   const LIMIT_FIELD = { rpm: 'requests/min', tpm: 'input tokens/min', rpd: 'requests/day' };
   const nfmt = (v) => v === null || v === undefined ? 'not set' : Number(v).toLocaleString();
   async function loadLimitsStatus() {
+    if (USER_MODE) return;
     try { limitsStatus = await api('/admin/api/limits/status'); } catch (_) { limitsStatus = null; }
     renderLimitsBanner();
   }
@@ -1802,7 +2014,7 @@
 
   function startLogAutoRefresh() {
     let tick = 0;
-    if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(() => { loadLogs(); if (++tick % 12 === 0) loadLimitsStatus(); }, 5000);
+    if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(() => { loadLogs(); if (++tick % 12 === 0) { loadLimitsStatus(); loadUserActivity(); } }, 5000);
   }
 
   async function loadLogs(force) {
@@ -1812,15 +2024,21 @@
       if (currentLogRid) qs.push(`rid=${encodeURIComponent(currentLogRid)}`);
       if (viewAs) qs.push(`as=${encodeURIComponent(viewAs)}`);
       const res = await api('/admin/api/logs' + (qs.length ? '?' + qs.join('&') : ''));
+      if (!USER_MODE) {
+        let fresh = false;
+        for (const l of res.logs) if (l.user && !logSeenUsers.has(l.user) && !knownUsers.includes(l.user)) { logSeenUsers.add(l.user); fresh = true; }
+        if (fresh) renderLogUserChips();
+        if (logUsersOff.size && !viewAs) res.logs = res.logs.filter(l => !logUsersOff.has(l.user || ''));
+      }
       renderLogs(res, force === true);
     } catch (err) {
       // A rejected key (401) or an IP lockout (429) won't fix itself, and every
       // further poll counts as another failed attempt — which prolongs the lockout.
       // Stop polling instead of hammering the server from a stale tab.
-      if (/admin key/i.test(err.message)) {
+      if (/admin key|key is not valid|too many wrong keys/i.test(err.message)) {
         if (logAutoRefreshTimer) { clearInterval(logAutoRefreshTimer); logAutoRefreshTimer = null; }
         const cb = $('#log-auto-refresh'); if (cb) cb.checked = false;
-        $('#logs-view').innerHTML = `<div class="logs-empty">Admin key rejected — auto-refresh paused so this tab can't lock you out. Reload the page and enter the current key. (${escapeHtml(err.message)})</div>`;
+        $('#logs-view').innerHTML = `<div class="logs-empty">${USER_MODE ? 'Your key' : 'Admin key'} rejected — auto-refresh paused so this tab can't lock you out. Reload the page and enter the current key. (${escapeHtml(err.message)})</div>`;
         return;
       }
       $('#logs-view').innerHTML = `<div class="logs-empty">Couldn't load logs: ${escapeHtml(err.message)}</div>`;
@@ -1942,6 +2160,25 @@
     if (b.id === 'log-chip-all') logLevels.clear();
     else if (b.dataset.lvl) { if (logLevels.has(b.dataset.lvl)) logLevels.delete(b.dataset.lvl); else logLevels.add(b.dataset.lvl); }
     syncLogChips(); loadLogs(true);
+  });
+  $('#log-user-chips').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'log-user-all') logUsersOff.clear();
+    else if (b.hasAttribute('data-luser')) { const k = b.getAttribute('data-luser'); if (logUsersOff.has(k)) logUsersOff.delete(k); else logUsersOff.add(k); }
+    renderLogUserChips(); schedulePrefsSave(); loadLogs(true);
+  });
+  $('#ua-chips').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-uafocus-all')) uaFocus.clear();
+    else { const k = b.getAttribute('data-uafocus'); if (uaFocus.has(k)) uaFocus.delete(k); else uaFocus.add(k); }
+    renderUserActivity(); schedulePrefsSave();
+  });
+  $('#ua-refresh').addEventListener('click', loadUserActivity);
+  $('#ua-bundles').addEventListener('click', e => {
+    const b = e.target.closest('[data-uaview]'); if (!b) return;
+    const sel = $('#view-as'); sel.value = b.getAttribute('data-uaview');
+    if (sel.value === b.getAttribute('data-uaview')) sel.dispatchEvent(new Event('change'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   $('#log-order').addEventListener('change', e => { logOrder = e.target.value; rerenderLogs(); });
   $('#log-group').addEventListener('change', e => { logGroup = e.target.checked; rerenderLogs(); });
@@ -3480,7 +3717,129 @@
 
   let modelPresets = {};
 
+  // User mode: models and logos only. No usage, credits, warnings, schemas, GitHub or provider numbers — those are the owner's.
+  async function loadAllUser() {
+    const logosRes = await api('/admin/api/logos').catch(() => ({ logos: {} }));
+    providerLogos = (logosRes && logosRes.logos) || {};
+    await reloadUserModels();
+    await loadProfile();
+    await loadLogs(true);
+    if ($('#log-auto-refresh').checked) startLogAutoRefresh();
+    $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
+  }
+  // ---------- user mode: my own bundles ----------
+  // A bundle is built from hops the owner already set up (pick a model + which of its hops) with a few allowed settings changed.
+  // The server checks every part again; this form only makes the allowed choices easy.
+  let currentMine = {};                       // id -> saved definition (also broken ones, which have no card)
+  let mineLimits = { bundles: 20, hops: 6 };
+  let mineDraft = null;                       // the bundle being edited: { editing, id, notes, hops: [{ src: 'modelId|hopIndex', reasoning: {}, timeoutMs: '' }] }
+  async function reloadUserModels() {
+    const res = await api('/admin/api/models');
+    currentModels = res.models; currentMine = res.mine || {}; mineLimits = res.limits || mineLimits;
+    renderFilterControls(res.models);
+    renderProviders(res.models, buildUsageIndex([]));
+    renderMineBar();
+  }
+  function renderMineBar() {
+    const n = Object.keys(currentMine).length;
+    $('#mine-count').textContent = `${n} of ${mineLimits.bundles} bundles`;
+    $('#mine-new').disabled = n >= mineLimits.bundles;
+    $('#mine-broken').innerHTML = Object.keys(currentMine).filter(id => currentMine[id].broken).map(id =>
+      `<span class="mine-broken-chip" title="Every hop of this bundle is gone. Edit it to pick new ones, or delete it.">⚠ ${escapeHtml(id)} <button type="button" class="mine-edit-btn" data-mine-edit="${escapeHtml(id)}">Edit</button><button type="button" class="mine-del-btn" data-mine-del="${escapeHtml(id)}">Delete</button></span>`).join('');
+  }
+  function mineSources() {
+    const out = [];
+    for (const [id, e] of Object.entries(currentModels)) {
+      if (currentMine[id]) continue;   // no bundles inside bundles: only hops the owner configured
+      flattenHops(e).forEach((h, i) => out.push({ value: id + '|' + i, id, i, hop: h }));
+    }
+    return out.sort((a, b) => a.id.localeCompare(b.id) || a.i - b.i);
+  }
+  function mineSrcHop(value) {
+    const k = String(value || '').lastIndexOf('|'); if (k < 0) return null;
+    const e = currentModels[value.slice(0, k)]; if (!e || currentMine[value.slice(0, k)]) return null;
+    return flattenHops(e)[Number(value.slice(k + 1))] || null;
+  }
+  function openMineEditor(id) {
+    const def = id ? currentMine[id] : null;
+    mineDraft = def
+      ? { editing: id, id, notes: def.notes || '', hops: def.hops.map(h => ({ src: h.ref + '|' + (h.hop || 0), reasoning: { ...((h.overrides && h.overrides.reasoning) || {}) }, timeoutMs: (h.overrides && h.overrides.timeoutMs) || '' })) }
+      : { editing: null, id: '', notes: '', hops: [{ src: '', reasoning: {}, timeoutMs: '' }] };
+    renderMineEditor();
+    const box = $('#mine-editor'); if (box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+  function mineSettingsHtml(h) {
+    const src = mineSrcHop(h.src); if (!src) return '';
+    const sets = Object.entries(src.reasoning || {}).map(([k, v]) => {
+      const cur = Object.prototype.hasOwnProperty.call(h.reasoning, k) ? h.reasoning[k] : v;
+      const input = typeof v === 'boolean' ? `<input type="checkbox" data-rk="${escapeHtml(k)}" ${cur ? 'checked' : ''}>`
+        : typeof v === 'number' ? `<input type="number" data-rk="${escapeHtml(k)}" value="${escapeHtml(cur)}">`
+        : `<input type="text" data-rk="${escapeHtml(k)}" maxlength="40" value="${escapeHtml(cur)}">`;
+      return `<label class="mine-set"><span>${escapeHtml(k)}</span>${input}</label>`;
+    });
+    sets.push(`<label class="mine-set"><span>time limit (ms)</span><input type="number" data-tm min="3000" max="120000" step="1000" placeholder="${escapeHtml(src.timeoutMs || 'default')}" value="${escapeHtml(h.timeoutMs === '' || h.timeoutMs == null ? '' : h.timeoutMs)}"></label>`);
+    return sets.join('');
+  }
+  function renderMineEditor() {
+    const box = $('#mine-editor');
+    if (!mineDraft) { box.hidden = true; box.innerHTML = ''; return; }
+    const d = mineDraft, groups = {};
+    mineSources().forEach(s => { (groups[s.hop.provider] = groups[s.hop.provider] || []).push(s); });
+    const options = sel => '<option value="">Choose a model…</option>' + Object.keys(groups).sort().map(p =>
+      `<optgroup label="${escapeHtml(PROVIDER_LABELS[p] || p)}">${groups[p].map(s => `<option value="${escapeHtml(s.value)}"${s.value === sel ? ' selected' : ''}>${escapeHtml(s.id + (s.i ? ' #' + (s.i + 1) : '') + ' — ' + s.hop.model)}</option>`).join('')}</optgroup>`).join('');
+    box.hidden = false;
+    box.innerHTML = `<div class="mine-card">
+      <h3>${d.editing ? `Edit “${escapeHtml(d.editing)}”` : 'New bundle'}</h3>
+      <div class="form-grid">
+        <div class="field"><label for="mine-id">Name</label><input type="text" id="mine-id" maxlength="40" value="${escapeHtml(d.id)}" ${d.editing ? 'readonly' : ''} placeholder="e.g. my-fast-mix"></div>
+        <div class="field"><label for="mine-notes">Notes (optional)</label><input type="text" id="mine-notes" maxlength="200" value="${escapeHtml(d.notes)}"></div>
+      </div>
+      ${d.hops.map((h, i) => `<div class="mine-hop" data-i="${i}">
+        <span class="hop-order" style="color:var(--accent)">#${i + 1}</span>
+        <select class="mine-src" aria-label="Hop ${i + 1} model">${options(h.src)}</select>
+        <div class="mine-settings">${mineSettingsHtml(h)}</div>
+        <span class="mine-hop-btns"><button type="button" class="btn-secondary mine-up" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" class="btn-secondary mine-down" ${i === d.hops.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button><button type="button" class="btn-secondary mine-rm" ${d.hops.length === 1 ? 'disabled' : ''} aria-label="Remove hop">✕</button></span>
+      </div>`).join('')}
+      <button type="button" class="btn-secondary" id="mine-add-hop" ${d.hops.length >= mineLimits.hops ? 'disabled' : ''}>+ Add hop</button>
+      <div class="mine-actions"><button type="button" class="btn-primary" id="mine-save">Save bundle</button><button type="button" class="btn-secondary" id="mine-cancel">Cancel</button><span id="mine-status" role="status"></span></div>
+      <div class="acct-hint">A bundle tries its hops in order: if the first can't answer, the next one is used. You can pick any hop the owner has set up and flip its settings on or off, but not change its provider or model. Up to ${mineLimits.hops} hops.</div>
+    </div>`;
+  }
+  async function saveMine() {
+    const d = mineDraft, st = $('#mine-status'); st.style.color = 'var(--broken)';
+    const hops = [];
+    for (let n = 0; n < d.hops.length; n++) {
+      const h = d.hops[n];
+      if (!mineSrcHop(h.src)) { st.textContent = `Hop ${n + 1}: choose a model.`; return; }
+      const k = h.src.lastIndexOf('|'), src = mineSrcHop(h.src), ov = {}, rs = {};
+      for (const [rk, rv] of Object.entries(h.reasoning)) if (rv !== (src.reasoning || {})[rk]) rs[rk] = rv;   // only what really changed, so later changes by the owner still reach unchanged settings
+      if (Object.keys(rs).length) ov.reasoning = rs;
+      if (h.timeoutMs !== '' && h.timeoutMs != null && Number(h.timeoutMs) !== src.timeoutMs) ov.timeoutMs = Number(h.timeoutMs);
+      hops.push({ ref: h.src.slice(0, k), hop: Number(h.src.slice(k + 1)), ...(Object.keys(ov).length ? { overrides: ov } : {}) });
+    }
+    $('#mine-save').disabled = true; st.textContent = '';
+    try {
+      await api('/dashboard/api/mybundles', { method: 'POST', body: { id: d.id.trim(), notes: d.notes, hops } });
+      await reloadUserModels();
+      mineDraft = null; renderMineEditor(); toast('Bundle saved');
+    } catch (err) { st.textContent = err.message; const b = $('#mine-save'); if (b) b.disabled = false; }
+  }
+  async function deleteMine(id) {
+    if (!confirm(`Delete your bundle "${id}"?`)) return;
+    try { await api('/dashboard/api/mybundles/' + encodeURIComponent(id), { method: 'DELETE' }); if (mineDraft && mineDraft.editing === id) { mineDraft = null; renderMineEditor(); } await reloadUserModels(); toast('Bundle deleted'); }
+    catch (err) { alert('Could not delete: ' + err.message); }
+  }
+  async function loadProfile() {
+    const p = await api('/dashboard/api/profile');
+    viewAs = p.id;                       // the model list is already this user's; this keeps canSee() and the banner logic consistent
+    $('#acct-who').textContent = p.displayName || p.id;
+    $('#acct-name').value = p.displayName || '';
+    $('#acct-name').placeholder = p.id;
+    $('#acct-base').textContent = location.origin + '/v1';
+  }
+
   async function loadAll() {
+    if (USER_MODE) return loadAllUser();
     const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes, logosRes] = await Promise.all([
       api('/admin/api/models'), api('/admin/api/usage'), api('/admin/api/reasoning-schemas'), api('/admin/api/github-status'), api('/admin/api/presets'),
       api('/admin/api/warnings').catch(() => ({ hops: [], catalogCheckedAt: {} })),
@@ -3505,6 +3864,7 @@
     renderWarnings(modelsRes.models, githubRes);
     renderProviders(modelsRes.models, usageIndex);
     renderUsage(usageRes);
+    await loadUserActivity();
     await loadLogs(true);
     loadLimitsStatus();
     if ($('#log-auto-refresh').checked) startLogAutoRefresh();
@@ -3515,7 +3875,7 @@
   // "Sign out" removes it). Unchecking the box on the login screen stops it being saved.
   function persistKey(key) {
     try {
-      if ($('#stay-signed-in').checked) localStorage.setItem('qproxy-admin-key', key); else localStorage.removeItem('qproxy-admin-key');
+      if ($('#stay-signed-in').checked) localStorage.setItem(KEY_STORE, key); else localStorage.removeItem(KEY_STORE);
     } catch (_) { /* storage blocked: you just sign in each time */ }
   }
   function stripKeyFromUrl() {   // don't leave the key sitting in the address bar / history
@@ -3529,7 +3889,7 @@
     try {
       await api('/admin/api/models');
       await loadAll();
-      await loadUsers();
+      if (!USER_MODE) await loadUsers();
       // Only hide the login gate once everything has actually succeeded —
       // if loadAll() throws, we stay on the login screen with the error
       // visible instead of hiding it behind an already-dismissed gate.
@@ -3542,10 +3902,10 @@
       document.documentElement.classList.remove('autologin');
       $('#login-gate').style.display = '';
       $('#dashboard').hidden = true;
-      if (auto && /admin key/i.test(err.message)) {   // the saved key no longer works (changed on Render): forget it, ask again
-        try { localStorage.removeItem('qproxy-admin-key'); } catch (_) {}
+      if (auto && /admin key|key is not valid/i.test(err.message)) {   // the saved key no longer works (changed on Render): forget it, ask again
+        try { localStorage.removeItem(KEY_STORE); } catch (_) {}
         $('#key-input').value = '';
-        $('#login-error').textContent = 'Your saved admin key was rejected — enter the current one.';
+        $('#login-error').textContent = `Your saved ${USER_MODE ? '' : 'admin '}key was rejected — enter the current one.`;
       } else $('#login-error').textContent = err.message;
     }
   }
@@ -3553,7 +3913,7 @@
   $('#key-submit').addEventListener('click', () => tryUnlock($('#key-input').value.trim()));
   $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock($('#key-input').value.trim()); });
   $('#signout-btn').addEventListener('click', () => {
-    try { localStorage.removeItem('qproxy-admin-key'); } catch (_) {}
+    try { localStorage.removeItem(KEY_STORE); } catch (_) {}
     location.href = location.pathname;
   });
 
@@ -3583,7 +3943,8 @@
       quickTab: quickUsageTab,
       providerTab,
       warnOpen,
-      logs: { levels: [...logLevels], order: logOrder, group: logGroup, auto: $('#log-auto-refresh').checked },
+      logs: { levels: [...logLevels], order: logOrder, group: logGroup, auto: $('#log-auto-refresh').checked, usersOff: [...logUsersOff] },
+      uaFocus: [...uaFocus],
       tester: { provider: $('#tester-provider').value, max: $('#tester-max').value, prompt: $('#tester-prompt').value, models: $('#tester-models').value },
       filters: { search: $('#filter-search').value, provider: $('#filter-provider').value, status: $('#filter-status').value, limitType: $('#filter-limit').value, family: $('#filter-family').value, include: $('#filter-include').value, exclude: $('#filter-exclude').value, tags: [...filterState.tags] },
     };
@@ -3616,6 +3977,55 @@
     }
   })();
 
+  if (USER_MODE) {
+    document.body.classList.add('user-mode', 'viewing-user');
+    document.title = 'Q-Proxy';
+    document.querySelector('#login-gate .login-card p').textContent = 'Sign in with your key.';
+    $('#key-input').placeholder = 'Your key'; $('#key-input').setAttribute('aria-label', 'Your key');
+    $('#key-submit').textContent = 'Sign in';
+    $('#signout-btn').title = 'Forget the saved key on this device';
+    $('#acct-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('#acct-save'), msg = $('#acct-msg'); btn.disabled = true; msg.textContent = ''; msg.style.color = '';
+      try {
+        const r = await api('/dashboard/api/name', { method: 'POST', body: { name: $('#acct-name').value } });
+        $('#acct-name').value = r.displayName; $('#acct-who').textContent = r.displayName || $('#acct-name').placeholder;
+        msg.textContent = r.displayName ? 'Saved.' : 'Name cleared.';
+      } catch (err) { msg.textContent = err.message; msg.style.color = 'var(--broken)'; }
+      btn.disabled = false;
+    });
+    document.addEventListener('click', e => {
+      const t = e.target.closest && e.target.closest('[data-mine-edit], [data-mine-del], #mine-new');
+      if (!t) return;
+      if (t.id === 'mine-new') openMineEditor(null);
+      else if (t.hasAttribute('data-mine-edit')) openMineEditor(t.getAttribute('data-mine-edit'));
+      else deleteMine(t.getAttribute('data-mine-del'));
+    });
+    const mineBox = $('#mine-editor');
+    mineBox.addEventListener('input', e => {
+      const t = e.target, d = mineDraft; if (!d) return;
+      if (t.id === 'mine-id') d.id = t.value; else if (t.id === 'mine-notes') d.notes = t.value;
+    });
+    mineBox.addEventListener('change', e => {
+      const t = e.target, d = mineDraft; if (!d) return;
+      const row = t.closest('.mine-hop'), h = row && d.hops[Number(row.dataset.i)];
+      if (!h) return;
+      if (t.classList.contains('mine-src')) { h.src = t.value; h.reasoning = {}; h.timeoutMs = ''; renderMineEditor(); }
+      else if (t.hasAttribute('data-rk')) h.reasoning[t.getAttribute('data-rk')] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Number(t.value) : t.value;
+      else if (t.hasAttribute('data-tm')) h.timeoutMs = t.value === '' ? '' : Number(t.value);
+    });
+    mineBox.addEventListener('click', e => {
+      const t = e.target.closest('button'), d = mineDraft; if (!t || !d) return;
+      const row = t.closest('.mine-hop'), i = row ? Number(row.dataset.i) : -1;
+      if (t.id === 'mine-add-hop') { d.hops.push({ src: '', reasoning: {}, timeoutMs: '' }); renderMineEditor(); }
+      else if (t.id === 'mine-cancel') { mineDraft = null; renderMineEditor(); }
+      else if (t.id === 'mine-save') saveMine();
+      else if (t.classList.contains('mine-rm') && d.hops.length > 1) { d.hops.splice(i, 1); renderMineEditor(); }
+      else if (t.classList.contains('mine-up') && i > 0) { [d.hops[i - 1], d.hops[i]] = [d.hops[i], d.hops[i - 1]]; renderMineEditor(); }
+      else if (t.classList.contains('mine-down') && i < d.hops.length - 1) { [d.hops[i + 1], d.hops[i]] = [d.hops[i], d.hops[i + 1]]; renderMineEditor(); }
+    });
+    $('#acct-copy').addEventListener('click', async () => { const ok = await copyText($('#acct-base').textContent); toast(ok ? 'Copied to clipboard' : "Couldn't copy — select the text and press Ctrl+C"); });
+  }
   if (ADMIN_KEY) {
     $('#key-input').value = ADMIN_KEY;
     if (SAVED_KEY && !params.get('key')) $('#stay-signed-in').checked = true;
