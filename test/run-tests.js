@@ -58,6 +58,12 @@ async function main() {
   const hadUsage = fs.existsSync(usagePath);
   if (hadUsage) fs.copyFileSync(usagePath, usagePath + '.bak');
   fs.writeFileSync(usagePath, '{}');
+  const namesPath = path.join(ROOT, 'user-names.json');   // the /me page writes this file; the test must leave none behind
+  const hadNames = fs.existsSync(namesPath);
+  if (hadNames) fs.copyFileSync(namesPath, namesPath + '.bak');
+  const bundlesPath = path.join(ROOT, 'user-bundles.json');   // user bundles are written here too
+  const hadBundles = fs.existsSync(bundlesPath);
+  if (hadBundles) fs.copyFileSync(bundlesPath, bundlesPath + '.bak');
   const limitsPath = path.join(ROOT, 'provider-limits.json');   // the Google-limits import rewrites this file
   fs.copyFileSync(limitsPath, limitsPath + '.bak');
 
@@ -796,7 +802,110 @@ async function main() {
     check('owner key is named Q by default (MY_NAME not set)', (j.users || []).some(u => u.name === 'Q') && !(j.users || []).some(u => u.name === 'me'), JSON.stringify(j.users));
     r = await fetch(BASE + '/admin/api/users', { headers: admin2 }); j = await r.json();
     check('/admin/api/users lists the owner for the "view as" dropdown', j.owner === 'Q' && j.users.includes('Q'), JSON.stringify(j));
+
     const mkModel = async (id, extra) => { const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id, entry: { model: 'gpt-x', provider: 'groq', status: 'active', limitType: 'rate-limited', ...extra } }) }); const jj = await rr.json(); return { s: rr.status, j: jj }; };
+    // ── the user dashboard (/dashboard): the Admin's page in read-only user mode; key-only sign-in, own models and logs, a display name ──
+    const meApi = async (pth, opt, k) => { const rr = await fetch(BASE + pth, { ...(opt || {}), headers: { ...(k === null ? {} : { Authorization: 'Bearer ' + (k || 'testkey') }), 'Content-Type': 'application/json', ...((opt && opt.headers) || {}) } }); let jj = null; try { jj = await rr.json(); } catch (_) {} return { s: rr.status, j: jj, h: rr.headers }; };
+    r = await fetch(BASE + '/dashboard'); const dashHtml = await r.text();
+    check('/dashboard serves the dashboard page in user mode (public shell, no key needed to load it)', r.ok && /window\.QP_MODE = "user"/.test(dashHtml) && /Models by provider/.test(dashHtml) && !/adminkey/.test(dashHtml), String(r.status));
+    r = await fetch(BASE + '/admin'); const adminHtml = await r.text();
+    check('/admin is the same page but NOT in user mode', r.ok && !/window\.QP_MODE = "user"/.test(adminHtml) && /Models by provider/.test(adminHtml));
+    let mp = await meApi('/dashboard/api/profile', {}, null);
+    check('/dashboard/api/profile without a key is refused (401)', mp.s === 401, String(mp.s));
+    mp = await meApi('/dashboard/api/profile', {}, 'adminkey');
+    check('/dashboard/api: the ADMIN key is not a user key (401)', mp.s === 401, String(mp.s));
+    mp = await meApi('/admin/api/models');
+    check('a user (chat) key cannot open any /admin/api route (401)', mp.s === 401, String(mp.s));
+    mp = await meApi('/dashboard/api/profile');
+    check('/dashboard/api/profile with the owner key: id Q and no display name yet', mp.s === 200 && mp.j.id === 'Q' && mp.j.displayName === '', JSON.stringify(mp.j).slice(0, 200));
+    check('/dashboard responses are not readable cross-origin and are never cached', !mp.h.get('access-control-allow-origin') && /no-store/.test(mp.h.get('cache-control') || ''), JSON.stringify([...mp.h.entries()]).slice(0, 300));
+    const mine = await mkModel('zz-mp-mine', { private: ['Q', 'somebody'] }); const theirs = await mkModel('zz-mp-theirs', { private: ['someone-else'] });
+    mp = await meApi('/dashboard/api/models');
+    check('/dashboard/api/models: has public models, includes one private to this user, leaves out one private to somebody else', mine.s === 200 && theirs.s === 200 && mp.s === 200 && Object.keys(mp.j.models).length > 5 && !!mp.j.models['zz-mp-mine'] && !mp.j.models['zz-mp-theirs'], Object.keys((mp.j || {}).models || {}).filter(k => /^zz-/.test(k)).join());
+    check('/dashboard/api/models: other people\'s names in "private" are never shown (only the user\'s own)', JSON.stringify(mp.j.models['zz-mp-mine'].private) === '["Q"]', JSON.stringify(mp.j.models['zz-mp-mine'].private));
+    for (const id of ['zz-mp-mine', 'zz-mp-theirs']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+    mp = await meApi('/dashboard/api/logs');
+    check('/dashboard/api/logs: only the user\'s own lines — none of the admin-only system lines (GitHub sync, boot warnings, locks)', mp.s === 200 && Array.isArray(mp.j.logs) && typeof mp.j.total === 'number' && !mp.j.logs.some(l => /github-sync|model-presets|ADMIN_KEY|locking out|\[dashboard\]/.test(l.msg) || l.user), JSON.stringify(mp.j).slice(0, 200));
+    mp = await meApi('/dashboard/api/logos');
+    check('/dashboard/api/logos lists the logo files (needs a key)', mp.s === 200 && typeof mp.j.logos === 'object' && (await meApi('/dashboard/api/logos', {}, null)).s === 401);
+    mp = await meApi('/dashboard/api/name', { method: 'POST', body: JSON.stringify({ name: '  Alex   Q ' }) });
+    check('/dashboard/api/name: saves a tidy display name (spaces collapsed)', mp.s === 200 && mp.j.displayName === 'Alex Q', JSON.stringify(mp));
+    check('/dashboard/api/name: written to user-names.json under the key id (not the key)', fs.existsSync(namesPath) && JSON.parse(fs.readFileSync(namesPath, 'utf8')).Q === 'Alex Q' && !/testkey/.test(fs.readFileSync(namesPath, 'utf8')));
+    mp = await meApi('/dashboard/api/profile');
+    check('/dashboard/api/profile now returns the display name; the id is unchanged', mp.j.displayName === 'Alex Q' && mp.j.id === 'Q', JSON.stringify(mp.j).slice(0, 120));
+    r = await fetch(BASE + '/admin/api/users', { headers: admin2 }); j = await r.json();
+    check('/admin/api/users carries the display name for the View-as list; the id stays Q', j.users.includes('Q') && j.names && j.names.Q === 'Alex Q', JSON.stringify(j));
+    for (const bad of ['<b>x</b>', 'x'.repeat(25), '-leading', 'a\u0000b']) { mp = await meApi('/dashboard/api/name', { method: 'POST', body: JSON.stringify({ name: bad }) }); check(`/dashboard/api/name: rejects ${JSON.stringify(bad).slice(0, 24)}`, mp.s === 400, String(mp.s)); }
+    mp = await meApi('/dashboard/api/name', { method: 'POST', body: JSON.stringify({ name: '' }) });
+    r = await fetch(BASE + '/admin/api/users', { headers: admin2 }); j = await r.json();
+    check('/dashboard/api/name: an empty name clears it', mp.s === 200 && mp.j.displayName === '' && !(j.names && j.names.Q), JSON.stringify(j));
+    // ── custom bundles: a user builds their own model out of hops the owner already set up ──
+    const dj = (pth, method, body) => meApi(pth, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+    const delAdmin = async (id) => { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await rr.text(); };
+    await mkModel('zz-src-a', { model: 'gpt-a', reasoning: { enable_thinking: true }, reasoningSchema: 'chat-template-thinking-toggle' });
+    await mkModel('zz-src-b', { model: 'gpt-b' });
+    await mkModel('zz-src-priv', { model: 'gpt-p', private: ['someone-else'] });
+    const hopsOk = [{ ref: 'zz-src-a', hop: 0, overrides: { reasoning: { enable_thinking: false }, timeoutMs: 20000 } }, { ref: 'zz-src-b' }];
+    let bd = await dj('/dashboard/api/mybundles', 'POST', { id: 'zz-my', notes: 'my mix', hops: hopsOk });
+    check('bundle: a user can create one from hops the owner configured', bd.s === 200 && bd.j.id === 'zz-my', JSON.stringify(bd.j));
+    mp = await meApi('/dashboard/api/models');
+    const mb = mp.j.models['zz-my'];
+    check('bundle: it appears on the user\'s dashboard as a normal model (custom, owned, two hops chained), and in "mine"', !!mb && mb.custom === true && mb.owner === 'Q' && mb.model === 'gpt-a' && mb.fallback && mb.fallback.model === 'gpt-b' && !!mp.j.mine['zz-my'] && mp.j.mine['zz-my'].broken === false && mp.j.limits.bundles === 20, JSON.stringify(mb).slice(0, 300));
+    check('bundle: the allowed settings were applied to the hop (thinking off, 20 s limit); the other hop is untouched', mb.reasoning.enable_thinking === false && mb.timeoutMs === 20000 && mb.fallback.reasoning === undefined);
+    r = await fetch(BASE + '/v1/models', { headers: { Authorization: 'Bearer testkey' } }); j = await r.json();
+    const r2 = await fetch(BASE + '/v1/models'); const j2 = await r2.json();
+    check('bundle: listed in /v1/models for its owner only', j.data.some(m => m.id === 'zz-my') && !j2.data.some(m => m.id === 'zz-my'));
+    setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'bundle ok' }, finish_reason: 'stop' }], usage: { total_tokens: 3 } } });
+    r = await fetch(BASE + '/v1/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer testkey', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'zz-my', messages: [{ role: 'user', content: 'hi' }] }) }); j = await r.json();
+    check('bundle: calling it works — the request goes to the first hop\'s provider and model, with the changed setting', r.ok && j.choices[0].message.content === 'bundle ok' && lastCall().url === 'https://api.groq.com/openai/v1/chat/completions' && sentBody().model === 'gpt-a' && JSON.stringify(sentBody()).includes('"enable_thinking":false'), JSON.stringify({ s: r.status, c: lastCall(), b: sentBody() }).slice(0, 400));
+    r = await fetch(BASE + '/admin/api/user-bundles', { headers: admin2 }); j = await r.json();
+    check('bundle: the Admin sees every user\'s bundles and a history of who changed what', !!(j.bundles.Q && j.bundles.Q['zz-my']) && j.events.some(e => e.user === 'Q' && e.action === 'create' && e.id === 'zz-my' && /enable_thinking=false/.test(e.detail) && /time limit 20000 ms/.test(e.detail) && /my mix/.test(e.detail)), JSON.stringify(j.events).slice(0, 300));
+    check('bundle: saved to user-bundles.json', fs.existsSync(bundlesPath) && !!JSON.parse(fs.readFileSync(bundlesPath, 'utf8')).bundles.Q['zz-my']);
+    mp = await meApi('/dashboard/api/mybundles'); const created = mp.j.bundles['zz-my'].createdAt;
+    await sleep(15);
+    bd = await dj('/dashboard/api/mybundles', 'POST', { id: 'zz-my', notes: 'changed', hops: [hopsOk[1]] });
+    mp = await meApi('/dashboard/api/mybundles');
+    check('bundle: saving the same name again updates it (created time kept, new time set)', bd.s === 200 && mp.j.bundles['zz-my'].notes === 'changed' && mp.j.bundles['zz-my'].createdAt === created && mp.j.bundles['zz-my'].updatedAt > created && mp.j.bundles['zz-my'].hops.length === 1);
+    bd = await dj('/dashboard/api/mybundles', 'POST', { id: 'zz-my', hops: hopsOk });
+    // the owner changes / removes a model a bundle is built on: the bundle follows
+    await mkModel('zz-src-a', { model: 'gpt-a2', reasoning: { enable_thinking: true }, reasoningSchema: 'chat-template-thinking-toggle' });
+    mp = await meApi('/dashboard/api/models');
+    check('bundle: when the owner changes a model, bundles built on it follow (new model slug, user\'s setting kept)', mp.j.models['zz-my'].model === 'gpt-a2' && mp.j.models['zz-my'].reasoning.enable_thinking === false, JSON.stringify(mp.j.models['zz-my']).slice(0, 200));
+    await delAdmin('zz-src-b');
+    mp = await meApi('/dashboard/api/models');
+    check('bundle: when the owner removes a model, that hop drops out of the bundle (it does not break)', !mp.j.models['zz-my'].fallback && mp.j.mine['zz-my'].broken === false);
+    // validation
+    const bad = async (label, body, code) => { const x = await dj('/dashboard/api/mybundles', 'POST', body); check(`bundle: rejected — ${label}`, x.s === code, `${x.s} ${JSON.stringify(x.j).slice(0, 160)}`); };
+    await bad('a name that is too short', { id: 'a', hops: [{ ref: 'zz-src-a' }] }, 400);
+    await bad('a name with odd characters', { id: 'bad name!', hops: [{ ref: 'zz-src-a' }] }, 400);
+    await bad('a name that is already a model', { id: 'zz-src-a', hops: [{ ref: 'zz-src-a' }] }, 409);
+    await bad('no hops', { id: 'zz-x1', hops: [] }, 400);
+    await bad('seven hops', { id: 'zz-x2', hops: Array.from({ length: 7 }, () => ({ ref: 'zz-src-a' })) }, 400);
+    await bad('a model that does not exist', { id: 'zz-x3', hops: [{ ref: 'no-such-model' }] }, 400);
+    await bad('a model private to somebody else', { id: 'zz-x4', hops: [{ ref: 'zz-src-priv' }] }, 400);
+    await bad('a hop number the model does not have', { id: 'zz-x5', hops: [{ ref: 'zz-src-a', hop: 5 }] }, 400);
+    await bad('trying to change the provider', { id: 'zz-x6', hops: [{ ref: 'zz-src-a', overrides: { provider: 'nvidia' } }] }, 400);
+    await bad('trying to change the model slug', { id: 'zz-x7', hops: [{ ref: 'zz-src-a', overrides: { model: 'gpt-4' } }] }, 400);
+    await bad('a reasoning setting the hop does not have', { id: 'zz-x8', hops: [{ ref: 'zz-src-a', overrides: { reasoning: { sneaky_field: true } } }] }, 400);
+    await bad('a reasoning value of the wrong type', { id: 'zz-x9', hops: [{ ref: 'zz-src-a', overrides: { reasoning: { enable_thinking: 'yes' } } }] }, 400);
+    await bad('a time limit out of range', { id: 'zz-x10', hops: [{ ref: 'zz-src-a', overrides: { timeoutMs: 10 } }] }, 400);
+    await bad('notes that are not text', { id: 'zz-x11', notes: { a: 1 }, hops: [{ ref: 'zz-src-a' }] }, 400);
+    // delete
+    bd = await dj('/dashboard/api/mybundles/zz-my', 'DELETE');
+    r = await fetch(BASE + '/v1/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer testkey', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'zz-my', messages: [{ role: 'user', content: 'hi' }] }) }); await r.text();
+    mp = await meApi('/dashboard/api/models');
+    check('bundle: deleting it removes it everywhere (dashboard, chat answers "not found")', bd.s === 200 && r.status === 404 && !mp.j.models['zz-my'] && !mp.j.mine['zz-my']);
+    r = await fetch(BASE + '/admin/api/user-bundles', { headers: admin2 }); j = await r.json();
+    check('bundle: the history keeps create, update and delete', ['create', 'update', 'delete'].every(a => j.events.some(e => e.id === 'zz-my' && e.action === a)), JSON.stringify(j.events.map(e => e.action + ':' + e.id)));
+    // the per-user cap
+    let made = 0; for (let i = 0; i < 20; i++) { const x = await dj('/dashboard/api/mybundles', 'POST', { id: 'zz-lim-' + i, hops: [{ ref: 'zz-src-a' }] }); if (x.s === 200) made++; }
+    const over = await dj('/dashboard/api/mybundles', 'POST', { id: 'zz-lim-over', hops: [{ ref: 'zz-src-a' }] });
+    check('bundle: at most 20 per user (the 21st is refused)', made === 20 && over.s === 400 && /up to 20/.test(over.j.error.message), JSON.stringify({ made, s: over.s }));
+    for (let i = 0; i < 20; i++) await dj('/dashboard/api/mybundles/zz-lim-' + i, 'DELETE');
+    for (const id of ['zz-src-a', 'zz-src-priv']) await delAdmin(id);
+    let codes = []; for (let i = 0; i < 6; i++) codes.push((await meApi('/dashboard/api/profile', {}, 'wrong-' + i)).s);
+    mp = await meApi('/dashboard/api/profile');
+    check('/dashboard: wrong keys are counted per IP — 5 wrong tries lock further tries out (429), even with the right key', codes.slice(0, 5).every(c => c === 401) && codes[5] === 429 && mp.s === 429, JSON.stringify(codes) + ' then ' + mp.s);
     let pm = await mkModel('zz-priv-q', { private: ['Q', ' Q '] });
     check('saving a private model keeps the list de-duplicated and trimmed', pm.s === 200 && JSON.stringify(pm.j.entry.private) === '["Q"]', JSON.stringify(pm.j));
     pm = await mkModel('zz-priv-other', { private: ['somebody-else'] });
@@ -1080,6 +1189,8 @@ async function main() {
     fs.unlinkSync(modelsPath + '.bak');
     if (hadUsage) { fs.copyFileSync(usagePath + '.bak', usagePath); fs.unlinkSync(usagePath + '.bak'); } else { try { fs.unlinkSync(usagePath); } catch (_) {} }
     fs.copyFileSync(limitsPath + '.bak', limitsPath); fs.unlinkSync(limitsPath + '.bak');
+    if (hadBundles) { fs.copyFileSync(bundlesPath + '.bak', bundlesPath); fs.unlinkSync(bundlesPath + '.bak'); } else { try { fs.unlinkSync(bundlesPath); } catch (_) {} }
+    if (hadNames) { fs.copyFileSync(namesPath + '.bak', namesPath); fs.unlinkSync(namesPath + '.bak'); } else { try { fs.unlinkSync(namesPath); } catch (_) {} }
     try { fs.unlinkSync(SCEN); } catch (_) {}
     try { fs.unlinkSync(SCEN + '.lastbody'); } catch (_) {}
     try { fs.unlinkSync(SCEN + '.lastcall'); } catch (_) {}
@@ -1090,3 +1201,4 @@ async function main() {
 }
 
 main().catch(e => { console.error('TEST DRIVER ERROR', e); process.exit(2); });
+
