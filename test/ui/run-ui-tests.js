@@ -41,6 +41,11 @@ function stageProject() {
   fs.copyFileSync(path.join(ROOT, 'test', 'mock-axios.js'), path.join(dir, 'test', 'mock-axios.js'));
   fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
   fs.writeFileSync(path.join(dir, 'usage-state.json'), '{}');
+  const t0 = new Date(Date.now() - 3600e3).toISOString();
+  fs.writeFileSync(path.join(dir, 'user-bundles.json'), JSON.stringify({
+    bundles: { user1: { 'u1-mix': { notes: 'plain gemma', hops: [{ ref: 'gemma-4-31b-nv', hop: 0, overrides: { reasoning: { enable_thinking: false } } }], createdAt: t0, updatedAt: t0 } } },
+    events: [{ ts: t0, user: 'user1', action: 'create', id: 'u1-mix', detail: '1 hop: gemma-4-31b-nv [enable_thinking=false]' }]
+  }));
   fs.writeFileSync(path.join(dir, 'test', 'scenario.json'), JSON.stringify({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } }));
   return dir;
 }
@@ -551,6 +556,21 @@ else:
     check('provider tabs carry a letter badge, and the letter is CSS so the tab text stays clean', !!nvTab && !!nvTab.querySelector('.pbadge[data-l="N"]') && /^NVIDIA NIM \(\d+\)$/.test(nvTab.textContent.replace(/\s+/g, ' ').trim()), nvTab && nvTab.innerHTML);
     check('a logo file in public/logos replaces the letter badge (Groq has one in this run, NVIDIA does not)', !!gqTab && !!gqTab.querySelector('.pbadge-img img[src="/admin/logos/groq.svg"]') && !!nvTab && !nvTab.querySelector('img'), gqTab && gqTab.innerHTML);
     check('the badge also shows on model cards and hop chips', d.querySelectorAll('.model-card .model-combo .pbadge').length > 0 && d.querySelectorAll('.hop .pbadge').length > 0);
+    // provider and model maker: one split icon when they differ, a plain provider badge when it is the same company
+    const comboOf = (re) => [...d.querySelectorAll('.model-card .model-combo')].find(c => re.test(c.textContent.replace(/\s+/g, ' ')));
+    const splitC = comboOf(/NVIDIA NIM • z-ai\/glm/), sameC = comboOf(/Google AI Studio • (models\/)?gem(ma|ini)/);
+    check('different companies (NVIDIA serving Z.AI\'s GLM): ONE split icon with "Provider: …" on one half and "Model by: …" on the other', !!splitC && splitC.querySelectorAll('.pbadge2').length === 1 && /^Provider: NVIDIA NIM$/.test(splitC.querySelector('.pb-prov').title) && /^Model by: Z\.AI$/.test(splitC.querySelector('.pb-model').title) && !splitC.querySelector('.pbadge'), splitC && splitC.innerHTML.slice(0, 300));
+    check('same company (Google AI Studio serving Gemma/Gemini): the plain provider badge, not split', !!sameC && !sameC.querySelector('.pbadge2') && !!sameC.querySelector('.pbadge'), sameC && sameC.innerHTML.slice(0, 200));
+    check('the split icon has an accessible name and is made of two hover zones', !!splitC && /Provider: NVIDIA NIM; model by Z\.AI/.test(splitC.querySelector('.pbadge2').getAttribute('aria-label')) && splitC.querySelectorAll('.pb-half[title]').length === 2);
+    check('split icon: with no logo file for a half, that half falls back to a letter badge (data-l)', !!splitC && !!splitC.querySelector('.pb-in[data-l]'));
+    check('split icon also appears on hop chips', [...d.querySelectorAll('.hop .pbadge2')].length > 0);
+    // a model with one hop has no "#1" chain box (the card already names provider and model); several hops keep it
+    const cards = [...d.querySelectorAll('.model-card')];
+    const oneHop = cards.filter(c => !/→/.test(c.textContent) && !c.querySelector('.hop-order'));
+    check('single-hop models show no "#1" hop box, and no empty "Fallbacks 0 / Fallback order 1." rows', cards.length > 10 && !cards.some(c => c.querySelectorAll('.hop-order').length === 1) && !cards.some(c => /Fallbacks\s*0\b/.test(c.textContent.replace(/\s+/g, ' '))) && oneHop.length > 10, 'cards ' + cards.length);
+    check('single-hop cards keep their usage line without repeating provider and model (a compact line)', !!d.querySelector('.model-card .chain .hop-compact') && !d.querySelector('.model-card .chain .hop-compact .hop-model'));
+    const multi = d.querySelector('.model-card[data-id="gemma-4-31b"]');
+    check('a model with real fallbacks still shows #1 → #2 …', !!multi && multi.querySelectorAll('.hop-order').length >= 2 && /#1/.test(multi.textContent) && /#2/.test(multi.textContent), multi && multi.textContent.slice(0, 200));
     check('toolbar labels point at their fields (click the name, the field gets focus)', [...d.querySelectorAll('.toolbar-field > label')].every(l => l.getAttribute('for') && d.getElementById(l.getAttribute('for'))), [...d.querySelectorAll('.toolbar-field > label')].map(l => l.getAttribute('for')).join());
     check('the admin-only panels are marked, and "view as" hides them with the editing buttons', d.querySelectorAll('.admin-only').length >= 8 && /body\.viewing-user\s*:is\([^)]*\.admin-only[^)]*\.del-btn|body\.viewing-user\s*:is\([^)]*\.del-btn[^)]*\.admin-only/.test(cssText), String(d.querySelectorAll('.admin-only').length));
     d.querySelector('#add-form-toggle').click();
@@ -636,6 +656,145 @@ else:
     w.localStorage.setItem('qproxy-admin-key', KEY);
     check('Sign out button exists', !!d.getElementById('signout-btn'));
     dom.window.close();
+
+    // ── 12. The user dashboard (/dashboard): the Admin page in read-only user mode ──
+    {
+      const openDash = async (storage) => JSDOM.fromURL(BASE + '/dashboard', {
+        runScripts: 'dangerously', resources: new LocalOnly(), pretendToBeVisual: true,
+        beforeParse(w) {
+          w.fetch = (u, o) => fetch(new URL(u, BASE), o); w.AbortController = AbortController; w.scrollTo = () => {};
+          w.matchMedia = w.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }));
+          w.navigator.clipboard = { writeText: async t => { w.__copied = t; } };
+          if (storage) for (const k of Object.keys(storage)) w.localStorage.setItem(k, storage[k]);
+        }
+      });
+      const udom = await openDash(); dones.push(udom);
+      const uw = udom.window, ud = uw.document;
+      await sleep(300);
+      check('/dashboard: user mode — title, login wording, and no mention of the admin key', ud.title === 'Q-Proxy' && ud.documentElement.classList.contains('user-mode') && /Sign in with your key/.test(ud.querySelector('#login-gate .login-card p').textContent) && ud.getElementById('key-submit').textContent === 'Sign in' && !/admin key/i.test(ud.getElementById('login-gate').textContent));
+      setVal(uw, ud.getElementById('key-input'), 'wrong-key'); click(uw, ud.getElementById('key-submit'));
+      check('/dashboard: a wrong key shows a message and stays on the login card', !!(await until(() => /not valid/i.test(ud.getElementById('login-error').textContent))) && ud.getElementById('dashboard').hidden === true);
+      setVal(uw, ud.getElementById('key-input'), 'testkey'); click(uw, ud.getElementById('key-submit'));
+      check('/dashboard: the right key opens the dashboard as Q', !!(await until(() => ud.getElementById('dashboard').hidden === false && ud.getElementById('acct-who').textContent === 'Q')));
+      check('/dashboard: the key is remembered under its own name, never as the admin key', uw.localStorage.getItem('qproxy-user-key') === 'testkey' && uw.localStorage.getItem('qproxy-admin-key') === null);
+      check('/dashboard: same dashboard — model cards, provider tabs, filters, logs', ud.querySelectorAll('.model-card').length > 10 && ud.querySelectorAll('#provider-tabs .provider-tab-btn').length > 3 && !!ud.getElementById('filter-search') && !!ud.getElementById('logs-view'));
+      check('/dashboard: read-only — viewing-user is on and the editing buttons/panels are covered by the hide rule', ud.body.classList.contains('viewing-user') && /body\.viewing-user\s*:is\([^)]*\.edit-btn/.test(ud.documentElement.innerHTML));
+      check('/dashboard: nothing of the owner\'s usage or credits is loaded (no stats, warnings, usage table, schemas, quick usage)', ud.getElementById('usage-grid').children.length === 0 && ud.getElementById('stats').children.length === 0 && ud.getElementById('warnings').children.length === 0 && ud.getElementById('quick-usage').children.length === 0 && !/requests yet|ran out|turned paid/.test(ud.getElementById('providers').textContent), JSON.stringify({ usage: ud.getElementById('usage-grid').children.length, stats: ud.getElementById('stats').children.length, warn: ud.getElementById('warnings').children.length, quick: ud.getElementById('quick-usage').children.length, txt: (ud.getElementById('providers').textContent.match(/requests yet|ran out|turned paid/) || [''])[0] }));
+      check('/dashboard: the view-as picker, "Admin" label and Clear-logs button are hidden for users', /html\.user-mode\s*:is\([^)]*#view-as[^)]*#log-clear-btn/.test(ud.documentElement.innerHTML));
+      check('/dashboard: the account box shows the base URL', ud.getElementById('acct-base').textContent === BASE + '/v1');
+      click(uw, ud.getElementById('acct-copy')); await sleep(80);
+      check('/dashboard: Copy puts the base URL on the clipboard', uw.__copied === BASE + '/v1');
+      setVal(uw, ud.getElementById('acct-name'), 'Alex'); ud.getElementById('acct-form').dispatchEvent(new uw.Event('submit', { cancelable: true, bubbles: true }));
+      check('/dashboard: saving a display name confirms it and shows it', !!(await until(() => /Saved/.test(ud.getElementById('acct-msg').textContent) && ud.getElementById('acct-who').textContent === 'Alex')));
+      setVal(uw, ud.getElementById('acct-name'), '<script>'); ud.getElementById('acct-form').dispatchEvent(new uw.Event('submit', { cancelable: true, bubbles: true }));
+      check('/dashboard: a bad name shows the server\'s message and keeps the old one', !!(await until(() => /letters, numbers/i.test(ud.getElementById('acct-msg').textContent))) && ud.getElementById('acct-who').textContent === 'Alex');
+      // ── own bundles: build, change, delete ──
+      const mineApi = async () => (await (await fetch(BASE + '/dashboard/api/mybundles', { headers: { Authorization: 'Bearer testkey' } })).json());
+      uw.confirm = () => true;
+      check('/dashboard: "New bundle" button and a bundle counter are there', !!ud.getElementById('mine-new') && /^0 of 20 bundles$/.test(ud.getElementById('mine-count').textContent), ud.getElementById('mine-count').textContent);
+      click(uw, ud.getElementById('mine-new'));
+      check('/dashboard: the editor opens with one empty hop and a list of the owner\'s models grouped by provider', ud.getElementById('mine-editor').hidden === false && ud.querySelectorAll('.mine-hop').length === 1 && ud.querySelectorAll('.mine-src optgroup').length > 2 && ud.querySelectorAll('.mine-src option').length > 20);
+      click(uw, ud.getElementById('mine-save'));
+      check('/dashboard: saving with no model chosen says so (nothing is sent)', /choose a model/i.test(ud.getElementById('mine-status').textContent));
+      const pick = (row, value) => { const sel = ud.querySelectorAll('.mine-hop')[row].querySelector('.mine-src'); sel.value = value; sel.dispatchEvent(new uw.Event('change', { bubbles: true })); };
+      pick(0, 'gemma-4-31b-nv|0');
+      const thinkBox = () => ud.querySelectorAll('.mine-hop')[0].querySelector('input[data-rk="enable_thinking"]');
+      check('/dashboard: choosing a model shows that hop\'s settings (its thinking switch, on by default) and a time limit', !!thinkBox() && thinkBox().checked === true && !!ud.querySelector('.mine-hop [data-tm]'));
+      thinkBox().checked = false; thinkBox().dispatchEvent(new uw.Event('change', { bubbles: true }));
+      click(uw, ud.getElementById('mine-add-hop'));
+      pick(1, 'gemma-4-31b-g|0');
+      click(uw, ud.querySelectorAll('.mine-hop')[1].querySelector('.mine-up'));
+      check('/dashboard: a hop can be moved up (and the settings stay with it)', ud.querySelectorAll('.mine-hop')[0].querySelector('.mine-src').value === 'gemma-4-31b-g|0' && ud.querySelectorAll('.mine-hop')[1].querySelector('input[data-rk="enable_thinking"]').checked === false);
+      click(uw, ud.querySelectorAll('.mine-hop')[0].querySelector('.mine-down'));
+      setVal(uw, ud.getElementById('mine-id'), 'zz-ui-mine'); setVal(uw, ud.getElementById('mine-notes'), 'from the ui test');
+      click(uw, ud.getElementById('mine-save'));
+      check('/dashboard: saving shows the new bundle as a card with two chained hops, marked "yours", with Edit and Delete', !!(await until(() => ud.querySelector('.model-card[data-id="zz-ui-mine"]'), 4000)) && /yours/.test(ud.querySelector('.model-card[data-id="zz-ui-mine"]').textContent) && ud.querySelectorAll('.model-card[data-id="zz-ui-mine"] .hop-order').length === 2 && !!ud.querySelector('.model-card[data-id="zz-ui-mine"] .mine-edit-btn') && !!ud.querySelector('.model-card[data-id="zz-ui-mine"] .mine-del-btn'));
+      const saved = (await mineApi()).bundles['zz-ui-mine'];
+      check('/dashboard: only the changed setting was sent (thinking off on the first hop); the second hop carries no override', !!saved && saved.hops.length === 2 && saved.hops[0].ref === 'gemma-4-31b-nv' && saved.hops[0].overrides.reasoning.enable_thinking === false && !saved.hops[1].overrides && saved.notes === 'from the ui test', JSON.stringify(saved));
+      check('/dashboard: it is in the "Custom bundles" tab and the counter says 1 of 20', /Custom bundles \(\d+\)/.test(ud.getElementById('provider-tabs').textContent) && /^1 of 20 bundles$/.test(ud.getElementById('mine-count').textContent));
+      check('/dashboard: the owner\'s own cards have no Edit/Delete for users (only bundles the user made do)', ud.querySelectorAll('.model-card .mine-edit-btn').length === 1);
+      click(uw, ud.querySelector('.model-card[data-id="zz-ui-mine"] .mine-edit-btn'));
+      check('/dashboard: Edit opens it again with the name locked and the saved setting (thinking off) in place', ud.getElementById('mine-id').readOnly === true && ud.getElementById('mine-id').value === 'zz-ui-mine' && ud.querySelectorAll('.mine-hop').length === 2 && ud.querySelectorAll('.mine-hop')[0].querySelector('input[data-rk="enable_thinking"]').checked === false);
+      click(uw, ud.getElementById('mine-cancel'));
+      check('/dashboard: Cancel closes the editor', ud.getElementById('mine-editor').hidden === true);
+      click(uw, ud.querySelector('.model-card[data-id="zz-ui-mine"] .mine-del-btn'));
+      check('/dashboard: Delete removes the card and the saved bundle', !!(await until(() => !ud.querySelector('.model-card[data-id="zz-ui-mine"]'), 4000)) && !(await mineApi()).bundles['zz-ui-mine'] && /^0 of 20 bundles$/.test(ud.getElementById('mine-count').textContent));
+      const adom = await openAdmin('?key=' + KEY); dones.push(adom);
+      const ad = adom.window.document;
+      await until(() => [...ad.querySelectorAll('#view-as option')].length > 1);
+      check('Admin "View as" lists the display name next to the id: "Alex · Q (owner)"', [...ad.querySelectorAll('#view-as option')].some(o => o.value === 'Q' && /^View as Alex · Q \(owner\)$/.test(o.textContent)), [...ad.querySelectorAll('#view-as option')].map(o => o.textContent).join(' | '));
+      adom.window.close();
+      click(uw, ud.getElementById('signout-btn'));
+      check('/dashboard: Sign out forgets the key', uw.localStorage.getItem('qproxy-user-key') === null);
+      await sleep(300); uw.close();
+      // a saved key signs in by itself, without a flash of the login card
+      const sdom = await openDash({ 'qproxy-user-key': 'testkey' }); dones.push(sdom);
+      check('/dashboard: a saved key signs in by itself', !!(await until(() => sdom.window.document.getElementById('dashboard').hidden === false)) && sdom.window.document.documentElement.classList.contains('autologin') === false);
+      await sleep(300); sdom.window.close();
+    }
+
+    // ── 14. Admin: who did what — log lines per user, and the User activity section ──
+    {
+      await fetch(BASE + '/dashboard/api/mybundles', { method: 'POST', headers: { Authorization: 'Bearer testkey', 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'q-mix', hops: [{ ref: 'gemma-4-31b-nv', hop: 0, overrides: { reasoning: { enable_thinking: false }, timeoutMs: 20000 } }] }) });
+      const udom2 = await openAdmin('?key=' + KEY); dones.push(udom2);
+      const uw2 = udom2.window, u2 = uw2.document;
+      await until(() => u2.querySelectorAll('#ua-bundles .ua-bundle').length >= 2, 6000);
+      check('User activity: lists every user\'s bundles with the hops and the settings they changed', u2.querySelectorAll('#ua-bundles .ua-bundle').length === 2 && /q-mix/.test(u2.getElementById('ua-bundles').textContent) && /enable_thinking=false/.test(u2.getElementById('ua-bundles').textContent) && /time limit 20000 ms/.test(u2.getElementById('ua-bundles').textContent) && /u1-mix/.test(u2.getElementById('ua-bundles').textContent) && /NVIDIA NIM/.test(u2.getElementById('ua-bundles').textContent), u2.getElementById('ua-bundles').textContent.slice(0, 300));
+      check('User activity: the change history shows who created what (with the settings)', u2.querySelectorAll('#ua-events .ua-ev').length >= 2 && /create/.test(u2.getElementById('ua-events').textContent) && /time limit 20000 ms/.test(u2.getElementById('ua-events').textContent) && /user1/.test(u2.getElementById('ua-events').textContent) && /delete/.test(u2.getElementById('ua-events').textContent), u2.getElementById('ua-events').textContent.slice(0, 200));
+      check('User activity: one chip per user plus All; the count line adds up', [...u2.querySelectorAll('#ua-chips .log-chip')].map(b => b.getAttribute('data-uafocus') || 'All').join(',') === 'All,Q,user1' && /Alex · Q/.test(u2.getElementById('ua-chips').textContent) && /^2 bundles · \d+ changes$/.test(u2.getElementById('ua-count').textContent), u2.getElementById('ua-chips').textContent + ' / ' + u2.getElementById('ua-count').textContent);
+      const uaChip = name => u2.querySelector(`#ua-chips [data-uafocus="${name}"]`);
+      click(uw2, uaChip('user1'));
+      check('User activity: following only user1 hides everyone else\'s bundles and changes', u2.querySelectorAll('#ua-bundles .ua-bundle').length === 1 && /u1-mix/.test(u2.getElementById('ua-bundles').textContent) && !/q-mix/.test(u2.getElementById('ua-bundles').textContent) && u2.querySelectorAll('#ua-events .ua-ev').length === 1 && /^1 bundle · 1 change$/.test(u2.getElementById('ua-count').textContent) && !/Q\b/.test(u2.getElementById('ua-events').textContent.replace(/user1/g, '')));
+      click(uw2, uaChip('Q'));
+      check('User activity: following user1 and Q shows both', u2.querySelectorAll('#ua-bundles .ua-bundle').length === 2);
+      click(uw2, uaChip('user1'));
+      check('User activity: following only Q hides user1', u2.querySelectorAll('#ua-bundles .ua-bundle').length === 1 && /q-mix/.test(u2.getElementById('ua-bundles').textContent) && !/u1-mix/.test(u2.getElementById('ua-events').textContent));
+      click(uw2, u2.querySelector('#ua-chips [data-uafocus-all]'));
+      check('User activity: All brings everyone back', u2.querySelectorAll('#ua-bundles .ua-bundle').length === 2);
+      const viewBtn = u2.querySelector('[data-uaview="Q"]');
+      check('User activity: each user has a "View as" button', !!viewBtn, u2.getElementById('ua-bundles').innerHTML.slice(0, 300));
+      if (viewBtn) click(uw2, viewBtn);
+      await until(() => u2.body.classList.contains('viewing-user'), 3000);
+      check('User activity: "View as" on a user switches the panel to that user\'s view', u2.body.classList.contains('viewing-user') && u2.getElementById('view-as').value === 'Q' && u2.getElementById('view-as-banner').hidden === false, u2.getElementById('view-as').value);
+      u2.getElementById('view-as').value = ''; u2.getElementById('view-as').dispatchEvent(new uw2.Event('change', { bubbles: true }));
+      await until(() => !u2.body.classList.contains('viewing-user'), 3000);
+      // log lines per user
+      await until(() => u2.querySelectorAll('.log-line').length > 5, 6000);
+      const lines = () => u2.querySelectorAll('#logs-view .log-line').length;
+      const luChip = name => u2.querySelector(`#log-user-chips [data-luser="${name === 'System' ? '' : name}"]`);
+      check('Logs: user chips — All, System and each user', [...u2.querySelectorAll('#log-user-chips .log-chip')].map(b => b.id === 'log-user-all' ? 'All' : b.getAttribute('data-luser') === '' ? 'System' : b.getAttribute('data-luser')).join(',') === 'All,System,Q' && /Alex · Q/.test(u2.getElementById('log-user-chips').textContent), u2.getElementById('log-user-chips').textContent);
+      const all = lines();
+      click(uw2, luChip('System')); await until(() => lines() < all, 3000);
+      const noSystem = lines();
+      check('Logs: switching System off hides the lines that belong to no user', noSystem > 0 && noSystem < all, `${all} → ${noSystem}`);
+      click(uw2, luChip('Q')); await until(() => lines() === 0, 3000);
+      check('Logs: switching Q off as well leaves nothing to show', lines() === 0 && !luChip('Q').classList.contains('on') && !luChip('System').classList.contains('on'));
+      click(uw2, luChip('System')); await until(() => lines() > 0, 3000);
+      check('Logs: System back on and Q off shows only system lines', lines() > 0 && lines() === all - noSystem, `${lines()} vs ${all - noSystem}`);
+      click(uw2, u2.getElementById('log-user-all')); await until(() => lines() === all || lines() > all - 1, 3000);
+      check('Logs: All shows everything again', lines() >= all && luChip('Q').classList.contains('on') && luChip('System').classList.contains('on'));
+      click(uw2, luChip('Q'));
+      await sleep(400);
+      check('Logs: the choice is remembered in this browser', (() => { try { return JSON.parse(uw2.localStorage.getItem('qproxy-ui')).logs.usersOff.includes('Q'); } catch (_) { return false; } })());
+      await sleep(300); udom2.window.close();
+    }
+
+    // ── 13. A variant (same provider + model, own settings) points back to the plain model ──
+    {
+      const ah = { 'X-Admin-Key': KEY, 'Content-Type': 'application/json' };
+      for (const [id, extra] of [['zz-var-base', {}], ['zz-var-nothink', { reasoning: { enable_thinking: false }, reasoningSchema: 'chat-template-thinking-toggle' }]]) {
+        const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: ah, body: JSON.stringify({ id, entry: { model: 'zz-model', provider: 'groq', status: 'active', limitType: 'rate-limited', ...extra } }) }); await rr.text();
+      }
+      const vdom = await openAdmin('?key=' + KEY); dones.push(vdom);
+      const vd = vdom.window.document;
+      await until(() => vd.querySelector('.model-card[data-id="zz-var-nothink"]'), 6000);
+      const vn = vd.querySelector('.model-card[data-id="zz-var-nothink"]'), vb = vd.querySelector('.model-card[data-id="zz-var-base"]');
+      check('a variant card says which plain model it is based on', !!vn && /variant of\s*zz-var-base/.test(vn.querySelector('.variant-line') ? vn.querySelector('.variant-line').textContent : ''), vn && vn.textContent.slice(0, 160));
+      check('the plain model has no variant line', !!vb && !vb.querySelector('.variant-line'));
+      await until(() => vd.getElementById('dashboard').hidden === false, 4000); await sleep(400);   // let the page finish signing in before it is closed
+      vdom.window.close();
+      for (const id of ['zz-var-base', 'zz-var-nothink']) { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: ah }); await rr.text(); }
+    }
   } finally {
     finished = true;
     for (const x of dones) { try { x.window.close(); } catch (_) {} }
@@ -651,7 +810,7 @@ else:
 // That is a teardown race, not a bug in the admin page, so it is ignored once the test run is over - never before.
 let finished = false;
 process.on('unhandledRejection', (e) => {
-  if (finished && /127\.0\.0\.1:\d+\/admin/.test(String(e && e.stack))) return;
+  if (finished && /127\.0\.0\.1:\d+\/(admin|me|dashboard)/.test(String(e && e.stack))) return;
   console.error(e); process.exit(2);
 });
 main().catch(e => { console.error(e); process.exit(2); });
