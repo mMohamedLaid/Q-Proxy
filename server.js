@@ -677,6 +677,39 @@ function estimateRequestTokens(req, provider) {
 const MODELS_PATH = path.join(__dirname, 'models.json');
 const REASONING_SCHEMAS_PATH = path.join(__dirname, 'reasoning-schemas.json');
 const MODEL_PRESETS_PATH = path.join(__dirname, 'model-presets.json');
+// Display names people chose for themselves on the /me page: { "<key id>": "Alex" }. The key id (Q, user1…) stays the identity —
+// private-model lists and log tags use it — the display name is only a label. Saved like the other config (local file + GitHub).
+const USER_NAMES_PATH = path.join(__dirname, 'user-names.json');
+let USER_NAMES = {};
+// Custom bundles users made for themselves on /dashboard: { bundles: { "<user id>": { "<bundle id>": definition } }, events: [...] }.
+// A definition holds REFERENCES to hops the owner already set up ("model id + hop number") plus a few allowed settings, never provider
+// or model names — it is turned into a normal model entry from the current models.json on every request (see materializeBundle),
+// so changes the owner makes to a model reach the bundles built on it. `events` is a short history of who changed what (the Admin reads it).
+const USER_BUNDLES_PATH = path.join(__dirname, 'user-bundles.json');
+let USER_BUNDLES = { bundles: {}, events: [] };
+function loadUserBundlesFromDisk() {
+  try {
+    const o = JSON.parse(fs.readFileSync(USER_BUNDLES_PATH, 'utf8'));
+    const out = { bundles: {}, events: [] };
+    if (o && typeof o.bundles === 'object' && o.bundles && !Array.isArray(o.bundles)) {
+      for (const [u, set] of Object.entries(o.bundles)) {
+        if (!set || typeof set !== 'object' || Array.isArray(set)) continue;
+        out.bundles[u] = {};
+        for (const [id, d] of Object.entries(set)) if (d && typeof d === 'object' && Array.isArray(d.hops)) out.bundles[u][id] = d;
+      }
+    }
+    if (Array.isArray(o && o.events)) out.events = o.events.filter(e => e && typeof e === 'object').slice(-500);
+    return out;
+  } catch (_) { return { bundles: {}, events: [] }; }
+}
+function loadUserNamesFromDisk() {
+  try {
+    const o = JSON.parse(fs.readFileSync(USER_NAMES_PATH, 'utf8'));
+    const out = {};
+    if (o && typeof o === 'object' && !Array.isArray(o)) for (const [k, v] of Object.entries(o)) if (typeof v === 'string' && v.trim()) out[k] = v;
+    return out;
+  } catch (_) { return {}; }
+}
 // OpenRouter/Literouter per-key usage counters — see "Persisting usage
 // state across restarts" further down for why this exists.
 const USAGE_STATE_PATH = path.join(__dirname, 'usage-state.json');
@@ -776,6 +809,8 @@ const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schema
 const GITHUB_PRESETS_PATH = process.env.GITHUB_PRESETS_PATH || 'model-presets.json';
 const GITHUB_USAGE_PATH   = process.env.GITHUB_USAGE_PATH || 'usage-state.json';
 const GITHUB_LIMITS_PATH  = process.env.GITHUB_LIMITS_PATH || 'provider-limits.json';
+const GITHUB_USER_NAMES_PATH = process.env.GITHUB_USER_NAMES_PATH || 'user-names.json';
+const GITHUB_USER_BUNDLES_PATH = process.env.GITHUB_USER_BUNDLES_PATH || 'user-bundles.json';
 const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
 function githubHeaders() {
@@ -840,6 +875,15 @@ async function syncConfigFromGitHubOnBoot() {
     }
   }
   reloadProviderLimits();   // provider-limits.json is read at load time, i.e. BEFORE this pull
+  // These two only exist once someone has chosen a name / made a bundle, so a missing file is normal and not logged.
+  for (const [repoPath, localPath] of [[GITHUB_USER_NAMES_PATH, USER_NAMES_PATH], [GITHUB_USER_BUNDLES_PATH, USER_BUNDLES_PATH]]) {
+    try {
+      const remote = await githubFetchFile(repoPath);
+      if (remote) { JSON.parse(remote.content); fs.writeFileSync(localPath, remote.content); log('INFO', `[github-sync] pulled latest ${repoPath} on boot`); }
+    } catch (e) {
+      log('WARN', `[github-sync] could not pull ${repoPath} from GitHub on boot (${e.message})`);
+    }
+  }
 }
 
 // Pushes a local save up to GitHub. Never throws — a GitHub outage or bad
@@ -2037,7 +2081,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
   const log = logWith(opts.rid);
   let providers;
   try {
-    providers = resolveModelChain(modelId);
+    providers = resolveModelChain(modelId, opts.mapping || MODEL_MAPPING);   // opts.mapping: the public models plus this user's own bundle
   } catch (e) {
     const err = new Error(`Could not resolve model "${modelId}": ${e.message}`);
     err.response = { status: 400 };
@@ -2380,9 +2424,9 @@ app.get('/budget', (req, res) => {
 // ============================================================
 app.get('/v1/models', (req, res) => {
   const who = userNameFromReq(req);
-  const models = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who)).map(m => ({
-    id: m, object: 'model', created: Date.now(), owned_by: 'q'
-  }));
+  const ids = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who));
+  if (who) for (const b of Object.keys((USER_BUNDLES.bundles[who]) || {})) if (!ids.includes(b) && materializeBundle(who, b)) ids.push(b);
+  const models = ids.map(m => ({ id: m, object: 'model', created: Date.now(), owned_by: 'q' }));
   res.json({ object: 'list', data: models });
 });
 
@@ -2455,7 +2499,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       log('PROMPT', `[${userName}] prompt — ${messages.length} msgs ≈ ${estimateTokens(messages)} tokens\n${lines.join('\n')}`, 'admin');
     }
 
-    const mapping = MODEL_MAPPING[model];
+    const ownBundle = materializeBundle(userName, model);   // a user's own bundle wins over a public model of the same name
+    const mapping = ownBundle || MODEL_MAPPING[model];
     if (!mapping || !canUseModel(mapping, userName)) {
       return res.status(404).json({
         error: { message: `Model "${model}" not found. GET /v1/models for full list.`, type: 'invalid_request_error', code: 404 }
@@ -2533,6 +2578,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false, {
       clientGone: () => clientGone, signal: abortCtl.signal, rid,
+      mapping: ownBundle ? { ...MODEL_MAPPING, [model]: ownBundle } : null,
       onHop: (pc) => { currentHop = hopLabel(pc); }
     });
     // The client left while we were waiting and the answer arrived anyway
@@ -3059,7 +3105,9 @@ function requireAdmin(req, res, next) {
 // ============================================================
 app.get('/admin/api/users', requireAdmin, (req, res) => {
   const names = [...new Set(Object.values(buildKeyMap()).map(v => v.name))];
-  res.json({ owner: OWNER_NAME, users: names });
+  const display = {};
+  for (const n of names) if (USER_NAMES[n]) display[n] = USER_NAMES[n];
+  res.json({ owner: OWNER_NAME, users: names, names: display });
 });
 
 app.get('/admin/api/models', requireAdmin, (req, res) => {
@@ -4256,6 +4304,263 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// ============================================================
+// USER DASHBOARD  (/dashboard)
+// ── The Admin's dashboard, read-only, for a chat key: key-only sign-in with the same Bearer key the user chats with. It shows the
+//    models that key can use and its own log lines (the same filter as the Admin's "View as"), and lets the user pick a display
+//    name. Nothing here reaches another user's data, the Admin, usage or provider keys. Wrong keys are counted per IP and locked
+//    out like /admin. The page is public/admin.html itself, started in "user mode" (window.QP_MODE) so there is one dashboard to keep.
+// ============================================================
+const userAuthFails = new Map(); // ip -> { count, lockedUntil }
+app.use('/dashboard', (req, res, next) => {
+  res.removeHeader('Access-Control-Allow-Origin');   // the page is same-origin; other sites have no business calling it
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+function requireUser(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const state = userAuthFails.get(ip) || { count: 0, lockedUntil: 0 };
+  const now = Date.now();
+  if (now < state.lockedUntil) {
+    return res.status(429).json({ error: { message: `Too many wrong keys. Try again in ${Math.ceil((state.lockedUntil - now) / 1000)}s.`, type: 'rate_limit_error', code: 429 } });
+  }
+  const k = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const who = k ? buildKeyMap()[k] : null;
+  if (!who) {
+    state.count++;
+    if (state.count >= 5) {
+      const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
+      state.lockedUntil = now + lockSec * 1000;
+      log('WARN', `[dashboard] locking out ${ip} for ${lockSec}s after ${state.count} wrong keys`);
+    }
+    userAuthFails.set(ip, state);
+    return res.status(401).json({ error: { message: 'That key is not valid.', type: 'unauthorized', code: 401 } });
+  }
+  userAuthFails.delete(ip);
+  req.userId = who.name;
+  next();
+}
+// 1–24 characters: letters, numbers, spaces and . _ ' - ; empty clears the name.
+function cleanDisplayName(raw) {
+  const t = String(raw == null ? '' : raw).normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (!t) return { ok: true, name: '' };
+  if (t.length > 24) return { ok: false, error: 'Keep it to 24 characters or fewer.' };
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} ._'-]*$/u.test(t)) return { ok: false, error: "Use letters, numbers, spaces and . _ ' - only, starting with a letter or number." };
+  return { ok: true, name: t };
+}
+// A model entry as one user may see it: other people's names in "private" are never shown (it only says it is theirs).
+function entryForUser(entry, id) {
+  const c = JSON.parse(JSON.stringify(entry));
+  if (Array.isArray(c.private) && c.private.length) c.private = [id];
+  return c;
+}
+app.get('/dashboard', (req, res) => {
+  let html;
+  try { html = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8'); }
+  catch (_) { return res.status(500).type('text/plain').send('The dashboard page is missing on this server.'); }
+  res.type('html').send(html.replace('<head>', '<head>\n<script>window.QP_MODE = "user";</script>'));
+});
+app.get('/dashboard/api/profile', requireUser, (req, res) => {
+  res.json({ id: req.userId, displayName: USER_NAMES[req.userId] || '' });
+});
+app.get('/dashboard/api/models', requireUser, (req, res) => {
+  const models = {};
+  for (const [id, e] of Object.entries(MODEL_MAPPING)) if (canUseModel(e, req.userId)) models[id] = entryForUser(e, req.userId);
+  const mine = {};
+  for (const [id, d] of Object.entries(USER_BUNDLES.bundles[req.userId] || {})) {
+    const e = materializeBundle(req.userId, id);
+    mine[id] = { ...d, broken: !e };
+    if (e) models[id] = entryForUser(e, req.userId);   // an own bundle shadows a public model of the same name, exactly as a chat call would
+  }
+  res.json({ models, mine, limits: BUNDLE_LIMITS });
+});
+app.get('/dashboard/api/logs', requireUser, (req, res) => {
+  const levels = new Set(String(req.query.level || '').toUpperCase().split(',').map(x => x.trim()).filter(Boolean));
+  const ridQ = String(req.query.rid || '').replace(/^#/, '').trim();
+  const limit = Math.min(Math.max(Number(req.query.limit) || RECENT_LOGS_MAX, 1), RECENT_LOGS_MAX);
+  const mine = recentLogs.filter(l => logVisibleToUser(l, req.userId) && (!levels.size || levels.has(l.level)) && (!ridQ || l.rid === ridQ));
+  const out = mine.slice(0, limit).reverse().map(l => { const o = { ...l }; delete o.user; return o; });   // recentLogs is newest-first
+  res.json({ logs: out, total: mine.length, capacity: RECENT_LOGS_MAX });
+});
+app.get('/dashboard/api/logos', requireUser, (req, res) => {
+  const logos = {};
+  try {
+    for (const f of fs.readdirSync(LOGO_DIR).sort()) {
+      const m = f.match(LOGO_FILE);
+      if (m && !logos[m[1].toLowerCase()]) logos[m[1].toLowerCase()] = `/admin/logos/${f}`;
+    }
+  } catch (_) { /* no public/logos folder: letter badges only */ }
+  res.json({ logos });
+});
+// ── Custom bundles ──────────────────────────────────────────────
+const BUNDLE_LIMITS = { bundles: 20, hops: 6, writesPerHour: 60 };
+const BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$/;
+const bundleWrites = new Map();   // user id -> [timestamps] (a save pushes a commit to GitHub, so a runaway page can't spam it)
+// One hop of a model the owner configured, WITHOUT its fallback link — only if this user may use that model.
+function sourceHop(ref, index, userId) {
+  const e = MODEL_MAPPING[ref];
+  if (!e || !canUseModel(e, userId)) return null;
+  let cur = e;
+  for (let i = 0; cur && i < index; i++) cur = cur.fallback || null;
+  if (!cur) return null;
+  const { fallback, ...leaf } = cur;
+  return leaf;
+}
+// The settings a user may change on a hop. Reasoning keys must already exist on that hop and keep their type, so a value can be
+// flipped (thinking on/off, an effort word) but no new request field can be invented; timeout stays within sane bounds.
+function cleanHopOverrides(src, ov) {
+  if (ov == null) return { ok: true, value: {} };
+  if (typeof ov !== 'object' || Array.isArray(ov)) return { ok: false, error: 'A hop\'s settings must be an object.' };
+  const out = {};
+  for (const k of Object.keys(ov)) {
+    if (k === 'reasoning') {
+      const r = ov.reasoning;
+      if (!r || typeof r !== 'object' || Array.isArray(r)) return { ok: false, error: '"reasoning" must be an object.' };
+      const base = src.reasoning && typeof src.reasoning === 'object' ? src.reasoning : {};
+      const clean = {};
+      for (const [rk, rv] of Object.entries(r)) {
+        if (!Object.prototype.hasOwnProperty.call(base, rk)) return { ok: false, error: `"${rk}" is not a setting of that hop.` };
+        if (typeof rv !== typeof base[rk] || rv === null) return { ok: false, error: `"${rk}" must be a ${typeof base[rk]}.` };
+        if (typeof rv === 'string' && !/^[\w .:+-]{0,40}$/.test(rv)) return { ok: false, error: `"${rk}": letters, numbers, spaces and . : + - only, up to 40 characters.` };
+        if (typeof rv === 'number' && !(Number.isFinite(rv) && Math.abs(rv) <= 1e6)) return { ok: false, error: `"${rk}" is out of range.` };
+        clean[rk] = rv;
+      }
+      if (Object.keys(clean).length) out.reasoning = clean;
+    } else if (k === 'timeoutMs') {
+      const t = ov.timeoutMs;
+      if (!Number.isInteger(t) || t < 3000 || t > 120000) return { ok: false, error: 'The time limit must be 3000-120000 ms.' };
+      out.timeoutMs = t;
+    } else return { ok: false, error: `"${k}" can't be changed on a hop.` };
+  }
+  return { ok: true, value: out };
+}
+// A bundle definition → a normal model entry (chain of hops linked by .fallback), built from the CURRENT public models.
+// A hop whose source is gone (or no longer allowed for this user) is left out; no hops left → null.
+function materializeBundle(userId, id) {
+  const def = userId && USER_BUNDLES.bundles[userId] && USER_BUNDLES.bundles[userId][id];
+  if (!def) return null;
+  const hops = [];
+  for (const h of def.hops) {
+    const src = sourceHop(h.ref, h.hop || 0, userId);
+    if (!src) continue;
+    const hop = JSON.parse(JSON.stringify(src));
+    delete hop.private; delete hop.custom; delete hop.notes; delete hop.owner;
+    const ov = h.overrides || {};
+    if (ov.reasoning && typeof ov.reasoning === 'object') hop.reasoning = { ...(hop.reasoning || {}), ...ov.reasoning };
+    if (Number.isInteger(ov.timeoutMs)) hop.timeoutMs = ov.timeoutMs;
+    hops.push(hop);
+  }
+  if (!hops.length) return null;
+  for (let i = hops.length - 2; i >= 0; i--) hops[i].fallback = hops[i + 1];
+  Object.assign(hops[0], { custom: true, owner: userId, private: [userId] });
+  if (def.notes) hops[0].notes = def.notes;
+  return hops[0];
+}
+function recordUserEvent(user, action, id, detail) {
+  USER_BUNDLES.events.push({ ts: new Date().toISOString(), user, action, id, ...(detail ? { detail } : {}) });
+  if (USER_BUNDLES.events.length > 500) USER_BUNDLES.events.splice(0, USER_BUNDLES.events.length - 500);
+}
+function saveUserBundles(message) {
+  const json = JSON.stringify(USER_BUNDLES, null, 2) + '\n';
+  fs.writeFileSync(USER_BUNDLES_PATH, json);
+  githubSyncFile(GITHUB_USER_BUNDLES_PATH, json, message).then(g => {
+    if (!g.ok && !g.skipped) log('WARN', '[dashboard] a user bundle was saved locally but not pushed to GitHub');
+  });
+}
+function bundleWriteAllowed(user) {
+  const now = Date.now();
+  const list = (bundleWrites.get(user) || []).filter(t => now - t < 3600000);
+  if (list.length >= BUNDLE_LIMITS.writesPerHour) { bundleWrites.set(user, list); return false; }
+  list.push(now); bundleWrites.set(user, list);
+  return true;
+}
+const bundleErr = (res, code, message) => res.status(code).json({ error: { message, type: 'invalid_request_error', code } });
+app.get('/dashboard/api/mybundles', requireUser, (req, res) => {
+  const mine = {};
+  for (const [id, d] of Object.entries(USER_BUNDLES.bundles[req.userId] || {})) mine[id] = { ...d, broken: !materializeBundle(req.userId, id) };
+  res.json({ bundles: mine, limits: BUNDLE_LIMITS });
+});
+app.post('/dashboard/api/mybundles', requireUser, (req, res) => {
+  const user = req.userId, b = req.body || {};
+  const id = typeof b.id === 'string' ? b.id.trim() : '';
+  if (!BUNDLE_ID.test(id)) return bundleErr(res, 400, 'Name it with 2-40 letters, numbers, dots, dashes or underscores, starting with a letter or number.');
+  if (Object.keys(MODEL_MAPPING).some(m => m.toLowerCase() === id.toLowerCase())) return bundleErr(res, 409, `"${id}" is already the name of a model. Pick another name.`);
+  const own = USER_BUNDLES.bundles[user] || {};
+  const existingId = Object.keys(own).find(k => k.toLowerCase() === id.toLowerCase());
+  if (!existingId && Object.keys(own).length >= BUNDLE_LIMITS.bundles) return bundleErr(res, 400, `You can have up to ${BUNDLE_LIMITS.bundles} bundles. Delete one first.`);
+  if (b.notes != null && typeof b.notes !== 'string') return bundleErr(res, 400, 'Notes must be text.');
+  const notes = String(b.notes || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
+  if (!Array.isArray(b.hops) || b.hops.length < 1) return bundleErr(res, 400, 'Add at least one hop.');
+  if (b.hops.length > BUNDLE_LIMITS.hops) return bundleErr(res, 400, `A bundle can have up to ${BUNDLE_LIMITS.hops} hops.`);
+  const hops = [];
+  for (let i = 0; i < b.hops.length; i++) {
+    const h = b.hops[i];
+    if (!h || typeof h !== 'object' || typeof h.ref !== 'string') return bundleErr(res, 400, `Hop ${i + 1}: pick a model.`);
+    const index = h.hop == null ? 0 : h.hop;
+    if (!Number.isInteger(index) || index < 0 || index > 20) return bundleErr(res, 400, `Hop ${i + 1}: that hop number doesn't exist.`);
+    const src = sourceHop(h.ref, index, user);
+    if (!src) return bundleErr(res, 400, `Hop ${i + 1}: you can't use "${h.ref}"${index ? ` (hop ${index + 1})` : ''}.`);
+    const ov = cleanHopOverrides(src, h.overrides);
+    if (!ov.ok) return bundleErr(res, 400, `Hop ${i + 1}: ${ov.error}`);
+    hops.push({ ref: h.ref, hop: index, ...(Object.keys(ov.value).length ? { overrides: ov.value } : {}) });
+  }
+  if (!bundleWriteAllowed(user)) return bundleErr(res, 429, 'Too many saves this hour. Try again later.');
+  const now = new Date().toISOString();
+  const key = existingId || id;
+  const prev = own[key];
+  USER_BUNDLES.bundles[user] = { ...own, [key]: { notes, hops, createdAt: prev ? prev.createdAt : now, updatedAt: now } };
+  const settingsText = o => !o ? '' : ` [${[...Object.entries(o.reasoning || {}).map(([k, v]) => `${k}=${v}`), ...(o.timeoutMs ? [`time limit ${o.timeoutMs} ms`] : [])].join(', ')}]`;
+  recordUserEvent(user, prev ? 'update' : 'create', key, `${hops.length} hop${hops.length === 1 ? '' : 's'}: ${hops.map(h => h.ref + (h.hop ? '#' + (h.hop + 1) : '') + settingsText(h.overrides)).join(' → ')}${notes ? ` · notes: "${notes.slice(0, 60)}"` : ''}`);
+  try { saveUserBundles('Q-Proxy: update user-bundles.json'); }
+  catch (e) { return res.status(500).json({ error: { message: 'Could not save the bundle right now.', type: 'server_error', code: 500 } }); }
+  log('INFO', `[dashboard] ${user} ${prev ? 'updated' : 'created'} the bundle "${key}" (${hops.length} hop${hops.length === 1 ? '' : 's'})`);   // untagged: admin-only
+  res.json({ ok: true, id: key, bundle: USER_BUNDLES.bundles[user][key] });
+});
+app.delete('/dashboard/api/mybundles/:id', requireUser, (req, res) => {
+  const user = req.userId, own = USER_BUNDLES.bundles[user] || {};
+  const key = Object.keys(own).find(k => k === req.params.id);
+  if (!key) return bundleErr(res, 404, 'No such bundle.');
+  if (!bundleWriteAllowed(user)) return bundleErr(res, 429, 'Too many saves this hour. Try again later.');
+  const next = { ...own }; delete next[key];
+  if (Object.keys(next).length) USER_BUNDLES.bundles[user] = next; else delete USER_BUNDLES.bundles[user];
+  recordUserEvent(user, 'delete', key);
+  try { saveUserBundles('Q-Proxy: update user-bundles.json'); }
+  catch (e) { return res.status(500).json({ error: { message: 'Could not save right now.', type: 'server_error', code: 500 } }); }
+  log('INFO', `[dashboard] ${user} deleted the bundle "${key}"`);
+  res.json({ ok: true });
+});
+// The Admin's view of everything users made and changed (the Admin page filters it per user).
+app.get('/admin/api/user-bundles', requireAdmin, (req, res) => {
+  const bundles = {};
+  for (const [u, set] of Object.entries(USER_BUNDLES.bundles)) {
+    bundles[u] = {};
+    for (const [id, d] of Object.entries(set)) bundles[u][id] = { ...d, broken: !materializeBundle(u, id) };
+  }
+  res.json({ bundles, events: USER_BUNDLES.events, limits: BUNDLE_LIMITS });
+});
+app.post('/dashboard/api/name', requireUser, async (req, res) => {
+  const id = req.userId;
+  const r = cleanDisplayName(req.body && req.body.name);
+  if (!r.ok) return res.status(400).json({ error: { message: r.error, type: 'invalid_request_error', code: 400 } });
+  if (r.name) {   // two people can't end up with the same label (or one called "Q" / "user1" while not being them)
+    const low = r.name.toLowerCase();
+    const ids = Object.values(buildKeyMap()).map(v => v.name);
+    const clash = ids.some(n => n !== id && n.toLowerCase() === low) || Object.entries(USER_NAMES).some(([k, v]) => k !== id && v.toLowerCase() === low);
+    if (clash) return res.status(409).json({ error: { message: 'Someone already uses that name. Pick another.', type: 'invalid_request_error', code: 409 } });
+  }
+  const next = { ...USER_NAMES };
+  if (r.name) next[id] = r.name; else delete next[id];
+  const json = JSON.stringify(next, null, 2) + '\n';
+  try { fs.writeFileSync(USER_NAMES_PATH, json); }
+  catch (e) { return res.status(500).json({ error: { message: 'Could not save the name right now.', type: 'server_error', code: 500 } }); }
+  USER_NAMES = next;
+  githubSyncFile(GITHUB_USER_NAMES_PATH, json, 'Q-Proxy: update user-names.json').then(g => {
+    if (!g.ok && !g.skipped) log('WARN', `[dashboard] ${id}'s display name was saved locally but not pushed to GitHub`);
+  });
+  log('INFO', `[dashboard] ${id} ${r.name ? `chose the display name "${r.name}"` : 'cleared their display name'}`);   // untagged: admin-only
+  res.json({ ok: true, displayName: r.name });
+});
+
 // ── Optional provider logos ──────────────────────────────────
 // Put <provider>.svg (or .png / .webp) in public/logos/ — e.g. nvidia.svg, groq.svg — and the Admin shows that file instead
 // of the letter badge. The folder is optional; with no files in it nothing changes. The file list needs the admin key; the
@@ -4291,6 +4596,8 @@ async function bootstrapConfigAndStart() {
   Object.assign(REASONING_SCHEMAS, loadReasoningSchemasFromDisk());
   Object.assign(MODEL_PRESETS, loadModelPresetsFromDisk());
   MODEL_MAPPING = loadModelsFromDisk();
+  USER_NAMES = loadUserNamesFromDisk();
+  USER_BUNDLES = loadUserBundlesFromDisk();
   hydrateUsageStateFromDisk();
 
   app.listen(PORT, () => {
