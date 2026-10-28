@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-27T06:32:52.206Z",
+  "savedAt": "2026-10-28T03:07:21.791Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -107,14 +107,20 @@
       "detail": "no longer in literouter's live model list",
       "source": "catalog",
       "since": "2026-10-18T13:20:09.601Z"
+    },
+    "openrouter|nvidia/nemotron-3-super-120b-a12b:free": {
+      "kind": "turned-paid",
+      "detail": "\"nvidia/nemotron-3-super-120b-a12b:free\" is no longer listed, but \"nvidia/nemotron-3-super-120b-a12b\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-10-28T03:07:10.474Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-27T06:31:09.458Z",
-    "zai": "2026-10-27T06:31:09.655Z",
-    "google": "2026-10-27T06:31:09.814Z",
-    "openrouter": "2026-10-27T06:31:10.194Z",
-    "literouter": "2026-10-27T06:31:11.292Z",
+    "nvidia": "2026-10-28T03:07:08.983Z",
+    "zai": "2026-10-28T03:07:09.420Z",
+    "google": "2026-10-28T03:07:09.735Z",
+    "openrouter": "2026-10-28T03:07:10.474Z",
+    "literouter": "2026-10-28T03:07:11.570Z",
     "amd": "2026-10-18T16:23:14.198Z"
   },
   "providerUsage": {
