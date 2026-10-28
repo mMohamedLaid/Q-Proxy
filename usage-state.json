@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-10-28T09:31:54.775Z",
+  "savedAt": "2026-10-28T09:32:24.775Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -116,17 +116,20 @@
     },
     "nvidia|z-ai/glm-5.3": {
       "kind": "gone",
-      "detail": "the provider answered: The model 'z-ai/glm-5.3' has reached its end of life on 2026-10-28T08:00:00Z and is no longer available.",
-      "source": "request",
-      "since": "2026-10-28T09:31:35.064Z"
+      "detail": "no longer in nvidia's live model list — listed instead: z-ai/glm-5.3-flash",
+      "instead": [
+        "z-ai/glm-5.3-flash"
+      ],
+      "source": "catalog",
+      "since": "2026-10-28T09:32:12.106Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-10-28T03:07:08.983Z",
-    "zai": "2026-10-28T03:07:09.420Z",
-    "google": "2026-10-28T03:07:09.735Z",
-    "openrouter": "2026-10-28T03:07:10.474Z",
-    "literouter": "2026-10-28T03:07:11.570Z",
+    "nvidia": "2026-10-28T09:32:12.106Z",
+    "zai": "2026-10-28T09:32:12.478Z",
+    "google": "2026-10-28T09:32:12.817Z",
+    "openrouter": "2026-10-28T09:32:13.365Z",
+    "literouter": "2026-10-28T09:32:14.263Z",
     "amd": "2026-10-18T16:23:14.198Z"
   },
   "providerUsage": {
