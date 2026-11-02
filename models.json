@@ -183,25 +183,6 @@
     "limitType": "rate-limited",
     "notes": "Literouter fallback removed 2026-09 — Literouter no longer offers any free-tier Kimi model."
   },
-  "kimi-k3-nv": {
-    "model": "moonshotai/kimi-k3",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "ignoreCatalog": true,
-    "reasoningSchema": "reasoning-effort-select",
-    "reasoningFieldOptions": {
-      "reasoning_effort": [
-        "low",
-        "high",
-        "max"
-      ]
-    },
-    "reasoning": {
-      "reasoning_effort": "max"
-    },
-    "notes": "Working despite not being in the nvidia models list. (it was hidden)"
-  },
   "gpt-oss-20b-nv": {
     "model": "openai/gpt-oss-20b",
     "provider": "nvidia",
