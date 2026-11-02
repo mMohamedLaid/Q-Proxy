@@ -511,11 +511,9 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "z-ai-glm-5.3-flash-nv": {
+  "glm-5.3-flash-nv": {
     "model": "z-ai/glm-5.3-flash",
     "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
   }
