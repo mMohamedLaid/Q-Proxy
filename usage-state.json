@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T12:21:42.407Z",
+  "savedAt": "2026-11-02T12:26:42.418Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -148,12 +148,12 @@
       "provider": "nvidia",
       "model": "deepseek-ai/deepseek-v4.1-flash",
       "count": 4,
-      "errors": 12,
-      "lastUsed": "2026-11-02T12:21:36.353Z",
+      "errors": 13,
+      "lastUsed": "2026-11-02T12:26:36.856Z",
       "lastStatus": "error",
-      "skips": 2,
+      "skips": 3,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
-      "lastSkipAt": "2026-11-02T12:00:14.260Z"
+      "lastSkipAt": "2026-11-02T12:26:36.856Z"
     },
     "amd|MiMo-V2.6-Flash": {
       "provider": "amd",
