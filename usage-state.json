@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T05:59:11.927Z",
+  "savedAt": "2026-11-02T06:06:41.936Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -170,8 +170,8 @@
       "provider": "amd",
       "model": "MinerU2.5-Pro",
       "count": 0,
-      "errors": 1,
-      "lastUsed": "2026-11-02T05:59:08.929Z",
+      "errors": 2,
+      "lastUsed": "2026-11-02T06:06:17.703Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
