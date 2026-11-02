@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T05:54:11.913Z",
+  "savedAt": "2026-11-02T05:59:11.927Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -151,6 +151,28 @@
       "errors": 3,
       "lastUsed": "2026-11-02T05:49:58.606Z",
       "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "amd|MiMo-V2.6-Flash": {
+      "provider": "amd",
+      "model": "MiMo-V2.6-Flash",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-02T05:58:03.777Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "amd|MinerU2.5-Pro": {
+      "provider": "amd",
+      "model": "MinerU2.5-Pro",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-02T05:59:08.929Z",
+      "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
