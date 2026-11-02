@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T12:00:42.384Z",
+  "savedAt": "2026-11-02T12:16:42.398Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -148,8 +148,8 @@
       "provider": "nvidia",
       "model": "deepseek-ai/deepseek-v4.1-flash",
       "count": 4,
-      "errors": 10,
-      "lastUsed": "2026-11-02T12:00:14.260Z",
+      "errors": 11,
+      "lastUsed": "2026-11-02T12:16:36.099Z",
       "lastStatus": "error",
       "skips": 2,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
