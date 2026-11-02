@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T18:15:43.405Z",
+  "savedAt": "2026-11-02T18:19:43.415Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -11,7 +11,7 @@
     "glm-5.2:free": 0
   },
   "literouterLastResetDay": "2026-11-02",
-  "literouterRotationIndex": 14,
+  "literouterRotationIndex": 15,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -113,19 +113,10 @@
       "detail": "\"nvidia/nemotron-3-super-120b-a12b:free\" is no longer listed, but \"nvidia/nemotron-3-super-120b-a12b\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-10-28T03:07:10.474Z"
-    },
-    "nvidia|z-ai/glm-5.3": {
-      "kind": "gone",
-      "detail": "no longer in nvidia's live model list — listed instead: z-ai/glm-5.3-flash",
-      "instead": [
-        "z-ai/glm-5.3-flash"
-      ],
-      "source": "catalog",
-      "since": "2026-10-28T09:32:12.106Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-02T17:29:14.113Z",
+    "nvidia": "2026-11-02T18:19:39.372Z",
     "zai": "2026-11-02T17:29:14.784Z",
     "google": "2026-11-02T17:29:15.231Z",
     "openrouter": "2026-11-02T17:29:16.009Z",
@@ -202,9 +193,9 @@
     "literouter|glm-5.1-cheap:free": {
       "provider": "literouter",
       "model": "glm-5.1-cheap:free",
-      "count": 1,
+      "count": 2,
       "errors": 0,
-      "lastUsed": "2026-11-02T18:15:28.629Z",
+      "lastUsed": "2026-11-02T18:16:16.782Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
