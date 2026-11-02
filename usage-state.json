@@ -1,16 +1,16 @@
 {
-  "savedAt": "2026-11-02T18:04:43.374Z",
+  "savedAt": "2026-11-02T18:05:43.376Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
-      "count": 7,
-      "day": "2026-10-07"
+      "count": 1,
+      "day": "2026-11-02"
     }
   },
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {
     "glm-5.2:free": 0
   },
-  "literouterLastResetDay": "2026-10-07",
+  "literouterLastResetDay": "2026-11-02",
   "literouterRotationIndex": 13,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
@@ -41,11 +41,11 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29853120,
+      "rpmWindowMinute": 29894045,
       "rpmCount": 1,
-      "tpmWindowMinute": 29853120,
-      "tpmTokens": 22075,
-      "rpdDay": "2026-10-05",
+      "tpmWindowMinute": 29894045,
+      "tpmTokens": 5503,
+      "rpdDay": "2026-11-02",
       "rpdCount": 1
     },
     "gemma-4-31b-it|0": {
@@ -57,7 +57,7 @@
       "rpdCount": 1
     }
   },
-  "googleLastResetDay": "2026-10-05",
+  "googleLastResetDay": "2026-11-02",
   "googleLimitMismatches": [],
   "hopWarnings": {
     "openrouter|openai/gpt-oss-20b:free": {
@@ -148,8 +148,8 @@
       "provider": "nvidia",
       "model": "deepseek-ai/deepseek-v4.1-flash",
       "count": 6,
-      "errors": 22,
-      "lastUsed": "2026-11-02T18:04:23.546Z",
+      "errors": 23,
+      "lastUsed": "2026-11-02T18:05:19.052Z",
       "lastStatus": "error",
       "skips": 5,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
@@ -173,6 +173,28 @@
       "errors": 2,
       "lastUsed": "2026-11-02T06:06:17.703Z",
       "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|models/gemini-3.8-flash": {
+      "provider": "google",
+      "model": "models/gemini-3.8-flash",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-02T18:05:24.669Z",
+      "lastStatus": 503,
+      "skips": 1,
+      "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
+      "lastSkipAt": "2026-11-02T18:05:24.672Z"
+    },
+    "literouter|glm-5.2:free": {
+      "provider": "literouter",
+      "model": "glm-5.2:free",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-02T18:05:35.992Z",
+      "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
