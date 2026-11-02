@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T05:44:11.907Z",
+  "savedAt": "2026-11-02T05:49:11.912Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 7,
@@ -130,7 +130,7 @@
     "google": "2026-11-02T05:29:59.759Z",
     "openrouter": "2026-11-02T05:30:00.286Z",
     "literouter": "2026-11-02T05:30:01.385Z",
-    "amd": "2026-11-02T05:30:02.598Z"
+    "amd": "2026-11-02T05:44:47.945Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -148,8 +148,8 @@
       "provider": "nvidia",
       "model": "deepseek-ai/deepseek-v4.1-flash",
       "count": 1,
-      "errors": 2,
-      "lastUsed": "2026-11-02T05:39:53.669Z",
+      "errors": 3,
+      "lastUsed": "2026-11-02T05:45:07.728Z",
       "lastStatus": "error",
       "skips": 0,
       "lastSkipReason": null,
