@@ -434,16 +434,6 @@
     "tpm": 250000,
     "rpd": 20
   },
-  "glm-5.3-nv": {
-    "model": "z-ai/glm-5.3",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "unlimited",
-    "timeoutMs": 1800000,
-    "retryAsUnlimited": true,
-    "maxTokens": 32000,
-    "notes": "Heavy reasoner shares one token pool between thinking and the actual reply. Clients sending max_tokens: 0 (Janitor, Marinara) to mean \"let the model choose\" were silently getting capped at Q-Proxy's generic 9024 fallback because 0 is falsy in JS — too small for this model on harder prompts, causing thinking to eat the whole budget. This field is the real floor used whenever the client didn't ask for a smaller number on purpose. See server.js request-building logic. Tool calling confirmed working on NIM (direct curl with a tools array returned tool_calls, finish_reason tool_calls)."
-  },
   "gemini-3.7-flash-g": {
     "model": "models/gemini-3.7-flash",
     "provider": "google",
