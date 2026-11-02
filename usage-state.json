@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-02T18:05:43.376Z",
+  "savedAt": "2026-11-02T18:15:43.405Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -11,7 +11,7 @@
     "glm-5.2:free": 0
   },
   "literouterLastResetDay": "2026-11-02",
-  "literouterRotationIndex": 13,
+  "literouterRotationIndex": 14,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -129,7 +129,7 @@
     "zai": "2026-11-02T17:29:14.784Z",
     "google": "2026-11-02T17:29:15.231Z",
     "openrouter": "2026-11-02T17:29:16.009Z",
-    "literouter": "2026-11-02T17:29:17.186Z",
+    "literouter": "2026-11-02T18:14:33.486Z",
     "amd": "2026-11-02T17:29:18.568Z"
   },
   "providerUsage": {
@@ -195,6 +195,17 @@
       "errors": 1,
       "lastUsed": "2026-11-02T18:05:35.992Z",
       "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|glm-5.1-cheap:free": {
+      "provider": "literouter",
+      "model": "glm-5.1-cheap:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-02T18:15:28.629Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
