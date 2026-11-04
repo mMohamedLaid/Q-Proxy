@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-04T10:29:06.650Z",
+  "savedAt": "2026-11-04T10:32:06.655Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -113,15 +113,21 @@
       "detail": "\"nvidia/nemotron-3-super-120b-a12b:free\" is no longer listed, but \"nvidia/nemotron-3-super-120b-a12b\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-10-28T03:07:10.474Z"
+    },
+    "amd|MinerU2.5-Pro": {
+      "kind": "gone",
+      "detail": "no longer in amd's live model list",
+      "source": "catalog",
+      "since": "2026-11-04T10:31:41.405Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-04T04:32:23.012Z",
-    "zai": "2026-11-04T04:32:23.515Z",
-    "google": "2026-11-04T04:32:23.667Z",
-    "openrouter": "2026-11-04T04:32:24.215Z",
-    "literouter": "2026-11-04T04:32:25.328Z",
-    "amd": "2026-11-04T04:32:26.608Z"
+    "nvidia": "2026-11-04T10:31:38.005Z",
+    "zai": "2026-11-04T10:31:38.173Z",
+    "google": "2026-11-04T10:31:38.359Z",
+    "openrouter": "2026-11-04T10:31:38.911Z",
+    "literouter": "2026-11-04T10:31:40.111Z",
+    "amd": "2026-11-04T10:31:41.405Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -205,8 +211,8 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
       "count": 33,
-      "errors": 50,
-      "lastUsed": "2026-11-04T10:25:26.089Z",
+      "errors": 51,
+      "lastUsed": "2026-11-04T10:30:26.344Z",
       "lastStatus": "error",
       "skips": 10,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
