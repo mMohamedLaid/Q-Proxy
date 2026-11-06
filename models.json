@@ -169,13 +169,6 @@
     "limitType": "rate-limited",
     "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). Renamed from deepseek-v3-0324 to deepseek-v3.2 in Literouter's 2026-09 catalog refresh. Free-tier daily cap: briefly showed 30/day, back to unlimited as of the last check — Literouter's caps for this catalog are evidently still moving. Recheck the live page if this starts erroring."
   },
-  "kimi-k2.6-nv": {
-    "model": "moonshotai/kimi-k2.6",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "262K context. Worth a quick test before you rely on it — there's a recent (unverified) NIM forum report of Kimi 2.6 disappearing from the catalog without a replacement. Its own docs.api.nvidia.com reference page was still up as of this check."
-  },
   "kimi": {
     "model": "moonshotai/kimi-k2.6",
     "provider": "nvidia",
