@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-06T17:54:24.535Z",
+  "savedAt": "2026-11-06T20:41:12.714Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -119,15 +119,21 @@
       "detail": "no longer in amd's live model list",
       "source": "catalog",
       "since": "2026-11-04T10:31:41.405Z"
+    },
+    "literouter|glm-5.1-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.1-cheap:free\" is no longer listed, but \"glm-5.1-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-06T20:41:02.410Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-06T17:25:11.552Z",
-    "zai": "2026-11-06T17:25:11.905Z",
-    "google": "2026-11-06T17:25:12.118Z",
-    "openrouter": "2026-11-06T17:25:12.778Z",
-    "literouter": "2026-11-06T17:25:13.975Z",
-    "amd": "2026-11-06T17:25:15.219Z"
+    "nvidia": "2026-11-06T20:40:59.873Z",
+    "zai": "2026-11-06T20:41:00.298Z",
+    "google": "2026-11-06T20:41:00.472Z",
+    "openrouter": "2026-11-06T20:41:01.209Z",
+    "literouter": "2026-11-06T20:41:02.410Z",
+    "amd": "2026-11-06T20:41:03.768Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
