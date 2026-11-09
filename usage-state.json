@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-09T09:17:51.025Z",
+  "savedAt": "2026-11-09T10:00:02.450Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -122,12 +122,12 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-09T08:48:49.764Z",
-    "zai": "2026-11-09T08:48:50.087Z",
-    "google": "2026-11-09T08:48:50.460Z",
-    "openrouter": "2026-11-09T08:48:51.042Z",
-    "literouter": "2026-11-09T08:48:52.221Z",
-    "amd": "2026-11-09T08:48:53.404Z"
+    "nvidia": "2026-11-09T09:55:19.879Z",
+    "zai": "2026-11-09T09:55:20.265Z",
+    "google": "2026-11-09T09:55:20.516Z",
+    "openrouter": "2026-11-09T09:55:21.248Z",
+    "literouter": "2026-11-09T09:55:22.443Z",
+    "amd": "2026-11-09T09:55:23.725Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -211,8 +211,8 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
       "count": 137,
-      "errors": 128,
-      "lastUsed": "2026-11-09T09:17:43.131Z",
+      "errors": 129,
+      "lastUsed": "2026-11-09T09:59:42.874Z",
       "lastStatus": "error",
       "skips": 22,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
