@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-09T09:12:51.021Z",
+  "savedAt": "2026-11-09T09:17:51.025Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -211,12 +211,12 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
       "count": 137,
-      "errors": 127,
-      "lastUsed": "2026-11-09T09:12:42.626Z",
+      "errors": 128,
+      "lastUsed": "2026-11-09T09:17:43.131Z",
       "lastStatus": "error",
-      "skips": 21,
+      "skips": 22,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
-      "lastSkipAt": "2026-11-09T08:17:06.212Z"
+      "lastSkipAt": "2026-11-09T09:17:43.131Z"
     }
   }
 }
