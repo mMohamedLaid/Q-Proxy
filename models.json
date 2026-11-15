@@ -202,13 +202,6 @@
     "limitType": "rate-limited",
     "notes": "coding-focused"
   },
-  "nemotron-3-super-or": {
-    "model": "nvidia/nemotron-3-super-120b-a12b:free",
-    "provider": "openrouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "262K context"
-  },
   "minimax-m2.7-lr": {
     "model": "minimax-m2.7:free",
     "provider": "literouter",
