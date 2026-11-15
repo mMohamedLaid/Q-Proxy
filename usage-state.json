@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-15T20:51:51.740Z",
+  "savedAt": "2026-11-15T21:05:51.740Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -60,24 +60,6 @@
   "googleLastResetDay": "2026-11-02",
   "googleLimitMismatches": [],
   "hopWarnings": {
-    "openrouter|openai/gpt-oss-20b:free": {
-      "kind": "turned-paid",
-      "detail": "\"openai/gpt-oss-20b:free\" is no longer listed, but \"openai/gpt-oss-20b\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.500Z"
-    },
-    "openrouter|qwen/qwen3-coder:free": {
-      "kind": "turned-paid",
-      "detail": "\"qwen/qwen3-coder:free\" is no longer listed, but \"qwen/qwen3-coder\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.500Z"
-    },
-    "openrouter|minimax/minimax-m2.5:free": {
-      "kind": "turned-paid",
-      "detail": "\"minimax/minimax-m2.5:free\" is no longer listed, but \"minimax/minimax-m2.5\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-09T17:18:33.500Z"
-    },
     "literouter|gpt-oss-20b:free": {
       "kind": "gone",
       "detail": "no longer in literouter's live model list",
@@ -108,12 +90,6 @@
       "source": "catalog",
       "since": "2026-10-18T13:20:09.601Z"
     },
-    "openrouter|nvidia/nemotron-3-super-120b-a12b:free": {
-      "kind": "turned-paid",
-      "detail": "\"nvidia/nemotron-3-super-120b-a12b:free\" is no longer listed, but \"nvidia/nemotron-3-super-120b-a12b\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-28T03:07:10.474Z"
-    },
     "amd|MinerU2.5-Pro": {
       "kind": "gone",
       "detail": "no longer in amd's live model list",
@@ -125,7 +101,7 @@
     "nvidia": "2026-11-15T18:43:44.541Z",
     "zai": "2026-11-15T18:43:44.891Z",
     "google": "2026-11-15T18:43:45.076Z",
-    "openrouter": "2026-11-15T18:43:46.849Z",
+    "openrouter": "2026-11-15T21:05:45.444Z",
     "literouter": "2026-11-15T18:43:48.246Z",
     "amd": "2026-11-15T18:43:49.418Z"
   },
