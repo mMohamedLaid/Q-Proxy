@@ -195,13 +195,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "qwen3-coder-or": {
-    "model": "qwen/qwen3-coder:free",
-    "provider": "openrouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "coding-focused"
-  },
   "minimax-m2.7-lr": {
     "model": "minimax-m2.7:free",
     "provider": "literouter",
