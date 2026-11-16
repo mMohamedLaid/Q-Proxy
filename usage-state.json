@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-16T12:32:52.652Z",
+  "savedAt": "2026-11-16T12:43:52.666Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -101,21 +101,15 @@
       "detail": "no longer in nvidia's live model list",
       "source": "catalog",
       "since": "2026-11-16T00:43:44.541Z"
-    },
-    "literouter|glm-5.1-cheap:free": {
-      "kind": "turned-paid",
-      "detail": "\"glm-5.1-cheap:free\" is no longer listed, but \"glm-5.1-cheap\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-11-16T00:43:48.345Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-16T06:43:44.545Z",
-    "zai": "2026-11-16T06:43:44.960Z",
-    "google": "2026-11-16T06:43:45.114Z",
-    "openrouter": "2026-11-16T06:43:46.445Z",
-    "literouter": "2026-11-16T06:43:48.144Z",
-    "amd": "2026-11-16T06:43:49.093Z"
+    "nvidia": "2026-11-16T12:43:44.537Z",
+    "zai": "2026-11-16T12:43:44.957Z",
+    "google": "2026-11-16T12:43:45.232Z",
+    "openrouter": "2026-11-16T12:43:45.943Z",
+    "literouter": "2026-11-16T12:43:47.743Z",
+    "amd": "2026-11-16T12:43:48.645Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -199,9 +193,9 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
       "count": 264,
-      "errors": 251,
-      "lastUsed": "2026-11-16T12:32:41.862Z",
-      "lastStatus": "ok",
+      "errors": 252,
+      "lastUsed": "2026-11-16T12:43:44.702Z",
+      "lastStatus": "error",
       "skips": 37,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
       "lastSkipAt": "2026-11-16T12:03:57.662Z"
