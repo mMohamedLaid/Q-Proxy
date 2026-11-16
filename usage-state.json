@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-16T19:23:53.544Z",
+  "savedAt": "2026-11-16T19:28:53.847Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -7,11 +7,9 @@
     }
   },
   "literouterPremiumKeyState": [],
-  "literouterFreeModelCursor": {
-    "glm-5.2:free": 0
-  },
-  "literouterLastResetDay": "2026-11-02",
-  "literouterRotationIndex": 15,
+  "literouterFreeModelCursor": {},
+  "literouterLastResetDay": "2026-11-16",
+  "literouterRotationIndex": 17,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -114,7 +112,7 @@
     "zai": "2026-11-16T18:43:44.806Z",
     "google": "2026-11-16T18:43:45.009Z",
     "openrouter": "2026-11-16T18:43:45.745Z",
-    "literouter": "2026-11-16T18:43:47.545Z",
+    "literouter": "2026-11-16T19:26:53.844Z",
     "amd": "2026-11-16T18:43:48.624Z"
   },
   "providerUsage": {
@@ -198,13 +196,35 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 276,
+      "count": 278,
       "errors": 260,
-      "lastUsed": "2026-11-16T19:22:25.076Z",
+      "lastUsed": "2026-11-16T19:28:28.685Z",
       "lastStatus": "ok",
       "skips": 37,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
       "lastSkipAt": "2026-11-16T12:03:57.662Z"
+    },
+    "literouter|deepseek-v4-flash-0731:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-flash-0731:free",
+      "count": 0,
+      "errors": 0,
+      "lastUsed": null,
+      "lastStatus": null,
+      "skips": 1,
+      "lastSkipReason": "status:deprecated",
+      "lastSkipAt": "2026-11-16T19:24:45.278Z"
+    },
+    "literouter|deepseek-v4-pro-cheap:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-pro-cheap:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-16T19:28:18.023Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
