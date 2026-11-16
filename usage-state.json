@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-15T22:30:21.765Z",
+  "savedAt": "2026-11-16T00:43:51.827Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -95,15 +95,27 @@
       "detail": "no longer in amd's live model list",
       "source": "catalog",
       "since": "2026-11-04T10:31:41.405Z"
+    },
+    "nvidia|nvidia/llama-3.1-nemotron-ultra-253b-v1": {
+      "kind": "gone",
+      "detail": "no longer in nvidia's live model list",
+      "source": "catalog",
+      "since": "2026-11-16T00:43:44.541Z"
+    },
+    "literouter|glm-5.1-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.1-cheap:free\" is no longer listed, but \"glm-5.1-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-16T00:43:48.345Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-15T18:43:44.541Z",
-    "zai": "2026-11-15T21:06:04.687Z",
-    "google": "2026-11-15T18:43:45.076Z",
-    "openrouter": "2026-11-15T21:05:45.444Z",
-    "literouter": "2026-11-15T18:43:48.246Z",
-    "amd": "2026-11-15T18:43:49.418Z"
+    "nvidia": "2026-11-16T00:43:44.541Z",
+    "zai": "2026-11-16T00:43:45.046Z",
+    "google": "2026-11-16T00:43:45.356Z",
+    "openrouter": "2026-11-16T00:43:46.643Z",
+    "literouter": "2026-11-16T00:43:48.345Z",
+    "amd": "2026-11-16T00:43:49.187Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
