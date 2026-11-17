@@ -203,12 +203,6 @@
     "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context",
     "dailyCap": 100
   },
-  "llama-nemotron": {
-    "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    "provider": "nvidia",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gemma-4-31b-it-lr": {
     "model": "gemma-4-31b-it:free",
     "provider": "literouter",
