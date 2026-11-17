@@ -449,14 +449,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "mineru2.5-pro-amd": {
-    "model": "MinerU2.5-Pro",
-    "provider": "amd",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "glm-5.1-cheap-free-lr": {
     "model": "glm-5.1-cheap:free",
     "provider": "literouter",
