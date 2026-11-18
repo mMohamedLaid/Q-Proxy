@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-18T12:42:31.748Z",
+  "savedAt": "2026-11-18T12:44:01.749Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -99,15 +99,21 @@
       "detail": "no longer in nvidia's live model list",
       "source": "catalog",
       "since": "2026-11-17T00:43:44.550Z"
+    },
+    "nvidia|openai/gpt-oss-20b": {
+      "kind": "gone",
+      "detail": "no longer in nvidia's live model list",
+      "source": "catalog",
+      "since": "2026-11-18T12:43:44.565Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-18T06:43:44.564Z",
-    "zai": "2026-11-18T06:43:44.727Z",
-    "google": "2026-11-18T06:43:44.880Z",
-    "openrouter": "2026-11-18T06:43:45.346Z",
-    "literouter": "2026-11-18T06:43:47.152Z",
-    "amd": "2026-11-18T06:43:48.280Z"
+    "nvidia": "2026-11-18T12:43:44.565Z",
+    "zai": "2026-11-18T12:43:44.807Z",
+    "google": "2026-11-18T12:43:45.204Z",
+    "openrouter": "2026-11-18T12:43:46.047Z",
+    "literouter": "2026-11-18T12:43:47.144Z",
+    "amd": "2026-11-18T12:43:48.228Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -191,8 +197,8 @@
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
       "count": 320,
-      "errors": 328,
-      "lastUsed": "2026-11-18T12:42:11.759Z",
+      "errors": 329,
+      "lastUsed": "2026-11-18T12:43:56.499Z",
       "lastStatus": "error",
       "skips": 45,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
