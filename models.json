@@ -484,7 +484,6 @@
     "reasoningLocks": {
       "thinking": "always"
     },
-    "tpmLimit": 262144,
     "maxTokens": 262144
   },
   "nemotron-3.5-super-vl-120b-a12b-nv": {
