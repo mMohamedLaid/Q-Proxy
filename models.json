@@ -475,9 +475,34 @@
   "moonshotai-kimi-k3.1-pro-nv": {
     "model": "moonshotai/kimi-k3.1-pro",
     "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
     "status": "active",
-    "limitType": "rate-limited"
+    "limitType": "rate-limited",
+    "reasoningSchema": "thinking-and-effort",
+    "reasoning": {
+      "reasoning_effort": "max",
+      "thinking_toggle": true
+    },
+    "reasoningFieldOptions": {
+      "reasoning_effort": [
+        "low",
+        "high",
+        "max"
+      ]
+    },
+    "reasoningFieldKeys": {
+      "reasoning_effort": "reasoning_effort",
+      "thinking_toggle": "thinking_toggle"
+    },
+    "reasoningFieldEnabled": {
+      "reasoning_effort": true,
+      "thinking_toggle": false
+    },
+    "reasoningFieldTransport": {
+      "reasoning_effort": "top_level",
+      "thinking_toggle": "chat_template_kwargs"
+    },
+    "reasoningLocks": {
+      "thinking": "always"
+    }
   }
 }
