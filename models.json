@@ -405,26 +405,6 @@
     "tpm": 250000,
     "rpd": 20
   },
-  "nvidia-nemotron-3.5-super-vl-120b-a12b-nv": {
-    "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
-    "provider": "nvidia",
-    "reasoningSchema": "thinking-and-effort",
-    "reasoning": {
-      "thinking_toggle": true
-    },
-    "reasoningFieldEnabled": {
-      "thinking_toggle": true
-    },
-    "reasoningFieldKeys": {
-      "thinking_toggle": "enable_thinking"
-    },
-    "reasoningFieldTransport": {
-      "thinking_toggle": "chat_template_kwargs"
-    },
-    "reasoningFieldOptions": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "glm-5.3-flash-amd": {
     "model": "GLM-5.3-Flash",
     "provider": "amd",
@@ -503,6 +483,35 @@
     },
     "reasoningLocks": {
       "thinking": "always"
+    }
+  },
+  "nemotron-3.5-super-vl-120b-a12b-nv": {
+    "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    "provider": "nvidia",
+    "status": "active",
+    "limitType": "rate-limited",
+    "reasoningSchema": "thinking-and-effort",
+    "reasoning": {
+      "thinking_toggle": true
+    },
+    "reasoningFieldOptions": {
+      "reasoning_effort": [
+        "low",
+        "high",
+        "max"
+      ]
+    },
+    "reasoningFieldKeys": {
+      "thinking_toggle": "enable_thinking",
+      "reasoning_effort": "reasoning_effort"
+    },
+    "reasoningFieldEnabled": {
+      "thinking_toggle": true,
+      "reasoning_effort": false
+    },
+    "reasoningFieldTransport": {
+      "thinking_toggle": "chat_template_kwargs",
+      "reasoning_effort": "chat_template_kwargs"
     }
   }
 }
