@@ -472,7 +472,7 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "moonshotai-kimi-k3.1-pro-nv": {
+  "kimi-k3.1-pro-nv": {
     "model": "moonshotai/kimi-k3.1-pro",
     "provider": "nvidia",
     "status": "active",
