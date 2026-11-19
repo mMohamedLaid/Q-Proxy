@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-19T08:58:03.738Z",
+  "savedAt": "2026-11-19T09:23:03.804Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -108,7 +108,7 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-19T06:43:44.576Z",
+    "nvidia": "2026-11-19T09:15:49.585Z",
     "zai": "2026-11-19T06:43:44.748Z",
     "google": "2026-11-19T06:43:44.941Z",
     "openrouter": "2026-11-19T06:43:45.443Z",
@@ -225,6 +225,17 @@
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
+    },
+    "nvidia|moonshotai/kimi-k3.1-pro": {
+      "provider": "nvidia",
+      "model": "moonshotai/kimi-k3.1-pro",
+      "count": 0,
+      "errors": 0,
+      "lastUsed": null,
+      "lastStatus": null,
+      "skips": 2,
+      "lastSkipReason": "tpm-budget (~273876>262144)",
+      "lastSkipAt": "2026-11-19T09:22:58.622Z"
     }
   }
 }
