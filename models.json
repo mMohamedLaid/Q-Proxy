@@ -476,7 +476,7 @@
     "model": "moonshotai/kimi-k3.1-pro",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "rate-limited",
+    "limitType": "unlimited",
     "reasoningSchema": "thinking-and-effort",
     "reasoning": {
       "reasoning_effort": "max",
