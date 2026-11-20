@@ -443,7 +443,7 @@
     "status": "active",
     "limitType": "unlimited",
     "tpmLimit": 32000,
-    "timeoutMs": 120000
+    "timeoutMs": 1200000
   },
   "deepseek-v4-pro-cheap-free-lr": {
     "model": "deepseek-v4-pro-cheap:free",
