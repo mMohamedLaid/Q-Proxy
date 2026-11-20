@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-20T07:23:34.916Z",
+  "savedAt": "2026-11-20T07:28:34.920Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -39,11 +39,11 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29894045,
+      "rpmWindowMinute": 29919328,
       "rpmCount": 1,
-      "tpmWindowMinute": 29894045,
-      "tpmTokens": 5503,
-      "rpdDay": "2026-11-02",
+      "tpmWindowMinute": 29919328,
+      "tpmTokens": 3713,
+      "rpdDay": "2026-11-19",
       "rpdCount": 1
     },
     "gemma-4-31b-it|0": {
@@ -55,7 +55,7 @@
       "rpdCount": 1
     }
   },
-  "googleLastResetDay": "2026-11-02",
+  "googleLastResetDay": "2026-11-19",
   "googleLimitMismatches": [],
   "hopWarnings": {
     "literouter|gpt-oss-20b:free": {
@@ -196,9 +196,9 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 331,
+      "count": 332,
       "errors": 329,
-      "lastUsed": "2026-11-20T07:13:05.181Z",
+      "lastUsed": "2026-11-20T07:28:03.276Z",
       "lastStatus": "ok",
       "skips": 45,
       "lastSkipReason": "TIMEOUT · ECONNABORTED",
