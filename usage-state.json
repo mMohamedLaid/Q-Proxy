@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-20T07:13:34.898Z",
+  "savedAt": "2026-11-20T07:23:34.916Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -229,9 +229,9 @@
     "nvidia|moonshotai/kimi-k3.1-pro": {
       "provider": "nvidia",
       "model": "moonshotai/kimi-k3.1-pro",
-      "count": 3,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-19T09:53:06.696Z",
+      "lastUsed": "2026-11-20T07:23:07.170Z",
       "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "tpm-budget (~273876>262144)",
