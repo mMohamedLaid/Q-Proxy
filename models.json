@@ -441,8 +441,9 @@
     "model": "z-ai/glm-5.3-flash",
     "provider": "nvidia",
     "status": "active",
-    "limitType": "rate-limited",
-    "tpmLimit": 32000
+    "limitType": "unlimited",
+    "tpmLimit": 32000,
+    "timeoutMs": 120000
   },
   "deepseek-v4-pro-cheap-free-lr": {
     "model": "deepseek-v4-pro-cheap:free",
