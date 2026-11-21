@@ -1,0 +1,8 @@
+{
+  "providers": {
+    "*": {
+      "timeoutMs": 1200000
+    }
+  },
+  "global": {}
+}
