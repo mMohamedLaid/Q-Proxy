@@ -176,7 +176,6 @@ Render's Free web services have **no persistent disk** — every restart (a cras
 | `GITHUB_BRANCH` | no | Defaults to `main` |
 | `GITHUB_MODELS_PATH` | no | Defaults to `models.json` |
 | `GITHUB_SCHEMAS_PATH` | no | Defaults to `reasoning-schemas.json` |
-| `GITHUB_DEFAULTS_PATH` | no | Defaults to `defaults.json` (Admin → Defaults). |
 | `GITHUB_USAGE_PATH` | no | Defaults to `usage-state.json`. OpenRouter/Literouter usage counters — see "OpenRouter and Literouter keys," above. |
 | `LITEROUTER_PREMIUM_DAILY_CAP` | no | Defaults to `50`. The shared daily premium-credits pool size per Literouter key; depends on your plan. |
 
@@ -190,7 +189,7 @@ Costs nothing: GitHub API access is free for personal repos, and the write happe
 
 ## Retries and error tags
 
-**Retries.** Hops that count as "unlimited" (NVIDIA NIM, `limitType: "unlimited"`, `retryAsUnlimited: true`, Literouter with no `dailyCap`, or a hop whose written limits are all huge) retry a failed request up to 100 times with a growing pause (0.25s up to 4s). Two rules decide when they stop early:
+**Retries.** Hops that count as "unlimited" (NVIDIA NIM, `limitType: "unlimited"`, `retryAsUnlimited: true`, Literouter with no `dailyCap`) retry a failed request up to 100 times with a growing pause (0.25s up to 4s). Two rules decide when they stop early:
 
 - The first attempt is free. The retry window only starts counting after the hop's *first failure*, so a request that thinks for five minutes and then dies still gets its retries.
 - The window is only checked **between** attempts: an attempt already running when it ends is never cut short. That is why a message can say "after 3 attempts over 15m 7s" with a 10m window: the total runs from the hop's start, the window from its first failure. When the last attempt was long the error says so ("…the 10m retry window (counted from the first failure) ran out; attempt 3 began inside it and was allowed to finish, taking 5m 3s").
@@ -248,53 +247,4 @@ The Admin panel's **Model tester** sends one tiny real request straight to a pro
 - **PROMPT** entries (one per request) show what was actually sent — each message's first 300 characters, up to 100 messages. The Render console still prints one `[msg N]` line per message.
 - **THINK / REPLY** blocks are stitched live in the Admin log, and a copy of each is written to the Render console when the stream finishes (every line prefixed with the request id), so Render no longer has only per-chunk lines.
 - **Waiting notices.** From the moment a request arrives until the model's *first output* (thinking counts as output) an Admin/console line appears once 10s pass with nothing back, then again at 30s, 60s and every minute: `⏳ still waiting for nvidia/… to start answering — 2m 0s and no output yet (queue/connect time, not thinking)`. Fast models never print one. When output finally starts after a long wait you get `✓ first output arrived after 4m 14s`, and the end-of-stream line shows both clocks: time streaming, and time since the request arrived.
-- **Client hang-up.** When the client stops or disconnects, what happens to the in-flight request depends on the hop: a hop that is **not** allowed to finish gets its upstream call aborted (including one still waiting in the provider's queue), so nothing runs for nobody. A hop that **is** allowed to finish keeps going and writes the whole reply to the log. See "Finish after disconnect" below.
-
-## Limits, waiting and defaults
-
-### What a hop's quota is counted in (limit basis)
-
-Every hop has a **basis**, worked out from its own numbers (or set with `"basis": "points" | "tokens" | "both"`, or the *Limit basis* select in the hop editor):
-
-| Basis | Meaning | Examples |
-|---|---|---|
-| **points** | Every request is one try; tokens never matter. | NVIDIA (~40 requests/min per account), OpenRouter, Literouter, Z.AI, AMD |
-| **tokens** | Per-minute tokens are what runs out. | A token-metered provider with a TPM and no request limit |
-| **both** | Request counts and per-minute tokens both bind. | Google AI Studio Gemma: 30 requests/min **and** 16K input tokens/min |
-
-**Huge limits count as no limit.** A number far above anything you will reach is ignored when deciding how a hop behaves: 14,400 requests/day and 250K tokens/min will never be what stops you. The lines are 10,000 requests/day, 300 requests/min and 250,000 tokens/min (change them in **Admin → Defaults → Global**). So a Google model with a huge token limit but 20 requests/day is a points hop, and a hop whose written limits are *all* huge is treated as unlimited (the long "unlimited" retries). The small numbers are the edge cases that decide behaviour. `GET /admin/api/hop-behavior` lists, for every hop, its basis, whether it counts as unlimited, its requests/min cap and its finish-after-disconnect default.
-
-### Checks made before a try is spent
-
-Before anything is sent, Q-Proxy checks, in this order: the hop is `active`; it supports tools if the request uses them; the request fits the hop's max request size; the hop's daily budget has room (Literouter per-model and premium pool, OpenRouter per key, Google requests/day); Google's requests/min and input-tokens/min windows have room for *this* request (so with a 16K tokens/min limit, sixteen 1K messages go out and the seventeenth is held back instead of erroring); and the **requests/min gate** has a free slot. A hop that fails a check is skipped (or waited on), and no try or token is used.
-
-**Requests/min gate.** Any hop with a requests/min cap (NVIDIA ships with 40; any other provider via its `rpm` field or a default) is paced by a sliding 60-second window per provider account. A request that would exceed it waits for the window to open (`[rpm]` line in the log), unless the *same model* is next on another provider, in which case it goes there. The try is counted whether it succeeds or fails. Set the cap above the "huge" requests/min line to switch it off.
-
-### Waiting
-
-- **Smart waiting.** An attempt waits for its first output for the provider's default (5 minutes unless changed in Defaults); a `timeoutMs` on the hop always wins. If no other hop could take the request right now (inactive, out of quota, over its max request size, no tool support), the hop is allowed the patient wait (30 minutes). If the next usable hop serves the **same model** on another provider, a timeout hands over to it instead of retrying here. If only a **different** model is behind an unlimited hop, it waits the patient time. A `[patience]` log line appears whenever the wait differs from the normal one.
-- **Two timeouts per hop.** `timeoutMs` = how long to wait for the FIRST output. `idleTimeoutMs` = how long the reply may go silent once it is streaming; on a stall the upstream is closed and the client keeps what streamed (`[STREAM_STALL]` then `[STREAM_CUT]`). axios's own timeout is socket-idle for the whole stream, so a long first-output wait would otherwise also allow a long mid-reply stall.
-- **Skip this hop.** Admin → Logs shows requests still waiting for their first output, with a **⏭ Skip this hop** button (only when another usable hop is behind it). It cancels just that attempt and moves to the next hop (`[SKIPPED]` in the log). Not offered once the hop has started answering. API: `GET /admin/api/inflight`, `POST /admin/api/skip-hop {rid}`.
-
-### Finish after disconnect
-
-When the client drops while a hop is answering, the hop is either cancelled or allowed to finish and write the reply to the log (so it can be pasted back in). The default is **on for NVIDIA and every points-based hop** (the try is already spent, so finishing costs nothing extra) and **off where tokens bind** (a ghost reply would eat the per-minute tokens the retry needs), unless the hop's limits are all huge. Hop fields: `finishAfterDisconnect` (true/false overrides the default) and `maxConcurrent` (1 = the provider allows one generation at a time, so a ghost generation would block the retry and it is never kept). A finishing request is stopped after the safety cap (30 minutes).
-
-### Admin → Defaults
-
-The **Defaults** panel (and `GET/PUT /admin/api/defaults`) edits the numbers a hop falls back on when its own field is blank. Per provider: first-output wait, silence limit mid-reply, requests/min cap, finish-after-disconnect. The last row, **Every other / new provider**, covers any provider without a row of its own, including ones added later. Globally: the patient wait, the finish-after-disconnect safety cap and the three "huge" lines. Blank fields show the built-in value in grey; the grey hints in the hop editor follow whatever is saved here.
-
-Lookup order for one provider: *your value for that provider* → *built-in value for that provider* (NVIDIA: 40 requests/min, finish-after-disconnect on) → *your "every other provider" value* → *built-in value* (5 minutes). Values are saved to `defaults.json` and, with GitHub sync on, committed like the other config files (`GITHUB_DEFAULTS_PATH`, default `defaults.json`). Environment variables `QP_PATIENT_TIMEOUT_MS`, `QP_STREAM_IDLE_MS`, `QP_DETACH_MAX_MS`, `QP_BIG_RPD`, `QP_BIG_RPM`, `QP_BIG_TPM` change the built-in values; `QP_RPM_WINDOW_MS` changes the 60-second window (for testing).
-
-### Reading model pages and the limit schema
-
-- **Read page text (admin → hop → ⚙ Setup).** Paste a model page's API-reference / playground / model-card text (or a build.nvidia.com link, which usually only returns an empty shell) and press **📖 Read page text**: it fills the effort-values list, shows default/omitted behaviour and max_tokens limits, and flags pages that contradict themselves. Nothing is applied until you press Scan → Apply. Only the allowed hosts are fetched, over https, without following redirects.
-- **limit-schema.json.** Verified per-provider limit records (unit × scope × window), the stop order and error classes, served at `GET /admin/api/limit-schema`. Reference data: it does not enforce anything; the hop fields above do. Hops may carry an optional `limits` array in the same shape, which is validated and reported only.
-
-## Security
-
-- **Keys.** The bearer lookup uses a null-prototype map, so `Bearer constructor`, `__proto__` and similar names are rejected like any wrong key. The scheme match is case-insensitive on every route. The admin key is compared in constant time.
-- **Wrong-key lockout.** `/v1/chat/completions`, `/dashboard` and `/admin` all count wrong keys per IP: 5 strikes, then a lockout starting at 30 seconds and doubling up to 1 hour. A correct key clears the count. The counting maps prune old entries.
-- **Public endpoints.** `/health` only returns `{"status":"ok"}` unless you send `X-Admin-Key: <ADMIN_KEY>` (then it returns the full usage report). `/budget` needs the admin key.
-- **Logs.** Set `LOG_PROMPT_CONTENT=false` to keep message text out of the console and Admin logs (default: logged).
-- **Repo.** `.gitignore` keeps `node_modules/`, `.env`, logs and `test/scenario.json` out of commits.
+- **Client hang-up cancels the upstream call.** When the client stops or disconnects, the in-flight request to the provider is aborted — including one still waiting in the provider's queue — instead of running to the end for nobody. (Before this, a stopped generation kept running and competed with the retry for the same provider capacity.)

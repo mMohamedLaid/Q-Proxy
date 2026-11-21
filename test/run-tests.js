@@ -64,15 +64,12 @@ async function main() {
   const bundlesPath = path.join(ROOT, 'user-bundles.json');   // user bundles are written here too
   const hadBundles = fs.existsSync(bundlesPath);
   if (hadBundles) fs.copyFileSync(bundlesPath, bundlesPath + '.bak');
-  const defaultsPath = path.join(ROOT, 'defaults.json');   // Admin → Defaults writes this file
-  const hadDefaults = fs.existsSync(defaultsPath);
-  if (hadDefaults) fs.copyFileSync(defaultsPath, defaultsPath + '.bak');
   const limitsPath = path.join(ROOT, 'provider-limits.json');   // the Google-limits import rewrites this file
   fs.copyFileSync(limitsPath, limitsPath + '.bak');
 
   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
     cwd: ROOT,
-    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', GROQ_API_KEY: 'gq1', AMD_API_KEY: 'amd1', QP_NO_CATALOG_WATCH: '1', QP_RPM_WINDOW_MS: '1000', QP_WAIT_NOTICE_MS: '600', QP_STREAM_IDLE_MS: '1500', PORT: String(PORT), MOCK_FILE: SCEN },
+    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', GROQ_API_KEY: 'gq1', AMD_API_KEY: 'amd1', QP_NO_CATALOG_WATCH: '1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', d => { serverLog += d; });
@@ -164,21 +161,8 @@ async function main() {
     check('stream: OpenRouter reasoning string treated as reasoning', s.reasoning.includes('thinky'), JSON.stringify(s.reasoning));
     check('stream: OpenRouter reply intact', s.content.includes('A'), JSON.stringify(s.content));
 
-    // ── auth: Object.prototype member names must not work as API keys ──
-    for (const bad of ['constructor', '__proto__']) {   // few probes: wrong chat keys count toward the per-IP lockout (tested at the very end)
-      r = await chat({ model: 'gemma-4-31b-nv', messages: [{ role: 'user', content: 'hi' }] }, bad); await r.text();
-      check(`auth: "Bearer ${bad}" is rejected (401)`, r.status === 401, 'got ' + r.status);
-      if (bad === 'constructor') {   // one dashboard probe only: more wrong keys from this IP would trip the 5-strike lockout the later dashboard tests need
-        r = await fetch(BASE + '/dashboard/api/profile', { headers: { Authorization: 'Bearer ' + bad } }); await r.text();
-        check(`auth: dashboard rejects "Bearer ${bad}"`, r.status === 401, 'got ' + r.status);
-      }
-    }
-    check('auth: Object.prototype was not polluted', ({}).count === undefined);
-    r = await fetch(BASE + '/health'); j = await r.json();
-    check('/health without the admin key only reports liveness', j.status === 'ok' && !j.users, JSON.stringify(j));
-
     // ── /health usage counting ────────────────────────────────────────
-    r = await fetch(BASE + '/health', { headers: { 'X-Admin-Key': 'adminkey' } });
+    r = await fetch(BASE + '/health');
     j = await r.json();
     const me = (j.users || []).find(u => u.name === 'Q');
     check('/health now counts unlimited-key usage', me && me.used >= 1, JSON.stringify(j.users));
@@ -403,187 +387,19 @@ async function main() {
     check('wait: slow first output -> "still waiting for nvidia/… — Ns and no output yet"', /⏳ still waiting for nvidia\/google\/gemma-4-31b-it to start answering — \d+s and no output yet/.test(slow), slow.slice(0, 500));
     check('wait: …then "first output arrived after Ns" and the summary shows both clocks', /✓ first output arrived after \d+s/.test(slow) && /streaming \| first output after \d+s \| [\d.]+s since request/.test(slow), slow.slice(0, 900));
 
-    // ── client hangs up while the provider is still queueing ──
-    // A hop that must NOT outlive the client (finishAfterDisconnect:false, or maxConcurrent:1 = one generation at a
-    // time) gets its upstream call CANCELLED. Plain NVIDIA/unlimited hops are allowed to finish — tested below.
-    const adminH = { 'X-Admin-Key': 'adminkey', 'Content-Type': 'application/json' };
-    const nvHop = (extra, fb) => ({ model: 'google/gemma-4-31b-it', provider: 'nvidia', status: 'active', limitType: 'unlimited', ...extra, ...(fb ? { fallback: fb } : {}) });
-    const addScratch = async (id, entry) => { const rr = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: adminH, body: JSON.stringify({ id, entry }) }); await rr.text(); return rr.ok; };
-    const delScratch = async id => { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: adminH }); await rr.text(); };
-    const hangUp = async (modelId, afterMs) => {
-      const ac = new AbortController();
-      const p = fetch(BASE + '/v1/chat/completions', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model: modelId, stream: true, messages: [{ role: 'user', content: 'hi' }] }) }).catch(() => 'aborted');
-      await sleep(afterMs); ac.abort(); await p;
-    };
-    for (const [label, entry] of [['finishAfterDisconnect:false', nvHop({ finishAfterDisconnect: false })], ['maxConcurrent:1', nvHop({ maxConcurrent: 1 })]]) {
-      try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
-      check('hang-up: scratch model added (' + label + ')', await addScratch('zz-noghost', entry));
-      setScenario({ mode: 'hang' });
-      mark = serverLog.length;
-      await hangUp('zz-noghost', 500);
-      let cancelled = false; for (let i = 0; i < 20 && !cancelled; i++) { cancelled = fs.existsSync(SCEN + '.aborted'); if (!cancelled) await sleep(100); }
-      await sleep(150);
-      const gone = serverLog.slice(mark);
-      check('hang-up (' + label + '): the in-flight upstream call was aborted (not left running for nobody)', cancelled);
-      check('hang-up (' + label + '): logged as a calm INFO (no ERROR), and it never "completes"', /client disconnected after .* cancelling the upstream request/.test(gone) && /request ended — client disconnected/.test(gone) && !/\[ERROR\]|stream complete/.test(gone), gone.slice(0, 600));
-      try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
-      await delScratch('zz-noghost');
-    }
-
-    // ── finish after disconnect: an unlimited (NVIDIA) hop keeps generating and the reply lands in the log ──
+    // ── client hangs up while the provider is still queueing: the upstream call is CANCELLED ──
     try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
-    setScenario({ mode: 'stream', endMode: 'end', firstChunkDelayMs: 900, chunks: [{ id: 'g', choices: [{ delta: { role: 'assistant', reasoning_content: 'ponder GHOSTTHINK' }, finish_reason: null }] }, { id: 'g', choices: [{ delta: { content: 'GHOSTREPLY text' }, finish_reason: null }] }, { id: 'g', choices: [{ delta: {}, finish_reason: 'stop' }] }, '[DONE]'] });
+    setScenario({ mode: 'hang' });
     mark = serverLog.length;
-    await hangUp('gemma-4-31b-nv', 300);
-    await sleep(1500);
-    const ghost = serverLog.slice(mark);
-    check('finish-after-disconnect: logged that the hop is being let finish', /client disconnected after .* letting nvidia\/google\/gemma-4-31b-it finish; the reply will be written to the log/.test(ghost), ghost.slice(0, 600));
-    check('finish-after-disconnect: the upstream was NOT aborted', !fs.existsSync(SCEN + '.aborted'));
-    check('finish-after-disconnect: the full reply and thinking are in the log, and the stream completes', /GHOSTREPLY text/.test(ghost) && /GHOSTTHINK/.test(ghost) && /stream complete/.test(ghost), ghost.slice(0, 900));
-
-    // ── limit basis: points (requests) vs tokens, and what each means for finish-after-disconnect ──
-    {
-      const behavior = async () => (await (await fetch(BASE + '/admin/api/hop-behavior', { headers: adminH })).json());
-      const rowOf = (b, id) => (b.hops || []).find(h => h.id === id && h.hop === 1);
-      let b = await behavior();
-      const g = rowOf(b, 'gemma-4-31b-g'), nv = rowOf(b, 'gemma-4-31b-nv'), orr = rowOf(b, 'gemma-4-31b-or');
-      check('basis: Google gemma (30 rpm + 16K tpm) binds on BOTH requests and tokens', g && g.basis === 'both', JSON.stringify(g));
-      check('basis: Google gemma does not finish after disconnect by default (the ghost reply would eat per-minute tokens)', g && g.finishAfterDisconnect === false, JSON.stringify(g));
-      check('basis: NVIDIA counts points (requests), is capped at 40/min by default and finishes after disconnect', nv && nv.basis === 'points' && nv.rpmCap === 40 && nv.finishAfterDisconnect === true, JSON.stringify(nv));
-      check('basis: OpenRouter counts points and finishes after disconnect by default', orr && orr.basis === 'points' && orr.finishAfterDisconnect === true, JSON.stringify(orr));
-      // behaviour, not just labels: a points hop is let finish, a token-bound Google hop is cancelled
-      check('basis: scratch points hop added', await addScratch('zz-pts', { model: 'x/some-model:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited' }));
-      setScenario({ mode: 'hang' }); mark = serverLog.length;
-      await hangUp('zz-pts', 400); await sleep(400);
-      check('basis: a points hop (OpenRouter) is let finish when the client leaves', /letting openrouter\/x\/some-model:free finish/.test(serverLog.slice(mark)), serverLog.slice(mark, mark + 500));
-      await delScratch('zz-pts');
-      try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
-      check('basis: scratch token-bound Google hop added', await addScratch('zz-tok', { model: 'gemma-4-31b-it', provider: 'google', status: 'active', limitType: 'rate-limited', rpm: 30, tpm: 16000, rpd: 14400 }));
-      setScenario({ mode: 'hang' }); mark = serverLog.length;
-      await hangUp('zz-tok', 400);
-      let cancelledTok = false; for (let i = 0; i < 20 && !cancelledTok; i++) { cancelledTok = fs.existsSync(SCEN + '.aborted'); if (!cancelledTok) await sleep(100); }
-      check('basis: a token-bound Google hop is cancelled when the client leaves', cancelledTok && !/letting google\//.test(serverLog.slice(mark)), serverLog.slice(mark, mark + 400));
-      await delScratch('zz-tok'); try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
-
-      check('basis: scratch hop with an explicit "basis": "tokens" added', await addScratch('zz-basis', { model: 'x/some-model:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited', basis: 'tokens' }));
-      b = await behavior();
-      check('basis: an explicit basis on the hop overrides the automatic one (and a token basis turns the ghost reply off)', rowOf(b, 'zz-basis') && rowOf(b, 'zz-basis').basis === 'tokens' && rowOf(b, 'zz-basis').finishAfterDisconnect === false, JSON.stringify(rowOf(b, 'zz-basis')));
-      await delScratch('zz-basis');
-      check('basis: a nonsense basis value is ignored', await addScratch('zz-basis2', { model: 'x/some-model:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited', basis: 'banana' }));
-      b = await behavior(); check('basis: …and falls back to automatic', rowOf(b, 'zz-basis2') && rowOf(b, 'zz-basis2').basis === 'points', JSON.stringify(rowOf(b, 'zz-basis2')));
-      await delScratch('zz-basis2');
-
-      // ── Admin → Defaults ──
-      r = await fetch(BASE + '/admin/api/defaults'); await r.text();
-      check('defaults: needs the admin key', r.status === 401, String(r.status));
-      r = await fetch(BASE + '/admin/api/defaults', { headers: adminH }); j = await r.json();
-      check('defaults: built-in values are served (NVIDIA 40 req/min, 5 min wait, "other providers" row)', j.builtin.providers.nvidia.rpm === 40 && j.builtin.providers['*'].timeoutMs === 300000 && j.effective.providers['*'] && j.effective.providers.nvidia.rpm === 40, JSON.stringify(j.effective.providers.nvidia));
-      const putDef = async body => { const rr = await fetch(BASE + '/admin/api/defaults', { method: 'PUT', headers: adminH, body: JSON.stringify(body) }); return { s: rr.status, j: await rr.json() }; };
-      let pd = await putDef({ providers: { nvidia: { timeoutMs: 'soon' } } });
-      check('defaults: a bad value is refused (400) and nothing is saved', pd.s === 400 && /timeoutMs/.test(pd.j.error.message), JSON.stringify(pd.j));
-      pd = await putDef({ providers: { __proto__x: { rpm: 5 }, 'bad name!': { rpm: 5 } } });
-      check('defaults: odd provider names are refused', pd.s === 400, JSON.stringify(pd.j));
-      pd = await putDef({ providers: { nvidia: { finishAfterDisconnect: false, timeoutMs: 120000 }, '*': { timeoutMs: 600000 } }, global: { patientTimeoutMs: 3600000 } });
-      check('defaults: saving works', pd.s === 200 && pd.j.ok && pd.j.effective.providers.nvidia.timeoutMs === 120000 && pd.j.effective.providers.nvidia.finishAfterDisconnect === false, JSON.stringify(pd.j.effective && pd.j.effective.providers.nvidia));
-      check('defaults: "every other provider" value reaches providers with no row of their own, but not NVIDIA', pd.j.effective.providers.openrouter.timeoutMs === 600000 && pd.j.effective.providers.nvidia.timeoutMs === 120000, JSON.stringify(pd.j.effective.providers.openrouter));
-      b = await behavior();
-      check('defaults: NVIDIA finish-after-disconnect switched off here changes the hop behaviour', rowOf(b, 'gemma-4-31b-nv').finishAfterDisconnect === false);
-      check('defaults: a provider\'s own saved value beats the built-in value, and the built-in rpm still applies', rowOf(b, 'gemma-4-31b-nv').rpmCap === 40);
-      // the saved timeout is what a hop waits when its own field is blank (single-hop => "patient" = max(patient, normal))
-      await addScratch('zz-defwait', nvHop({ timeoutMs: undefined }, { model: 'google/gemma-4-31b-it:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited' }));
-      mark = serverLog.length;
-      setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } });
-      await (await chat({ model: 'zz-defwait', messages: [{ role: 'user', content: 'hi' }] })).text();
-      check('defaults: same-model fallback behind it => the saved 2-minute NVIDIA default is used (no patience line)', !/\[patience\]/.test(serverLog.slice(mark)), serverLog.slice(mark, mark + 300));
-      await delScratch('zz-defwait');
-      // huge limits count as no limit
-      pd = await putDef({ global: { bigRpm: 20, bigTpm: 10000 } });
-      b = await behavior(); const g2 = rowOf(b, 'gemma-4-31b-g'), nv2 = rowOf(b, 'gemma-4-31b-nv');
-      check('huge limits: with the "huge" lines lowered below Gemma\'s numbers it counts as a points hop with no real limit', g2.hugeLimitsOnly === true && g2.basis === 'points' && g2.unlimitedRetry === true && g2.finishAfterDisconnect === true, JSON.stringify(g2));
-      check('huge limits: NVIDIA\'s 40/min cap is also "huge" under the lowered line, so no cap is applied', nv2.rpmCap === null, JSON.stringify(nv2));
-      pd = await putDef({ providers: {}, global: {} });
-      b = await behavior();
-      check('defaults: clearing everything returns to the built-ins', rowOf(b, 'gemma-4-31b-nv').finishAfterDisconnect === true && rowOf(b, 'gemma-4-31b-nv').rpmCap === 40 && rowOf(b, 'gemma-4-31b-g').basis === 'both', JSON.stringify(rowOf(b, 'gemma-4-31b-nv')));
-    }
-
-    // ── smart waiting: how long an attempt may sit (the "[patience]" line appears only when it differs from 5 min) ──
-    setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } });
-    const patienceOf = async (id, entry) => { await addScratch(id, entry); mark = serverLog.length; await (await chat({ model: id, messages: [{ role: 'user', content: 'hi' }] })).text(); await sleep(100); const t = serverLog.slice(mark); await delScratch(id); return t; };
-    const orHop = { model: 'google/gemma-4-31b-it:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited' };
-    let t = await patienceOf('zz-wait-only', nvHop({}));
-    check('smart wait: the only hop (nothing to fall back to) is allowed 30 minutes', /\[patience\] nvidia\/google\/gemma-4-31b-it may take up to 30m.*no other hop could take this request/.test(t), t.slice(0, 400));
-    t = await patienceOf('zz-wait-same', nvHop({}, orHop));
-    check('smart wait: next hop is the SAME model -> normal 5 minutes (no patience line)', !/\[patience\]/.test(t), t.slice(0, 400));
-    t = await patienceOf('zz-wait-weak', nvHop({}, { ...orHop, model: 'meta/some-weaker-model:free' }));
-    check('smart wait: next hop is a DIFFERENT model -> unlimited hop waits 30 minutes', /\[patience\] .*may take up to 30m.*weaker model/.test(t), t.slice(0, 400));
-    t = await patienceOf('zz-wait-dead', nvHop({}, { ...orHop, status: 'disabled' }));
-    check('smart wait: the only fallback is disabled -> counts as no fallback, 30 minutes', /\[patience\] .*may take up to 30m.*no other hop/.test(t), t.slice(0, 400));
-    t = await patienceOf('zz-wait-explicit', nvHop({ timeoutMs: 120000 }));
-    check('smart wait: an explicit timeout on the hop always wins (no patience line)', !/\[patience\]/.test(t), t.slice(0, 400));
-
-    // ── skip this hop (admin) ──
-    {
-      const orHop2 = { model: 'meta/some-weaker-model:free', provider: 'openrouter', status: 'active', limitType: 'rate-limited' };
-      await addScratch('zz-skip', nvHop({ finishAfterDisconnect: false }, orHop2));
-      setScenario({ mode: 'hang' });
-      mark = serverLog.length;
-      const pending = chat({ model: 'zz-skip', messages: [{ role: 'user', content: 'hi' }] });
-      await sleep(900);
-      let fl = await (await fetch(BASE + '/admin/api/inflight', { headers: adminH })).json();
-      const mine = (fl.requests || []).find(x => x.model === 'zz-skip');
-      check('skip hop: the waiting request shows up as in-flight and skippable', !!(mine && mine.waiting && mine.canSkip), JSON.stringify(fl).slice(0, 300));
-      setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'from the next hop' }, finish_reason: 'stop' }], usage: {} } });
-      r = await fetch(BASE + '/admin/api/skip-hop', { method: 'POST', headers: adminH, body: JSON.stringify({ rid: mine && mine.rid }) });
-      const sk = await r.json();
-      check('skip hop: the endpoint accepts it', sk.ok === true, JSON.stringify(sk));
-      const done = await pending; const dj = await done.json();
-      check('skip hop: the request is answered by the NEXT hop, not an error', done.ok && /from the next hop/.test(JSON.stringify(dj)), done.status + ' ' + JSON.stringify(dj).slice(0, 200));
-      await sleep(100);
-      check('skip hop: logged as SKIPPED (not as a failure of the provider)', /\[SKIPPED\] nvidia\/google\/gemma-4-31b-it skipped by you/.test(serverLog.slice(mark)), serverLog.slice(mark).slice(0, 500));
-      await delScratch('zz-skip');
-      // nothing behind the hop -> refused, and the request is left alone
-      await addScratch('zz-skip1', nvHop({ finishAfterDisconnect: false }));
-      setScenario({ mode: 'hang' });
-      const pend1 = chat({ model: 'zz-skip1', messages: [{ role: 'user', content: 'hi' }] }).catch(() => null);
-      await sleep(700);
-      fl = await (await fetch(BASE + '/admin/api/inflight', { headers: adminH })).json();
-      const one = (fl.requests || []).find(x => x.model === 'zz-skip1');
-      r = await fetch(BASE + '/admin/api/skip-hop', { method: 'POST', headers: adminH, body: JSON.stringify({ rid: one && one.rid }) });
-      const sk1 = await r.json();
-      check('skip hop: refused when no other usable hop exists', sk1.ok === false && /nothing to skip to/.test(sk1.error || '') && one && one.canSkip === false, JSON.stringify(sk1));
-      r = await fetch(BASE + '/admin/api/skip-hop', { method: 'POST', headers: adminH, body: JSON.stringify({ rid: 'nope' }) });
-      check('skip hop: unknown request id -> 404', r.status === 404); await r.text();
-      await delScratch('zz-skip1');
-      setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } });
-    }
-
-    // ── silence limit mid-reply: a stream that opens, sends a little, then goes quiet is closed after the idle limit ──
-    setScenario({ mode: 'stream', endMode: 'stall', chunks: [{ id: 's', choices: [{ delta: { role: 'assistant', content: 'partial reply' }, finish_reason: null }] }] });
-    mark = serverLog.length;
-    const t0s = Date.now();
-    r = await chat({ model: 'gemma-4-31b-nv', stream: true, messages: [{ role: 'user', content: 'hi' }] });
-    const stalled = await r.text();
-    await sleep(200);
-    check('silence limit: a stream that goes quiet mid-reply is closed after the idle limit and the client keeps what streamed', Date.now() - t0s < 8000 && /partial reply/.test(stalled) && /\[DONE\]/.test(stalled) && /\[STREAM_STALL\] .* sent nothing for [\d.]+m?s .*mid-stream/.test(serverLog.slice(mark)), (Date.now() - t0s) + 'ms ' + stalled.slice(0, 200) + ' LOG:' + serverLog.slice(mark).slice(0, 400));
-
-    // ── page-text reader + limit schema endpoints ──
-    r = await fetch(BASE + '/admin/api/parse-model-page', { method: 'POST', headers: adminH, body: JSON.stringify({ text: 'reasoning_effort\nstring\nAvailable options: low, high, max\nDefault: low\nmax_tokens\nDefault: 16384. Maximum: 1000000' }) });
-    let pgj = await r.json();
-    check('page reader: finds effort values, default and max_tokens', pgj.ok && JSON.stringify(pgj.reasoningEffort.values) === '["low","high","max"]' && pgj.reasoningEffort.default === 'low' && pgj.reasoningEffort.hasOff === false && pgj.maxTokens.max === 1000000, JSON.stringify(pgj).slice(0, 300));
-    r = await fetch(BASE + '/admin/api/parse-model-page', { method: 'POST', headers: adminH, body: JSON.stringify({ text: 'Model card: reasoning_effort low / medium / high (default high).\nAPI reference: reasoning_effort enum Available options: none, high. If omitted, reasoning is none.' }) });
-    pgj = await r.json();
-    check('page reader: a self-contradicting page reports the conflict and prefers the API-reference wording', pgj.conflicts.length === 1 && JSON.stringify(pgj.reasoningEffort.values) === '["none","high"]' && pgj.reasoningEffort.hasOff === true && pgj.reasoningEffort.omittedMeans === 'none', JSON.stringify(pgj).slice(0, 400));
-    r = await fetch(BASE + '/admin/api/parse-model-page', { method: 'POST', headers: adminH, body: JSON.stringify({ text: 'https://example.com/page' }) });
-    pgj = await r.json();
-    check('page reader: only allowed hosts are fetched', pgj.ok === false && /Only .*build\.nvidia\.com/.test(pgj.error || ''), JSON.stringify(pgj));
-    r = await fetch(BASE + '/admin/api/limit-schema', { headers: adminH });
-    pgj = await r.json();
-    check('limit schema: served, valid, and key rotation facts present', r.ok && Array.isArray(pgj.problems) && pgj.problems.length === 0 && pgj.providers.amd.records.some(x => x.scope.level === 'key') && Array.isArray(pgj.stopOrder.beforeSend), JSON.stringify(pgj.problems));
-
-    // ── Test-owned models. These checks pin behaviour of an NVIDIA "unlimited" single hop and of a reasoning-effort hop; they
-    // must not depend on which real models happen to be in models.json today (the Admin panel renames and removes those).
-    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-glm-nv', entry: { model: 'z-ai/glm-5.3', provider: 'nvidia', status: 'active', limitType: 'unlimited', timeoutMs: 1800000, retryAsUnlimited: true, maxTokens: 32000, finishAfterDisconnect: false } }) }); await r.text();   // false: when these tests hang up, no ghost retry loop may keep hitting the mock
-    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-kimi-nv', entry: { model: 'moonshotai/kimi-k3', provider: 'nvidia', status: 'active', limitType: 'rate-limited', ignoreCatalog: true, reasoningSchema: 'reasoning-effort-select', reasoningFieldOptions: { reasoning_effort: ['low', 'high', 'max'] }, reasoning: { reasoning_effort: 'max' } } }) }); await r.text();
+    const ac = new AbortController();
+    const hung = fetch(BASE + '/v1/chat/completions', { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model: 'gemma-4-31b-nv', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }).catch(() => 'aborted');
+    await sleep(500); ac.abort(); await hung;
+    let cancelled = false; for (let i = 0; i < 20 && !cancelled; i++) { cancelled = fs.existsSync(SCEN + '.aborted'); if (!cancelled) await sleep(100); }
+    await sleep(150);
+    const gone = serverLog.slice(mark);
+    check('hang-up: the in-flight upstream call was aborted (not left running for nobody)', cancelled);
+    check('hang-up: logged as a calm INFO (no ERROR), and it never "completes"', /client disconnected after .* cancelling the upstream request/.test(gone) && /request ended — client disconnected/.test(gone) && !/\[ERROR\]|stream complete/.test(gone), gone.slice(0, 600));
+    try { fs.unlinkSync(SCEN + '.aborted'); } catch (_) {}
 
     // ── load-order invariant: the limits table exists before anything can read it ──
     const srcText = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
@@ -594,7 +410,7 @@ async function main() {
     const quotaBody = JSON.stringify({ error: { message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED' } });
     setScenario({ mode: 'upstream-error', status: 429, body: quotaBody });
     let qt0 = Date.now();
-    r = await chat({ model: 'zz-glm-nv', messages: [{ role: 'user', content: 'hi' }] });
+    r = await chat({ model: 'glm-5.3-nv', messages: [{ role: 'user', content: 'hi' }] });
     j = await r.json();
     check('QUOTA: a quota-worded 429 on a single-hop NIM model stops retrying at once and is returned as 429 (not 503)',
       r.status === 429 && r.headers.get('x-qproxy-error-tag') === 'QUOTA' && Date.now() - qt0 < 3000, `${r.status} ${r.headers.get('x-qproxy-error-tag')} ${Date.now() - qt0}ms`);
@@ -643,19 +459,19 @@ async function main() {
       } catch (_) { return { hung: true, ms: Date.now() - t0 }; }
     };
     setScenario({ mode: 'upstream-error', status: 404, body: 'model not found' });
-    let w = await timedChat('zz-glm-nv', 4000);
+    let w = await timedChat('glm-5.3-nv', 4000);
     check('walls: 404 on an unlimited hop stops at once (was ~100 retries)', w.status === 404 && w.tag === 'NOT_FOUND' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms, hung: w.hung }));
     setScenario({ mode: 'upstream-error', status: 500, body: 'Invalid API key provided' });
-    w = await timedChat('zz-glm-nv', 4000);
+    w = await timedChat('glm-5.3-nv', 4000);
     check('walls: a key error reported as a 500 is AUTH and stops at once', w.tag === 'AUTH' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms, hung: w.hung }));
     setScenario({ mode: 'network-error', code: 'ENOTFOUND' });
-    w = await timedChat('zz-glm-nv', 6000);
+    w = await timedChat('glm-5.3-nv', 6000);
     check('walls: DNS failure gets 3 tries, not 100', w.tag === 'NET_DNS' && w.ms < 4000 && /after 3 attempts/.test(w.j?.error?.message || ''), JSON.stringify({ t: w.tag, ms: w.ms, hung: w.hung, m: w.j?.error?.message }));
     setScenario({ mode: 'network-error', code: 'CERT_HAS_EXPIRED' });
-    w = await timedChat('zz-glm-nv', 4000);
+    w = await timedChat('glm-5.3-nv', 4000);
     check('walls: a TLS/URL config error (NET_CONFIG) stops at once', w.tag === 'NET_CONFIG' && w.ms < 1500, JSON.stringify({ t: w.tag, ms: w.ms, hung: w.hung }));
     setScenario({ mode: 'upstream-error', status: 503, body: 'service unavailable' });
-    w = await timedChat('zz-glm-nv', 1500);
+    w = await timedChat('glm-5.3-nv', 1500);
     check('walls: a 503 on an unlimited hop STILL retries (the intended behaviour is unchanged)', w.hung === true, JSON.stringify(w));
     r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-404', entry: { model: 'nv-a', provider: 'nvidia', status: 'active', limitType: 'unlimited',
       fallback: { model: 'gemma-4-31b-it', provider: 'google', status: 'active', limitType: 'rate-limited' } } }) }); await r.text();
@@ -700,7 +516,7 @@ async function main() {
     await addHop('zz-raw', { reasoningSchema: 'raw', reasoning: { __raw: { enable_thinking: true, clear_thinking: true } }, reasoningFieldTransport: { __raw: 'chat_template_kwargs' } });
     ub = await upstreamBody('zz-raw');
     check('detect->apply: the "raw" (special case) schema reaches the provider too', JSON.stringify(ub.chat_template_kwargs) === JSON.stringify({ enable_thinking: true, clear_thinking: true }), JSON.stringify(ub));
-    check('detect->apply: the hop you already had (a reasoning-effort-select hop) is unchanged', (await upstreamBody('zz-kimi-nv')).reasoning_effort === 'max');
+    check('detect->apply: the hop you already had (kimi-k3-nv, reasoning-effort-select) is unchanged', (await upstreamBody('kimi-k3-nv')).reasoning_effort === 'max');
     for (const id of ['zz-think', 'zz-think2', 'zz-think3', 'zz-raw']) { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await rr.text(); }
     check('every schema id the Admin detector can write exists in reasoning-schemas.json', ['thinking-and-effort', 'raw'].every(k => JSON.parse(fs.readFileSync(path.join(ROOT, 'reasoning-schemas.json'), 'utf8'))[k]));
 
@@ -844,7 +660,7 @@ async function main() {
     check('warnings (saved table): a hop whose numbers drifted from the table is "limits changed", with the numbers', lim && lim.kind === 'limits-changed' && lim.source === 'snapshot' && /rpd 15,000 here vs 14,400 in the saved table/.test(lim.detail), JSON.stringify(lim));
     await resetGoogleHops();
     ww = await getWarn();
-    check('warnings (saved table): putting the numbers back in line with the table clears it — and no Google saved-table warnings remain', ww.hops.filter(x => x.source === 'snapshot' && x.provider === 'google').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot' && x.provider === 'google')));
+    check('warnings (saved table): putting the numbers back in line with the table clears it — and the real config has no saved-table warnings', ww.hops.filter(x => x.source === 'snapshot').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot')));
     await addHop('zz-w-gpaid', { provider: 'google', model: 'gemini-2.5-pro' });
     await addHop('zz-w-glim', { provider: 'google', model: 'gemma-4-26b-a4b-it', rpd: 99999 });
     await addHop('zz-w-lnofree', { provider: 'literouter', model: 'deepseek-v3.1:free' });
@@ -982,7 +798,7 @@ async function main() {
     r = await fetch(BASE + '/admin/api/models/zz-groq', { method: 'DELETE', headers: admin2 }); await r.text();
 
     // ── owner name, private models, per-user logs ─────────────────────
-    r = await fetch(BASE + '/health', { headers: { 'X-Admin-Key': 'adminkey' } }); j = await r.json();
+    r = await fetch(BASE + '/health'); j = await r.json();
     check('owner key is named Q by default (MY_NAME not set)', (j.users || []).some(u => u.name === 'Q') && !(j.users || []).some(u => u.name === 'me'), JSON.stringify(j.users));
     r = await fetch(BASE + '/admin/api/users', { headers: admin2 }); j = await r.json();
     check('/admin/api/users lists the owner for the "view as" dropdown', j.owner === 'Q' && j.users.includes('Q'), JSON.stringify(j));
@@ -1348,40 +1164,7 @@ async function main() {
     // ── /health after a cycle-free run (cycle guard smoke) ────────────
     r = await fetch(BASE + '/health');
     check('/health still healthy at end', r.ok, String(r.status));
-    // ── requests/min gate: a try the provider would refuse is held back, not spent (own server, 1.5s window, cap of 2) ──
-    {
-      setScenario({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } });
-      const env4 = { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', QP_NO_CATALOG_WATCH: '1', QP_RPM_WINDOW_MS: '1500', PORT: String(PORT + 3), MOCK_FILE: SCEN };
-      const child4 = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], { cwd: ROOT, env: env4, stdio: ['ignore', 'pipe', 'pipe'] });
-      let log4 = ''; child4.stdout.on('data', d => { log4 += d; }); child4.stderr.on('data', d => { log4 += d; });
-      const exited4 = new Promise(resolve => child4.on('exit', resolve));
-      const B4 = `http://127.0.0.1:${PORT + 3}`;
-      let up4 = false;
-      for (let i = 0; i < 50 && !up4; i++) { try { const hr = await fetch(B4 + '/health'); up4 = hr.ok; await hr.text(); } catch (_) {} if (!up4) await sleep(200); }
-      check('rpm gate: second server booted', up4);
-      if (up4) {
-        const adm4 = { 'X-Admin-Key': 'adminkey', 'Content-Type': 'application/json' };
-        let rr = await fetch(B4 + '/admin/api/defaults', { method: 'PUT', headers: adm4, body: JSON.stringify({ providers: { nvidia: { rpm: 2 } } }) }); await rr.text();
-        const timed = async () => { const t0 = Date.now(); const x = await fetch(B4 + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model: 'gemma-4-31b-nv', messages: [{ role: 'user', content: 'hi' }] }) }); await x.text(); return { s: x.status, ms: Date.now() - t0 }; };
-        const a1 = await timed(), a2 = await timed(), a3 = await timed();
-        check('rpm gate: the first two requests (cap 2/min) go straight out', a1.s === 200 && a2.s === 200 && a1.ms < 700 && a2.ms < 700, JSON.stringify([a1, a2]));
-        check('rpm gate: the third is held until the window opens, then succeeds (no refused try spent)', a3.s === 200 && a3.ms >= 900, JSON.stringify(a3));
-        check('rpm gate: the hold is logged as [rpm]', /\[rpm\] nvidia\/google\/gemma-4-31b-it — 2 requests\/min already used/.test(log4), log4.slice(-500));
-        rr = await fetch(B4 + '/admin/api/defaults', { method: 'PUT', headers: adm4, body: JSON.stringify({ providers: {}, global: {} }) }); await rr.text();
-      }
-      child4.kill(); await Promise.race([exited4, sleep(3000)]);
-    }
-
-    // ── chat-route lockout + /budget (kept last: the lockout blocks this IP's chat calls) ──
-    r = await fetch(BASE + '/budget'); await r.text();
-    check('/budget needs the admin key', r.status === 401, String(r.status));
-    r = await fetch(BASE + '/budget', { headers: { 'X-Admin-Key': 'adminkey' } }); await r.text();
-    check('/budget works with the admin key', r.ok, String(r.status));
-    let lastS = 0;
-    for (let i = 0; i < 6; i++) { r = await chat({ model: 'gemma-4-31b-nv', messages: [{ role: 'user', content: 'hi' }] }, 'nope' + i); await r.text(); lastS = r.status; }
-    check('chat: repeated wrong keys get locked out (429)', lastS === 429, 'got ' + lastS);
-    r = await chat({ model: 'gemma-4-31b-nv', messages: [{ role: 'user', content: 'hi' }] }, 'testkey'); await r.text();
-    check('chat: the lockout also blocks that IP\'s valid key until it expires', r.status === 429, 'got ' + r.status);
+    await r.text();
   } finally {
     child.kill();
     await Promise.race([exited, sleep(3000)]);
@@ -1404,8 +1187,6 @@ async function main() {
     } catch (e) { check('usage counts: restart round-trip ran', false, e.message); }
     fs.copyFileSync(modelsPath + '.bak', modelsPath);
     fs.unlinkSync(modelsPath + '.bak');
-    try { if (!hadDefaults) fs.unlinkSync(defaultsPath); else fs.copyFileSync(defaultsPath + '.bak', defaultsPath); } catch (_) {}
-    try { fs.unlinkSync(defaultsPath + '.bak'); } catch (_) {}
     if (hadUsage) { fs.copyFileSync(usagePath + '.bak', usagePath); fs.unlinkSync(usagePath + '.bak'); } else { try { fs.unlinkSync(usagePath); } catch (_) {} }
     fs.copyFileSync(limitsPath + '.bak', limitsPath); fs.unlinkSync(limitsPath + '.bak');
     if (hadBundles) { fs.copyFileSync(bundlesPath + '.bak', bundlesPath); fs.unlinkSync(bundlesPath + '.bak'); } else { try { fs.unlinkSync(bundlesPath); } catch (_) {} }

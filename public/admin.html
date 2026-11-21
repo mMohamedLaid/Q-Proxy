@@ -793,19 +793,7 @@
         <button type="button" class="btn-secondary btn-danger push" id="log-clear-btn">Clear</button>
       </div>
     </div>
-    <div id="inflight-strip" class="admin-only" style="margin:8px 0;"></div>
     <div class="logs-view" id="logs-view"></div>
-  </section>
-
-  <section class="admin-only" id="defaults-section">
-    <div class="section-head"><h2>Defaults</h2><span class="count">used when a hop's own field is blank</span></div>
-    <div class="acct-hint" style="margin-bottom:8px;">Blank = keep the built-in value (shown in grey). A value on a single hop always wins. The last row applies to any provider that has no row of its own, including ones you add later. To switch the NVIDIA requests/min cap off, set it above the "huge" requests/min value.</div>
-    <div id="defaults-body"></div>
-    <div class="row mt8">
-      <button type="button" class="btn-primary" id="defaults-save">Save defaults</button>
-      <button type="button" class="btn-secondary" id="defaults-reset">Clear all my values</button>
-      <span class="sync-result-note" id="defaults-status"></span>
-    </div>
   </section>
 
   <section class="admin-only">
@@ -2029,26 +2017,7 @@
     if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(() => { loadLogs(); if (++tick % 12 === 0) { loadLimitsStatus(); loadUserActivity(); } }, 5000);
   }
 
-  // Requests running right now. One that is still waiting for its FIRST output gets a "skip this hop" button
-  // (only offered when another usable hop is behind it).
-  async function loadInflight() {
-    const box = $('#inflight-strip');
-    if (!box || USER_MODE) return;
-    try {
-      const r = await api('/admin/api/inflight');
-      const list = (r.requests || []).filter(x => x.waiting);
-      box.innerHTML = list.map(x => `<div style="font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;">
-        <span>⏳ <code>#${escapeHtml(x.rid)}</code> ${escapeHtml(x.user || '')} · ${escapeHtml(x.hop || x.model)} · waiting ${Math.round(x.ageMs / 1000)}s for first output</span>
-        ${x.canSkip ? `<button type="button" class="btn-secondary" data-skip-rid="${escapeHtml(x.rid)}" title="Stop waiting on this hop and go to the next usable one">⏭ Skip this hop</button>` : '<span style="color:var(--text-faint);">no other usable hop to skip to</span>'}</div>`).join('');
-      box.querySelectorAll('[data-skip-rid]').forEach(b => b.addEventListener('click', async () => {
-        b.disabled = true;
-        try { const out = await api('/admin/api/skip-hop', { method: 'POST', body: { rid: b.dataset.skipRid } }); if (!out.ok) alert(out.error || 'Could not skip.'); } catch (e) { alert(e.message || e); }
-        loadInflight(); loadLogs(true);
-      }));
-    } catch (_) { /* log polling must never break on this */ }
-  }
   async function loadLogs(force) {
-    loadInflight();
     try {
       const qs = [];
       if (logLevels.size) qs.push(`level=${encodeURIComponent([...logLevels].join(','))}`);
@@ -2406,7 +2375,7 @@
   let editingCustomFlag = false; // top-level "custom bundle" flag for the entry being edited
 
   function emptyHop() {
-    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', rpm: '', tpm: '', rpd: '', maxTokens: '', tools: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '', finishAfterDisconnect: '', maxConcurrent: '', idleTimeoutMs: '', basis: '' };
+    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', rpm: '', tpm: '', rpd: '', maxTokens: '', tools: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '' };
   }
 
   function normalizeReasoningForSchema(h) {
@@ -2917,10 +2886,8 @@
         : `<div style="margin-top:8px;"><button type="button" class="btn-secondary" style="padding:3px 10px;font-size:11px;" data-act="detect-values-open" data-idx="${i}" title="Only needed when the docs mention an effort setting in words but their example code does not show it">+ The docs list effort values</button></div>`}
       <div style="margin-top:8px;display:flex;gap:8px;">
         <button type="button" class="btn-secondary" data-act="detect-scan" data-idx="${i}">Scan</button>
-        <button type="button" class="btn-secondary" data-act="detect-readpage" data-idx="${i}" title="Paste the model page's text (API Reference / playground panel / model card) — or a build.nvidia.com link — in the box above, then press this. It reads the effort values, default and max_tokens limits and fills the list for you to check.">📖 Read page text</button>
         <button type="button" class="btn-secondary" data-act="detect-cancel" data-idx="${i}">Close</button>
       </div>
-      ${!h._testOpen && h._detectNote ? `<div class="detect-note" style="font-size:12px;margin-top:8px;">${escapeHtml(h._detectNote)}</div>` : ''}
       ${renderDetectResult(h, i)}
     </div>`;
   }
@@ -2958,11 +2925,7 @@
         reasoningThinkingOff: cur.reasoningThinkingOff === true,
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
         tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', rpm: cur.rpm ?? '', tpm: cur.tpm ?? '', rpd: cur.rpd ?? '', maxTokens: cur.maxTokens ?? '', tools: cur.tools === false ? 'false' : '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
-        retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : '',
-        finishAfterDisconnect: typeof cur.finishAfterDisconnect === 'boolean' ? String(cur.finishAfterDisconnect) : '',
-        basis: ['points', 'tokens', 'both'].includes(cur.basis) ? cur.basis : '',
-        maxConcurrent: cur.maxConcurrent ?? '',
-        idleTimeoutMs: cur.idleTimeoutMs ?? ''
+        retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : ''
       });
       cur = cur.fallback || null;
     }
@@ -3010,11 +2973,6 @@
       if (h.deprecatedOn) entry.deprecatedOn = h.deprecatedOn;
       if (h.retryAsUnlimited === 'true') entry.retryAsUnlimited = true;
       else if (h.retryAsUnlimited === 'false') entry.retryAsUnlimited = false;
-      if (['points', 'tokens', 'both'].includes(h.basis)) entry.basis = h.basis;
-      if (h.finishAfterDisconnect === 'true') entry.finishAfterDisconnect = true;
-      else if (h.finishAfterDisconnect === 'false') entry.finishAfterDisconnect = false;
-      if (h.idleTimeoutMs !== '' && h.idleTimeoutMs != null && Number(h.idleTimeoutMs) > 0) entry.idleTimeoutMs = Math.round(Number(h.idleTimeoutMs));
-      if (h.maxConcurrent !== '' && h.maxConcurrent != null && parseInt(h.maxConcurrent, 10) > 0) entry.maxConcurrent = parseInt(h.maxConcurrent, 10);
       if (result) entry.fallback = result;
       result = entry;
     }
@@ -3382,12 +3340,10 @@
           ${h.provider === 'google' ? `<div class="field"><label>RPM — requests/min (Google, opt.)</label><input type="number" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="blank = not tracked"></div>
           <div class="field"><label>TPM — input tokens/min (Google, opt.)</label><input type="number" data-f="tpm" data-idx="${i}" value="${h.tpm}" placeholder="blank = not tracked"></div>
           <div class="field"><label>RPD — requests/day (Google, opt.)</label><input type="number" data-f="rpd" data-idx="${i}" value="${h.rpd}" placeholder="blank = not tracked"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Google's published per-model limits. Only the ones you fill in are enforced; when one is used up the hop is skipped (next key, then next hop). RPM = requests per minute. TPM = INPUT tokens per minute (max_tokens/output isn't counted; one request bigger than the TPM can never pass). Both reset every minute. RPD = requests per day: once it's used up the model is out until midnight Pacific Time, whatever RPM/TPM say.</div></div>` : ''}
-          <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div>${(Number(h.maxTokens) > 0 && Number(h.tpmLimit) > 0 && Number(h.maxTokens) >= Number(h.tpmLimit)) ? `<div style="font-size:11px;color:#d9822b;margin-top:4px;">⚠ Floor (${Number(h.maxTokens).toLocaleString()}) is ≥ Max request size (${Number(h.tpmLimit).toLocaleString()}). Prompt + max_tokens will always exceed the cap, so every request is skipped (NO_HOP). Raise Max request size or lower the floor.</div>` : ''}</div>
+          <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div></div>
           <div class="field"><label>Tool calling</label><select data-f="tools" data-idx="${i}"><option value="" ${h.tools === '' ? 'selected' : ''}>Allowed (default)</option><option value="false" ${h.tools === 'false' ? 'selected' : ''}>Not supported — skip this hop for tool requests</option></select></div>
           ${h.provider === 'literouter' ? `<div class="field"><label>Daily cap (opt., Literouter)</label><input type="number" data-f="dailyCap" data-idx="${i}" value="${h.dailyCap}" placeholder="blank = unlimited"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Literouter's own per-model daily free-request cap (e.g. 5 or 30). Leave blank if Literouter lists it as unlimited — this drives the per-key rotation and the usage bars below, not the request itself.</div></div>` : ''}
-          ${h.provider === 'nvidia'
-            ? `<div class="field"><label title="How long one attempt may sit idle before it is cut. Stored as milliseconds; NVIDIA hops are entered in minutes.">Timeout, minutes (opt.)</label><input type="number" min="0.5" step="0.5" data-f="timeoutMs" data-unit="min" data-idx="${i}" value="${h.timeoutMs === '' || h.timeoutMs == null ? '' : +(Number(h.timeoutMs) / 60000).toFixed(3)}" placeholder="${defHint(h.provider, 'timeoutMs', true)}"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Blank = the default for this provider (${defHint(h.provider, 'timeoutMs', true)}) — change it in Defaults.</div></div>`
-            : `<div class="field"><label title="How long one attempt may sit idle before it is cut.">Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}" placeholder="${defHint(h.provider, 'timeoutMs', false)}"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Blank = the default for this provider (${defHint(h.provider, 'timeoutMs', false)}) — change it in Defaults.</div></div>`}
+          <div class="field"><label>Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}"></div>
           <div class="field"><label>Free until (opt.)</label><input type="date" data-f="freeUntil" data-idx="${i}" value="${h.freeUntil}"></div>
           <div class="field"><label>Deprecated on (opt.)</label><input type="date" data-f="deprecatedOn" data-idx="${i}" value="${h.deprecatedOn}"></div>
           <div class="field" style="grid-column:1 / -1;">
@@ -3399,27 +3355,6 @@
             </select>
             <div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Only use this to override the default — e.g. an nvidia model you've found is actually capped, so it shouldn't get the 100x-retry treatment.</div>
           </div>
-          ${h.provider !== 'google' ? `<div class="field"><label title="Cap on requests per minute for this provider account. Checked BEFORE sending, so a refused try is never spent. Blank = the default for this provider (Admin → Defaults).">Requests/min cap (opt.)</label><input type="number" min="1" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="${defHint(h.provider, 'rpm', false, 'blank = not tracked')}"></div>` : ''}
-          <div class="field"><label title="What this hop's quota is counted in. Points = every request is one try, tokens never matter. Tokens = per-minute tokens bind. Both = request counts and per-minute tokens both bind (Google AI Studio gemma).">Limit basis (opt.)</label>
-            <select data-f="basis" data-idx="${i}">
-              <option value="" ${h.basis === '' ? 'selected' : ''}>Auto (from the limits above)</option>
-              <option value="points" ${h.basis === 'points' ? 'selected' : ''}>Points — requests are what is counted</option>
-              <option value="tokens" ${h.basis === 'tokens' ? 'selected' : ''}>Tokens — tokens per minute bind</option>
-              <option value="both" ${h.basis === 'both' ? 'selected' : ''}>Both — requests and tokens bind</option>
-            </select>
-          </div>
-          <div class="field">
-            <label title="If the client disconnects (closed tab, lost internet) while this hop is answering, keep generating and write the whole reply to the log so it can be pasted back in.">Finish after disconnect (opt.)</label>
-            <select data-f="finishAfterDisconnect" data-idx="${i}">
-              <option value="" ${h.finishAfterDisconnect === '' ? 'selected' : ''}>${defFinishLabel(h.provider)}</option>
-              <option value="true" ${h.finishAfterDisconnect === 'true' ? 'selected' : ''}>Force ON — e.g. a "N messages" plan where the request is already spent</option>
-              <option value="false" ${h.finishAfterDisconnect === 'false' ? 'selected' : ''}>Force OFF — cancel upstream when the client leaves</option>
-            </select>
-          </div>
-          ${h.provider === 'nvidia'
-            ? `<div class="field"><label title="Once the reply is streaming: how long it may go silent before the connection is closed. Stored as milliseconds; NVIDIA hops are entered in minutes.">Silence limit mid-reply, minutes (opt.)</label><input type="number" min="0.5" step="0.5" data-f="idleTimeoutMs" data-unit="min" data-idx="${i}" value="${h.idleTimeoutMs === '' || h.idleTimeoutMs == null ? '' : +(Number(h.idleTimeoutMs) / 60000).toFixed(3)}" placeholder="${defHint(h.provider, 'idleTimeoutMs', true)}"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Separate from the timeout above, which is the wait for the FIRST output.</div></div>`
-            : `<div class="field"><label title="Once the reply is streaming: how long it may go silent before the connection is closed.">Silence limit mid-reply, ms (opt.)</label><input type="number" data-f="idleTimeoutMs" data-idx="${i}" value="${h.idleTimeoutMs}" placeholder="${defHint(h.provider, 'idleTimeoutMs', false)}"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Separate from the timeout above, which is the wait for the FIRST output.</div></div>`}
-          <div class="field"><label title="Provider allows only this many generations at once. 1 = a ghost generation would block your retry, so finish-after-disconnect is never used.">Max concurrent generations (opt.)</label><input type="number" min="1" data-f="maxConcurrent" data-idx="${i}" value="${h.maxConcurrent}" placeholder="blank = no known limit"></div>
         </div>
         <div class="field"><label>Notes (opt.)</label><input type="text" data-f="notes" data-idx="${i}" value="${escapeHtml(h.notes)}"></div>
       </div>`;
@@ -3453,10 +3388,6 @@
           tpmLimit: src.tpmLimit ?? '', dailyCap: src.dailyCap ?? '', rpm: src.rpm ?? '', tpm: src.tpm ?? '', rpd: src.rpd ?? '', maxTokens: src.maxTokens ?? '', tools: src.tools === false ? 'false' : '', timeoutMs: src.timeoutMs ?? '',
           freeUntil: src.freeUntil || '', deprecatedOn: src.deprecatedOn || '',
           retryAsUnlimited: typeof src.retryAsUnlimited === 'boolean' ? String(src.retryAsUnlimited) : '',
-          finishAfterDisconnect: typeof src.finishAfterDisconnect === 'boolean' ? String(src.finishAfterDisconnect) : '',
-          basis: ['points', 'tokens', 'both'].includes(src.basis) ? src.basis : '',
-          maxConcurrent: src.maxConcurrent ?? '',
-          idleTimeoutMs: src.idleTimeoutMs ?? '',
           notes
         };
         normalizeReasoningForSchema(hopState[idx]);
@@ -3473,7 +3404,7 @@
           renderHopList();
           return;
         }
-        hopState[idx][field] = (e.target.dataset.unit === 'min' && e.target.value !== '') ? Math.round(parseFloat(e.target.value) * 60000) : e.target.value;
+        hopState[idx][field] = e.target.value;
       });
       el.addEventListener('change', e => {
         const idx = +e.target.dataset.idx;
@@ -3483,11 +3414,11 @@
           renderHopList();
           return;
         }
-        hopState[idx][field] = (e.target.dataset.unit === 'min' && e.target.value !== '') ? Math.round(parseFloat(e.target.value) * 60000) : e.target.value;
+        hopState[idx][field] = e.target.value;
         staleCfgTest(idx);
         // Daily cap only applies to (and is only shown for) literouter hops —
         // re-render so switching provider in/out of literouter shows/hides it.
-        if (field === 'provider' || field === 'tpmLimit' || field === 'maxTokens') renderHopList();
+        if (field === 'provider') renderHopList();
       });
     });
 
@@ -3655,36 +3586,6 @@
       h._detectResult = detectReasoningFromExample(h._detectInput, h._detectValues);
       renderHopList();
     }));
-    $$('#hop-list [data-act="detect-readpage"]').forEach(btn => btn.addEventListener('click', async e => {
-      const idx = +e.currentTarget.dataset.idx;
-      const h = hopState[idx];
-      const text = String(h._detectInput || '').trim();
-      if (!text) { h._detectNote = 'Paste the page text (or a build.nvidia.com link) into the box first.'; renderHopList(); return; }
-      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Reading…';
-      try {
-        const r = await api('/admin/api/parse-model-page', { method: 'POST', body: { text } });
-        if (!r.ok) { h._detectNote = '⚠ ' + (r.error || 'Could not read that.'); }
-        else {
-          const bits = [];
-          const re = r.reasoningEffort;
-          if (re && re.values && re.values.length) {
-            h._detectValues = re.values.join(', '); h._detectValuesOpen = true;
-            bits.push(`Effort values: ${re.values.join(', ')}${re.hasOff ? ' (includes an off value)' : ' (no off value listed)'}`);
-            if (re.default) bits.push(`default: ${re.default}`);
-            if (re.omittedMeans) bits.push(`if omitted: ${re.omittedMeans}`);
-            if (re.partial) bits.push('only a sample value was visible');
-          } else bits.push('No effort values found');
-          if (r.maxTokens) bits.push(`max_tokens ${[r.maxTokens.default ? 'default ' + r.maxTokens.default : '', r.maxTokens.max ? 'max ' + r.maxTokens.max : ''].filter(Boolean).join(', ')}`);
-          if (r.temperature) bits.push(`temperature ${r.temperature.min != null ? r.temperature.min + '–' + r.temperature.max : ''}${r.temperature.default != null ? ' default ' + r.temperature.default : ''}`);
-          let note = '📖 Read ' + r.source + ': ' + bits.join(' · ') + '. Check these against the page, then press Scan.';
-          if ((r.conflicts || []).length) note += ' ⚠ The page contradicts itself — ' + r.conflicts.map(c => c.what + ': ' + JSON.stringify(c.a ? c.a.values : c.values) + (c.b ? ' vs ' + JSON.stringify(c.b.values) : '')).join('; ') + '. The API-reference wording was used; verify.';
-          if (r.thinkingControl) note += ` Thinking control spotted: ${r.thinkingControl.key}.`;
-          if ((r.notes || []).length) note += ' ' + r.notes.join(' ');
-          h._detectNote = note;
-        }
-      } catch (err) { h._detectNote = '⚠ ' + (err && err.message || err); }
-      renderHopList();
-    }));
     $$('#hop-list [data-act="detect-values-open"]').forEach(btn => btn.addEventListener('click', e => {
       hopState[+e.currentTarget.dataset.idx]._detectValuesOpen = true;
       renderHopList();
@@ -3810,8 +3711,6 @@
   }
 
   $('#add-form-toggle').addEventListener('click', () => openForm(null, null));
-  $('#defaults-save').addEventListener('click', () => saveDefaultsNow(collectDefaults(), 'Defaults saved'));
-  $('#defaults-reset').addEventListener('click', () => { if (confirm('Clear every value you set in Defaults and go back to the built-in ones?')) saveDefaultsNow({ providers: {}, global: {} }, 'Back to the built-in defaults'); });
 
   // ---------- load ----------
   let githubSyncEnabled = true; // optimistic until checked, so we don't flash a false warning
@@ -3939,70 +3838,6 @@
     $('#acct-base').textContent = location.origin + '/v1';
   }
 
-  // ── Defaults (Admin → Defaults): the grey hints in the hop form read from here ──
-  let defaultsData = null;
-  function defHint(provider, key, minutes, none) {
-    const e = defaultsData && defaultsData.effective && defaultsData.effective.providers;
-    const v = e && (e[provider] || e['*']) ? (e[provider] || e['*'])[key] : null;
-    if (v == null) return none || '';
-    return minutes ? `${+(v / 60000).toFixed(3)} (default)` : (key === 'rpm' ? `${v} (default)` : `${v} (default, ${+(v / 60000).toFixed(2)} min)`);
-  }
-  function defFinishLabel(provider) {
-    const e = defaultsData && defaultsData.effective && defaultsData.effective.providers;
-    const v = e && (e[provider] || e['*']) ? (e[provider] || e['*']).finishAfterDisconnect : null;
-    return v === true ? 'Default: ON for this provider' : v === false ? 'Default: OFF for this provider' : 'Default: automatic (on for points-based hops, off where tokens bind)';
-  }
-  const DEF_FIELDS = [['timeoutMs', 'First-output wait, minutes', 'min'], ['idleTimeoutMs', 'Silence limit mid-reply, minutes', 'min'], ['rpm', 'Requests/min cap', 'num'], ['finishAfterDisconnect', 'Finish after disconnect', 'bool']];
-  const DEF_GLOBALS = [['patientTimeoutMs', 'Patient wait (nothing else to fall back to), minutes', 'min'], ['detachMaxMs', 'Finish-after-disconnect safety cap, minutes', 'min'], ['bigRpd', '"Huge" requests/day (counts as no limit)', 'num'], ['bigRpm', '"Huge" requests/min', 'num'], ['bigTpm', '"Huge" tokens/min', 'num']];
-  function renderDefaults() {
-    const box = $('#defaults-body'); if (!box || !defaultsData) return;
-    const d = defaultsData, saved = d.saved || { providers: {}, global: {} };
-    const names = ['*', ...(d.providers || [])];
-    const inheritFor = (prov, k) => {
-      const b = d.builtin.providers;
-      if (prov === '*') return b['*'] ? b['*'][k] : undefined;
-      return (b[prov] && b[prov][k] !== undefined) ? b[prov][k] : d.effective.providers['*'][k];
-    };
-    const cell = (prov, [k, , kind]) => {
-      const mine = (saved.providers[prov] || {})[k], inh = inheritFor(prov, k);
-      if (kind === 'bool') return `<td><select data-dp="${escapeHtml(prov)}" data-dk="${k}"><option value="" ${mine === undefined ? 'selected' : ''}>${inh === true ? 'Default: on' : inh === false ? 'Default: off' : 'Auto (from basis)'}</option><option value="true" ${mine === true ? 'selected' : ''}>On</option><option value="false" ${mine === false ? 'selected' : ''}>Off</option></select></td>`;
-      const val = mine === undefined ? '' : (kind === 'min' ? +(mine / 60000).toFixed(3) : mine);
-      const ph = inh == null ? 'none' : (kind === 'min' ? +(inh / 60000).toFixed(3) : inh);
-      return `<td><input type="number" min="0" step="${kind === 'min' ? '0.5' : '1'}" data-dp="${escapeHtml(prov)}" data-dk="${k}" data-kind="${kind}" value="${val}" placeholder="${ph}" style="width:7.5em;"></td>`;
-    };
-    box.innerHTML = `<div style="overflow-x:auto;"><table class="usage-table"><thead><tr><th>Provider</th>${DEF_FIELDS.map(f => `<th>${escapeHtml(f[1])}</th>`).join('')}</tr></thead><tbody>${names.map(prov => `<tr><td><b>${prov === '*' ? 'Every other / new provider' : escapeHtml(PROVIDER_LABELS[prov] || prov)}</b>${prov === '*' ? '' : `<br><code style="font-size:11px;">${escapeHtml(prov)}</code>`}</td>${DEF_FIELDS.map(f => cell(prov, f)).join('')}</tr>`).join('')}</tbody></table></div>
-      <h3 style="margin:14px 0 6px;font-size:13px;">Global</h3>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;">${DEF_GLOBALS.map(([k, label, kind]) => { const mine = (saved.global || {})[k], inh = d.builtin.global[k]; return `<label style="font-size:12px;display:flex;flex-direction:column;gap:4px;">${escapeHtml(label)}<input type="number" min="0" step="${kind === 'min' ? '0.5' : '1'}" data-dg="${k}" data-kind="${kind}" value="${mine === undefined ? '' : (kind === 'min' ? +(mine / 60000).toFixed(3) : mine)}" placeholder="${kind === 'min' ? +(inh / 60000).toFixed(3) : inh}" style="width:12em;"></label>`; }).join('')}</div>`;
-  }
-  function collectDefaults() {
-    const out = { providers: {}, global: {} };
-    $$('#defaults-body [data-dp]').forEach(el => {
-      const prov = el.dataset.dp, k = el.dataset.dk;
-      let v = el.value;
-      if (v === '') return;
-      if (el.tagName === 'SELECT') v = v === 'true';
-      else { v = Number(v); if (el.dataset.kind === 'min') v = Math.round(v * 60000); }
-      (out.providers[prov] = out.providers[prov] || {})[k] = v;
-    });
-    $$('#defaults-body [data-dg]').forEach(el => {
-      if (el.value === '') return;
-      let v = Number(el.value); if (el.dataset.kind === 'min') v = Math.round(v * 60000);
-      out.global[el.dataset.dg] = v;
-    });
-    return out;
-  }
-  async function loadDefaults() {
-    try { defaultsData = await api('/admin/api/defaults'); renderDefaults(); } catch (_) { /* hop-form hints just stay empty */ }
-  }
-  async function saveDefaultsNow(payload, okMsg) {
-    const st = $('#defaults-status'); st.textContent = 'Saving…';
-    try {
-      const r = await api('/admin/api/defaults', { method: 'PUT', body: payload });
-      defaultsData = r; renderDefaults();
-      st.textContent = okMsg + (r.githubSync && r.githubSync.ok ? ' — synced to GitHub.' : r.githubSync && r.githubSync.skipped ? ' — saved here (GitHub sync is not set up, so a restart on a free host can lose it).' : ' — saved here, but the GitHub sync failed.');
-    } catch (e) { st.textContent = '⚠ ' + (e.message || e); }
-  }
-
   async function loadAll() {
     if (USER_MODE) return loadAllUser();
     const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes, logosRes] = await Promise.all([
@@ -4032,7 +3867,6 @@
     await loadUserActivity();
     await loadLogs(true);
     loadLimitsStatus();
-    loadDefaults();
     if ($('#log-auto-refresh').checked) startLogAutoRefresh();
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
   }

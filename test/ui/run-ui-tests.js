@@ -35,13 +35,7 @@ async function until(fn, ms = 4000, step = 50) {
 
 function stageProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qp-ui-'));
-  for (const f of ['server.js', 'limit-schema.js', 'limit-schema.json', 'model-page-parser.js', 'models.json', 'reasoning-schemas.json', 'reasoning-vocab.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
-  // These tests open two specific hops (an effort-select hop and a hop with no reasoning schema). The real models.json is edited live
-  // from the Admin panel and those models get renamed or removed, so the staged copy gets its own fixed copies of them.
-  const stagedModels = JSON.parse(fs.readFileSync(path.join(dir, 'models.json'), 'utf8'));
-  stagedModels['kimi-k3-nv'] = { model: 'moonshotai/kimi-k3', provider: 'nvidia', status: 'active', limitType: 'rate-limited', ignoreCatalog: true, reasoningSchema: 'reasoning-effort-select', reasoningFieldOptions: { reasoning_effort: ['low', 'high', 'max'] }, reasoning: { reasoning_effort: 'max' } };
-  stagedModels['glm-5.3-nv'] = { model: 'z-ai/glm-5.3', provider: 'nvidia', status: 'active', limitType: 'unlimited', timeoutMs: 1800000, retryAsUnlimited: true, maxTokens: 32000 };
-  fs.writeFileSync(path.join(dir, 'models.json'), JSON.stringify(stagedModels, null, 2));
+  for (const f of ['server.js', 'models.json', 'reasoning-schemas.json', 'reasoning-vocab.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'public'), path.join(dir, 'public'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'test'));
   fs.copyFileSync(path.join(ROOT, 'test', 'mock-axios.js'), path.join(dir, 'test', 'mock-axios.js'));
