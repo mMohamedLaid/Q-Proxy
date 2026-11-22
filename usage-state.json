@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T18:16:37.727Z",
+  "savedAt": "2026-11-22T19:05:07.882Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -56,12 +56,12 @@
       "rpdCount": 1
     },
     "models/gemini-3.6-flash|0": {
-      "rpmWindowMinute": 29922851,
-      "rpmCount": 2,
-      "tpmWindowMinute": 29922851,
-      "tpmTokens": 35015,
+      "rpmWindowMinute": 29922904,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29922904,
+      "tpmTokens": 21380,
       "rpdDay": "2026-11-22",
-      "rpdCount": 5
+      "rpdCount": 6
     }
   },
   "googleLastResetDay": "2026-11-22",
@@ -117,12 +117,12 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-22T12:30:36.885Z",
-    "zai": "2026-11-22T12:30:37.497Z",
-    "google": "2026-11-22T12:30:37.697Z",
-    "openrouter": "2026-11-22T12:30:38.767Z",
-    "literouter": "2026-11-22T12:30:39.561Z",
-    "amd": "2026-11-22T12:30:40.779Z"
+    "nvidia": "2026-11-22T18:30:36.823Z",
+    "zai": "2026-11-22T18:30:37.359Z",
+    "google": "2026-11-22T18:30:38.954Z",
+    "openrouter": "2026-11-22T18:30:39.761Z",
+    "literouter": "2026-11-22T18:30:41.462Z",
+    "amd": "2026-11-22T18:30:42.622Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
