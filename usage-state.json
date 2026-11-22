@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T17:57:37.668Z",
+  "savedAt": "2026-11-22T17:58:37.672Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -39,12 +39,12 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29922837,
+      "rpmWindowMinute": 29922838,
       "rpmCount": 1,
-      "tpmWindowMinute": 29922837,
+      "tpmWindowMinute": 29922838,
       "tpmTokens": 14962,
       "rpdDay": "2026-11-22",
-      "rpdCount": 19
+      "rpdCount": 20
     },
     "gemma-4-31b-it|0": {
       "rpmWindowMinute": 29846686,
@@ -164,12 +164,12 @@
       "provider": "google",
       "model": "models/gemini-3.8-flash",
       "count": 7,
-      "errors": 14,
-      "lastUsed": "2026-11-22T17:55:28.017Z",
-      "lastStatus": 524,
-      "skips": 14,
-      "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 524",
-      "lastSkipAt": "2026-11-22T17:55:28.017Z"
+      "errors": 16,
+      "lastUsed": "2026-11-22T17:58:15.324Z",
+      "lastStatus": 503,
+      "skips": 18,
+      "lastSkipReason": "google-limit:rpd:20/20",
+      "lastSkipAt": "2026-11-22T17:58:34.259Z"
     },
     "literouter|glm-5.2:free": {
       "provider": "literouter",
