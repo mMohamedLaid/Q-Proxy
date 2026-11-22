@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T15:39:37.289Z",
+  "savedAt": "2026-11-22T15:44:37.302Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -163,10 +163,10 @@
     "google|models/gemini-3.8-flash": {
       "provider": "google",
       "model": "models/gemini-3.8-flash",
-      "count": 0,
+      "count": 1,
       "errors": 6,
-      "lastUsed": "2026-11-22T15:39:31.830Z",
-      "lastStatus": 503,
+      "lastUsed": "2026-11-22T15:41:07.663Z",
+      "lastStatus": "ok",
       "skips": 6,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
       "lastSkipAt": "2026-11-22T15:39:31.830Z"
