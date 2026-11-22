@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T16:59:37.495Z",
+  "savedAt": "2026-11-22T17:47:07.637Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -39,12 +39,12 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29922707,
-      "rpmCount": 3,
-      "tpmWindowMinute": 29922707,
-      "tpmTokens": 15879,
+      "rpmWindowMinute": 29922826,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29922826,
+      "tpmTokens": 9592,
       "rpdDay": "2026-11-22",
-      "rpdCount": 7
+      "rpdCount": 8
     },
     "gemma-4-31b-it|0": {
       "rpmWindowMinute": 29846686,
