@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T17:58:37.672Z",
+  "savedAt": "2026-11-22T18:03:07.687Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -35,14 +35,15 @@
   ],
   "openrouterKeyIndex": 0,
   "googleModelCursor": {
-    "models/gemini-3.8-flash": 0
+    "models/gemini-3.8-flash": 0,
+    "models/gemini-3.6-flash": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29922838,
-      "rpmCount": 1,
-      "tpmWindowMinute": 29922838,
-      "tpmTokens": 14962,
+      "rpmWindowMinute": 29922839,
+      "rpmCount": 0,
+      "tpmWindowMinute": 29922839,
+      "tpmTokens": 0,
       "rpdDay": "2026-11-22",
       "rpdCount": 20
     },
@@ -52,6 +53,14 @@
       "tpmWindowMinute": 29846686,
       "tpmTokens": 3266,
       "rpdDay": "2026-09-30",
+      "rpdCount": 1
+    },
+    "models/gemini-3.6-flash|0": {
+      "rpmWindowMinute": 29922842,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29922842,
+      "tpmTokens": 13095,
+      "rpdDay": "2026-11-22",
       "rpdCount": 1
     }
   },
@@ -167,9 +176,9 @@
       "errors": 16,
       "lastUsed": "2026-11-22T17:58:15.324Z",
       "lastStatus": 503,
-      "skips": 18,
+      "skips": 24,
       "lastSkipReason": "google-limit:rpd:20/20",
-      "lastSkipAt": "2026-11-22T17:58:34.259Z"
+      "lastSkipAt": "2026-11-22T17:59:34.714Z"
     },
     "literouter|glm-5.2:free": {
       "provider": "literouter",
