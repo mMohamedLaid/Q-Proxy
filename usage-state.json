@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T19:09:07.895Z",
+  "savedAt": "2026-11-22T19:09:37.896Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -57,11 +57,11 @@
     },
     "models/gemini-3.6-flash|0": {
       "rpmWindowMinute": 29922909,
-      "rpmCount": 1,
+      "rpmCount": 4,
       "tpmWindowMinute": 29922909,
-      "tpmTokens": 28012,
+      "tpmTokens": 118393,
       "rpdDay": "2026-11-22",
-      "rpdCount": 11
+      "rpdCount": 14
     }
   },
   "googleLastResetDay": "2026-11-22",
@@ -249,9 +249,9 @@
     "google|models/gemini-3.6-flash": {
       "provider": "google",
       "model": "models/gemini-3.6-flash",
-      "count": 10,
+      "count": 13,
       "errors": 0,
-      "lastUsed": "2026-11-22T19:09:00.956Z",
+      "lastUsed": "2026-11-22T19:09:34.770Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
