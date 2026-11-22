@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T15:38:37.288Z",
+  "savedAt": "2026-11-22T15:39:37.289Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -39,12 +39,12 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29919650,
-      "rpmCount": 1,
-      "tpmWindowMinute": 29919650,
-      "tpmTokens": 4596,
-      "rpdDay": "2026-11-20",
-      "rpdCount": 1
+      "rpmWindowMinute": 29922699,
+      "rpmCount": 4,
+      "tpmWindowMinute": 29922699,
+      "tpmTokens": 22142,
+      "rpdDay": "2026-11-22",
+      "rpdCount": 4
     },
     "gemma-4-31b-it|0": {
       "rpmWindowMinute": 29846686,
@@ -55,7 +55,7 @@
       "rpdCount": 1
     }
   },
-  "googleLastResetDay": "2026-11-20",
+  "googleLastResetDay": "2026-11-22",
   "googleLimitMismatches": [],
   "hopWarnings": {
     "literouter|gpt-oss-20b:free": {
@@ -164,12 +164,12 @@
       "provider": "google",
       "model": "models/gemini-3.8-flash",
       "count": 0,
-      "errors": 3,
-      "lastUsed": "2026-11-20T12:50:30.304Z",
+      "errors": 6,
+      "lastUsed": "2026-11-22T15:39:31.830Z",
       "lastStatus": 503,
-      "skips": 3,
+      "skips": 6,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-20T12:50:30.305Z"
+      "lastSkipAt": "2026-11-22T15:39:31.830Z"
     },
     "literouter|glm-5.2:free": {
       "provider": "literouter",
