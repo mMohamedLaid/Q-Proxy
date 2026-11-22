@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-22T19:11:37.902Z",
+  "savedAt": "2026-11-22T19:16:37.918Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -40,9 +40,9 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29922839,
+      "rpmWindowMinute": 29922914,
       "rpmCount": 0,
-      "tpmWindowMinute": 29922839,
+      "tpmWindowMinute": 29922914,
       "tpmTokens": 0,
       "rpdDay": "2026-11-22",
       "rpdCount": 20
@@ -56,10 +56,10 @@
       "rpdCount": 1
     },
     "models/gemini-3.6-flash|0": {
-      "rpmWindowMinute": 29922911,
-      "rpmCount": 1,
-      "tpmWindowMinute": 29922911,
-      "tpmTokens": 35563,
+      "rpmWindowMinute": 29922912,
+      "rpmCount": 0,
+      "tpmWindowMinute": 29922912,
+      "tpmTokens": 0,
       "rpdDay": "2026-11-22",
       "rpdCount": 20
     }
@@ -176,9 +176,9 @@
       "errors": 16,
       "lastUsed": "2026-11-22T17:58:15.324Z",
       "lastStatus": 503,
-      "skips": 24,
+      "skips": 35,
       "lastSkipReason": "google-limit:rpd:20/20",
-      "lastSkipAt": "2026-11-22T17:59:34.714Z"
+      "lastSkipAt": "2026-11-22T19:14:31.675Z"
     },
     "literouter|glm-5.2:free": {
       "provider": "literouter",
@@ -253,9 +253,9 @@
       "errors": 0,
       "lastUsed": "2026-11-22T19:11:22.246Z",
       "lastStatus": "ok",
-      "skips": 4,
+      "skips": 11,
       "lastSkipReason": "google-limit:rpd:20/20",
-      "lastSkipAt": "2026-11-22T19:11:37.856Z"
+      "lastSkipAt": "2026-11-22T19:12:54.994Z"
     }
   }
 }
