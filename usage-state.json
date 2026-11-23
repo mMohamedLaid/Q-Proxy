@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-23T13:52:11.646Z",
+  "savedAt": "2026-11-23T13:57:11.652Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -280,8 +280,8 @@
       "provider": "nvidia",
       "model": "google/gemma-4-31b-it",
       "count": 0,
-      "errors": 12,
-      "lastUsed": "2026-11-23T13:51:56.695Z",
+      "errors": 22,
+      "lastUsed": "2026-11-23T13:56:59.983Z",
       "lastStatus": "error",
       "skips": 0,
       "lastSkipReason": null,
