@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-23T13:42:11.630Z",
+  "savedAt": "2026-11-23T13:47:11.637Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -269,12 +269,23 @@
       "provider": "google",
       "model": "models/gemini-3.7-flash",
       "count": 0,
-      "errors": 4,
-      "lastUsed": "2026-11-23T13:42:06.780Z",
-      "lastStatus": 503,
-      "skips": 4,
-      "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-23T13:42:06.781Z"
+      "errors": 5,
+      "lastUsed": "2026-11-23T13:44:13.841Z",
+      "lastStatus": 524,
+      "skips": 5,
+      "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 524",
+      "lastSkipAt": "2026-11-23T13:44:13.841Z"
+    },
+    "nvidia|google/gemma-4-31b-it": {
+      "provider": "nvidia",
+      "model": "google/gemma-4-31b-it",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-23T13:46:54.442Z",
+      "lastStatus": "error",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
