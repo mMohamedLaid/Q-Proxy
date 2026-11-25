@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-25T21:49:21.473Z",
+  "savedAt": "2026-11-25T22:02:51.491Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -217,9 +217,9 @@
       "errors": 380,
       "lastUsed": "2026-11-25T21:46:16.418Z",
       "lastStatus": "ok",
-      "skips": 55,
-      "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 504",
-      "lastSkipAt": "2026-11-24T09:00:12.510Z"
+      "skips": 56,
+      "lastSkipReason": "tpm-budget (~32690>32000)",
+      "lastSkipAt": "2026-11-25T22:02:44.093Z"
     },
     "literouter|deepseek-v4-flash-0731:free": {
       "provider": "literouter",
