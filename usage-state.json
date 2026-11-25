@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-25T00:04:47.535Z",
+  "savedAt": "2026-11-25T00:30:47.608Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -117,20 +117,20 @@
       "source": "catalog",
       "since": "2026-11-18T12:43:44.565Z"
     },
-    "literouter|glm-5.1-cheap:free": {
-      "kind": "turned-paid",
-      "detail": "\"glm-5.1-cheap:free\" is no longer listed, but \"glm-5.1-cheap\" is — it now costs credits",
+    "nvidia|google/gemma-4-31b-it": {
+      "kind": "gone",
+      "detail": "no longer in nvidia's live model list",
       "source": "catalog",
-      "since": "2026-11-23T12:30:40.964Z"
+      "since": "2026-11-25T00:30:36.826Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-24T18:30:36.838Z",
-    "zai": "2026-11-24T18:30:37.155Z",
-    "google": "2026-11-24T18:30:37.362Z",
-    "openrouter": "2026-11-24T18:30:37.870Z",
-    "literouter": "2026-11-24T18:30:38.760Z",
-    "amd": "2026-11-24T18:30:39.626Z"
+    "nvidia": "2026-11-25T00:30:36.827Z",
+    "zai": "2026-11-25T00:30:37.175Z",
+    "google": "2026-11-25T00:30:37.495Z",
+    "openrouter": "2026-11-25T00:30:37.966Z",
+    "literouter": "2026-11-25T00:30:38.861Z",
+    "amd": "2026-11-25T00:30:39.874Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
