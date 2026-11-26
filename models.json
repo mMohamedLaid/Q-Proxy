@@ -515,5 +515,13 @@
       "thinking_toggle": "chat_template_kwargs",
       "reasoning_effort": "chat_template_kwargs"
     }
+  },
+  "nvidia-llama-3.1-nemotron-safety-guard-8b-v3-nv": {
+    "model": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
