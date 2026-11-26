@@ -526,7 +526,7 @@
   "literouter": {
     "capturedAt": "2026-11-26",
     "staleAfterDays": 30,
-    "source": "Literouter dashboard model cards, re-captured 2026-11-26 (REPLACES the 2026-10-09 table of 62 models: what is listed here is all that is left). Free + Basic.",
+    "source": "Literouter dashboard model cards, re-captured 2026-11-26 (REPLACES the 2026-10-09 table of 62 models: what is listed here is all that is left). Free + Basic. Updated from the 735-model dashboard view: added glm-5.3-flash and glm-5.3-flash-cheap (free, unlimited on Basic); minimax-m3.1-flash:free now shows unlimited on Basic (was 100).",
     "freeContextTokens": 5000,
     "basicDailyPremiumCredits": 50,
     "basicMaxContextTokens": 15000,
@@ -555,7 +555,7 @@
       },
       "minimax-m3.1-flash": {
         "hasFree": true,
-        "freeDailyCap": 100,
+        "freeDailyCap": null,
         "premiumBasic": true,
         "premiumCost": 1.0,
         "uncensored": true
@@ -566,6 +566,20 @@
         "premiumBasic": true,
         "premiumCost": 1.4,
         "uncensored": true
+      },
+      "glm-5.3-flash-cheap": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
+      },
+      "glm-5.3-flash": {
+        "hasFree": true,
+        "freeDailyCap": null,
+        "premiumBasic": false,
+        "premiumCost": null,
+        "uncensored": null
       }
     },
     "baseContextTokens": 5000,
