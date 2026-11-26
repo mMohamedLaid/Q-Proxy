@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-26T23:23:54.026Z",
+  "savedAt": "2026-11-26T23:32:54.040Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -9,7 +9,7 @@
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
   "literouterLastResetDay": "2026-11-26",
-  "literouterRotationIndex": 19,
+  "literouterRotationIndex": 20,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -271,9 +271,9 @@
     "literouter|kimi-k2.6-cheap:free": {
       "provider": "literouter",
       "model": "kimi-k2.6-cheap:free",
-      "count": 1,
+      "count": 2,
       "errors": 0,
-      "lastUsed": "2026-11-26T21:51:42.592Z",
+      "lastUsed": "2026-11-26T23:32:38.165Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
