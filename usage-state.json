@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-26T21:49:53.212Z",
+  "savedAt": "2026-11-26T21:54:53.217Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -9,7 +9,7 @@
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
   "literouterLastResetDay": "2026-11-26",
-  "literouterRotationIndex": 18,
+  "literouterRotationIndex": 19,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -99,7 +99,7 @@
     "zai": "2026-11-26T20:59:40.947Z",
     "google": "2026-11-26T21:03:24.903Z",
     "openrouter": "2026-11-26T20:59:41.794Z",
-    "literouter": "2026-11-26T21:47:56.589Z",
+    "literouter": "2026-11-26T21:51:03.989Z",
     "amd": "2026-11-26T20:59:43.887Z"
   },
   "providerUsage": {
@@ -263,6 +263,17 @@
       "count": 1,
       "errors": 0,
       "lastUsed": "2026-11-26T21:49:42.013Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|kimi-k2.6-cheap:free": {
+      "provider": "literouter",
+      "model": "kimi-k2.6-cheap:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-26T21:51:42.592Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
