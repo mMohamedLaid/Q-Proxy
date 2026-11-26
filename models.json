@@ -277,5 +277,13 @@
       "thinking_toggle": "chat_template_kwargs",
       "reasoning_effort": "chat_template_kwargs"
     }
+  },
+  "glm-5.3-flash-cheap-free-lr": {
+    "model": "glm-5.3-flash-cheap:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
