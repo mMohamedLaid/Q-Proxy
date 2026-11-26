@@ -4,6 +4,7 @@
 // not the agent: doesn't do the talking, just makes sure someone always
 // picks up when you call.
 const express = require('express');
+const crypto = require('crypto');
 const cors = require('cors');
 const axios = require('axios');
 const fs = require('fs');
@@ -137,6 +138,9 @@ function logStitchedText(level, label, text, rid, user) {
   l.close(`${text.length} chars`);
 }
 
+// Set LOG_PROMPT_CONTENT=false to keep message text out of the console and Admin logs.
+const LOG_PROMPT_CONTENT = process.env.LOG_PROMPT_CONTENT !== 'false';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Render (and most PaaS) put one reverse proxy hop in front of this app.
@@ -157,7 +161,8 @@ const GOOGLE_API_KEY    = process.env.GOOGLE_API_KEY;
 const GOOGLE_RELAY_BASE = process.env.GOOGLE_RELAY_BASE || 'https://generativelanguage.googleapis.com/v1beta/openai';
 const DEEPSEEK_API_KEY  = process.env.DEEPSEEK_API_KEY; // worthless. thought it gave free tokens at first login.
 const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY; 
-const GROQ_API_KEY      = process.env.GROQ_API_KEY;     // the name Groq's own docs use
+const cleanEnvKey = (v) => { if (v == null) return v; const t = String(v).trim().replace(/^(['\"])(.*)\1$/, '$2').replace(/^Bearer\s+/i, '').trim(); return t || undefined; };
+const GROQ_API_KEY      = cleanEnvKey(process.env.GROQ_API_KEY);     // the name Groq's own docs use
 // AMD Radeon API (developer.amd.com.cn). AMD's own docs call the key RADEON_API_KEY; AMD_API_KEY (the name Mastra uses) works too.
 const AMD_API_KEY       = process.env.RADEON_API_KEY || process.env.AMD_API_KEY;
 // CrowLLM (crowllm.com): one OpenAI-compatible endpoint, one key (https://crowllm.com/keys, Discord sign-in, no card).
@@ -490,9 +495,25 @@ function canUseModel(entry, userName) {
   if (!entry || !Array.isArray(entry.private) || !entry.private.length) return true;
   return entry.private.includes(userName);
 }
+// One place that pulls the bearer token out of a request (case-insensitive scheme).
+function bearerKey(req) {
+  return String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+}
 function userNameFromReq(req) {
-  const k = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const k = bearerKey(req);
   return (k && buildKeyMap()[k]?.name) || null;
+}
+// Constant-time string compare (admin key).
+function safeEqual(a, b) {
+  const ba = crypto.createHash('sha256').update(String(a)).digest();
+  const bb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ba, bb);
+}
+// Failed-auth maps are keyed by IP; drop stale entries so they can't grow forever.
+function pruneFailMap(map) {
+  if (map.size < 500) return;
+  const now = Date.now();
+  for (const [ip, st] of map) if (now > st.lockedUntil && now - (st.last || 0) > 3600000) map.delete(ip);
 }
 
 // ============================================================
@@ -519,7 +540,7 @@ const SHARED_KEYS = {
 };
 
 function buildKeyMap() {
-  const keys = {};
+  const keys = Object.create(null);   // null-prototype: "Bearer constructor" must not match Object.prototype members
   const src = MODE === 'solo' ? SOLO_KEYS : SHARED_KEYS;
   for (const [k, v] of Object.entries(src)) {
     if (k && k !== 'undefined') keys[k] = v;
@@ -532,7 +553,9 @@ function buildKeyMap() {
   return keys;
 }
 
-const usageTracker = {};
+// Null-prototype on purpose: keys come from the client, and a plain {} would treat
+// "constructor" / "__proto__" / "toString" as existing entries.
+const usageTracker = Object.create(null);
 
 function checkRateLimit(apiKey) {
   const keyMap = buildKeyMap();
@@ -681,6 +704,11 @@ function estimateRequestTokens(req, provider) {
 const MODELS_PATH = path.join(__dirname, 'models.json');
 const REASONING_SCHEMAS_PATH = path.join(__dirname, 'reasoning-schemas.json');
 const MODEL_PRESETS_PATH = path.join(__dirname, 'model-presets.json');
+// Model cards: the text of a provider's own model page (NVIDIA's cards hold context size, parameters, license, limits...),
+// pasted or fetched by hand and kept next to the model. { "nvidia/z-ai/glm-5.3-flash": { text, source, savedAt, facts } }
+const MODEL_CARDS_PATH = path.join(__dirname, 'model-cards.json');
+function loadModelCards() { try { const d = JSON.parse(fs.readFileSync(MODEL_CARDS_PATH, 'utf8')); return d && typeof d === 'object' && !Array.isArray(d) ? d : {}; } catch (_) { return {}; } }
+let MODEL_CARDS = loadModelCards();
 // Display names people chose for themselves on the /me page: { "<key id>": "Alex" }. The key id (Q, user1…) stays the identity —
 // private-model lists and log tags use it — the display name is only a label. Saved like the other config (local file + GitHub).
 const USER_NAMES_PATH = path.join(__dirname, 'user-names.json');
@@ -813,6 +841,7 @@ const GITHUB_SCHEMAS_PATH = process.env.GITHUB_SCHEMAS_PATH || 'reasoning-schema
 const GITHUB_PRESETS_PATH = process.env.GITHUB_PRESETS_PATH || 'model-presets.json';
 const GITHUB_USAGE_PATH   = process.env.GITHUB_USAGE_PATH || 'usage-state.json';
 const GITHUB_LIMITS_PATH  = process.env.GITHUB_LIMITS_PATH || 'provider-limits.json';
+const GITHUB_MODEL_CARDS_PATH = process.env.GITHUB_MODEL_CARDS_PATH || 'model-cards.json';
 const GITHUB_USER_NAMES_PATH = process.env.GITHUB_USER_NAMES_PATH || 'user-names.json';
 const GITHUB_USER_BUNDLES_PATH = process.env.GITHUB_USER_BUNDLES_PATH || 'user-bundles.json';
 const GITHUB_SYNC_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
@@ -880,7 +909,7 @@ async function syncConfigFromGitHubOnBoot() {
   }
   reloadProviderLimits();   // provider-limits.json is read at load time, i.e. BEFORE this pull
   // These two only exist once someone has chosen a name / made a bundle, so a missing file is normal and not logged.
-  for (const [repoPath, localPath] of [[GITHUB_USER_NAMES_PATH, USER_NAMES_PATH], [GITHUB_USER_BUNDLES_PATH, USER_BUNDLES_PATH]]) {
+  for (const [repoPath, localPath] of [[GITHUB_USER_NAMES_PATH, USER_NAMES_PATH], [GITHUB_USER_BUNDLES_PATH, USER_BUNDLES_PATH], [GITHUB_DEFAULTS_PATH, DEFAULTS_PATH], [GITHUB_MODEL_CARDS_PATH, MODEL_CARDS_PATH]]) {
     try {
       const remote = await githubFetchFile(repoPath);
       if (remote) { JSON.parse(remote.content); fs.writeFileSync(localPath, remote.content); log('INFO', `[github-sync] pulled latest ${repoPath} on boot`); }
@@ -888,6 +917,8 @@ async function syncConfigFromGitHubOnBoot() {
       log('WARN', `[github-sync] could not pull ${repoPath} from GitHub on boot (${e.message})`);
     }
   }
+  reloadDefaults();   // defaults.json may just have been pulled
+  MODEL_CARDS = loadModelCards();
 }
 
 // Pushes a local save up to GitHub. Never throws — a GitHub outage or bad
@@ -922,6 +953,80 @@ async function saveReasoningSchemas(commitMessage) {
   fs.writeFileSync(REASONING_SCHEMAS_PATH, json);
   return githubSyncFile(GITHUB_SCHEMAS_PATH, json, commitMessage || 'Q-Proxy admin: update reasoning-schemas.json');
 }
+
+// ============================================================
+// DEFAULTS — the numbers a hop falls back on when its own field is blank. Edited in Admin → Defaults, stored in
+// defaults.json (synced to GitHub like the other config files). Lookup order for one provider:
+//   your value for that provider  →  built-in value for that provider  →  your "every other provider" value  →  built-in
+// ============================================================
+const DEFAULTS_PATH = path.join(__dirname, 'defaults.json');
+const GITHUB_DEFAULTS_PATH = process.env.GITHUB_DEFAULTS_PATH || 'defaults.json';
+const BUILTIN_DEFAULTS = {
+  providers: {
+    '*':    { timeoutMs: 300000, idleTimeoutMs: Number(process.env.QP_STREAM_IDLE_MS) || 300000 },
+    nvidia: { rpm: 40, finishAfterDisconnect: true }   // NVIDIA shows ~40 requests/min per account — requests, not tokens
+  },
+  global: {
+    patientTimeoutMs: Number(process.env.QP_PATIENT_TIMEOUT_MS) || 30 * 60 * 1000,
+    detachMaxMs: Number(process.env.QP_DETACH_MAX_MS) || 30 * 60 * 1000,
+    bigRpd: Number(process.env.QP_BIG_RPD) || 10000,
+    bigRpm: Number(process.env.QP_BIG_RPM) || 300,
+    bigTpm: Number(process.env.QP_BIG_TPM) || 250000
+  }
+};
+const RPM_WINDOW_MS = Number(process.env.QP_RPM_WINDOW_MS) || 60000;
+// Field rules shared by the loader and the save endpoint: [min, max] for numbers.
+const DEFAULT_PROVIDER_FIELDS = { timeoutMs: [1000, 24 * 3600000], idleTimeoutMs: [1000, 24 * 3600000], rpm: [1, 100000], finishAfterDisconnect: 'bool' };
+const DEFAULT_GLOBAL_FIELDS = { patientTimeoutMs: [1000, 24 * 3600000], detachMaxMs: [1000, 24 * 3600000], bigRpd: [1, 1e9], bigRpm: [1, 1e9], bigTpm: [1, 1e12] };
+// Keeps only valid fields; returns { value, problems }.
+function cleanDefaults(raw) {
+  const out = { providers: {}, global: {} }, problems = [];
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const take = (target, from, rules, where) => {
+    for (const [k, rule] of Object.entries(rules)) {
+      const v = from ? from[k] : undefined;
+      if (v === undefined || v === null || v === '') continue;
+      if (rule === 'bool') { if (typeof v === 'boolean') target[k] = v; else problems.push(`${where}.${k} must be true or false`); continue; }
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < rule[0] || n > rule[1]) { problems.push(`${where}.${k} must be a number between ${rule[0]} and ${rule[1]}`); continue; }
+      target[k] = Math.round(n);
+    }
+  };
+  for (const [prov, vals] of Object.entries(src.providers && typeof src.providers === 'object' ? src.providers : {})) {
+    if (!/^[A-Za-z0-9_.*-]{1,40}$/.test(prov) || prov === '__proto__') { problems.push(`provider name "${prov}" is not valid`); continue; }
+    const t = {}; take(t, vals, DEFAULT_PROVIDER_FIELDS, prov);
+    if (Object.keys(t).length) out.providers[prov] = t;
+  }
+  take(out.global, src.global, DEFAULT_GLOBAL_FIELDS, 'global');
+  return { value: out, problems };
+}
+let USER_DEFAULTS = { providers: {}, global: {} };
+function reloadDefaults() {
+  try {
+    if (!fs.existsSync(DEFAULTS_PATH)) { USER_DEFAULTS = { providers: {}, global: {} }; return; }
+    const c = cleanDefaults(JSON.parse(fs.readFileSync(DEFAULTS_PATH, 'utf8')));
+    USER_DEFAULTS = c.value;
+    if (c.problems.length) log('WARN', `[defaults] ignored invalid values in defaults.json: ${c.problems.join('; ')}`);
+  } catch (e) { log('WARN', `[defaults] defaults.json not loaded (${e.message}) — built-in defaults are used`); USER_DEFAULTS = { providers: {}, global: {} }; }
+}
+// One provider's default for one field (undefined = none).
+function providerDefault(provider, key) {
+  const own = USER_DEFAULTS.providers[provider];
+  if (own && own[key] !== undefined) return own[key];
+  const built = BUILTIN_DEFAULTS.providers[provider];
+  if (built && built[key] !== undefined) return built[key];
+  const star = USER_DEFAULTS.providers['*'];
+  if (star && star[key] !== undefined) return star[key];
+  return BUILTIN_DEFAULTS.providers['*'][key];
+}
+function globalDefault(key) { return USER_DEFAULTS.global[key] !== undefined ? USER_DEFAULTS.global[key] : BUILTIN_DEFAULTS.global[key]; }
+const bigRpd = () => globalDefault('bigRpd'), bigRpm = () => globalDefault('bigRpm'), bigTpm = () => globalDefault('bigTpm');
+async function saveDefaults(commitMessage) {
+  const json = JSON.stringify(USER_DEFAULTS, null, 2) + '\n';
+  fs.writeFileSync(DEFAULTS_PATH, json);
+  return githubSyncFile(GITHUB_DEFAULTS_PATH, json, commitMessage || 'Q-Proxy admin: update defaults.json');
+}
+reloadDefaults();
 
 async function saveModelPresets(commitMessage) {
   const json = JSON.stringify(MODEL_PRESETS, null, 2);
@@ -1304,8 +1409,8 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 // and UTC-7 (PDT) with US daylight saving. Intl's timezone-aware
 // formatting handles that automatically; a naive fixed-hour-offset trick
 // would quietly be an hour wrong for roughly half the year.
-function pacificDayKey() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // en-CA -> YYYY-MM-DD
+function pacificDayKey(d) {
+  return (d || new Date()).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }); // en-CA -> YYYY-MM-DD
 }
 
 // model -> keyIndex. Same "stays pinned until it specifically runs out"
@@ -1367,6 +1472,24 @@ function checkGoogleWindow(model, keyIndex, hop, estimatedTokens) {
   }
   markUsageStateDirty();
   return { ok: true };
+}
+
+// Gives back what checkGoogleWindow reserved when the call turned out not to
+// spend any quota (Google answered 5xx such as the 503 "high demand", or the
+// request never reached Google). `at` is when it was reserved, so a refund
+// never lands in a later minute/day than the one it was taken from.
+function refundGoogleWindow(model, keyIndex, hop, estimatedTokens, at) {
+  const state = googleWindowState(model, keyIndex);
+  const minute = Math.floor(at / 60000);
+  if (hop.rpm && state.rpmWindowMinute === minute && state.rpmCount > 0) state.rpmCount -= 1;
+  if (hop.tpm && state.tpmWindowMinute === minute && state.tpmTokens > 0) state.tpmTokens = Math.max(0, state.tpmTokens - estimatedTokens);
+  if (hop.rpd && state.rpdDay === pacificDayKey(new Date(at)) && state.rpdCount > 0) state.rpdCount -= 1;
+  markUsageStateDirty();
+}
+function failureSpendsNoGoogleQuota(err) {
+  const st = err && err.response && err.response.status;
+  if (st) return st >= 500;
+  return ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'EHOSTUNREACH'].includes(err && err.code);
 }
 
 // Returns { key, keyIndex } for the first Google key with room left for
@@ -1448,7 +1571,7 @@ function googleUsageSnapshot() {
       // Same cycle guard as literouterCapSnapshot — hand-edited models.json
       // with a fallback loop must not hang /admin/api/usage.
       if (++depth > 50) break;
-      if (cur.provider === 'google' && (cur.rpm || cur.tpm || cur.rpd) && !byModel[cur.model]) {
+      if (cur.provider === 'google' && !byModel[cur.model]) {
         byModel[cur.model] = {
           model: cur.model, rpm: cur.rpm || null, tpm: cur.tpm || null, rpd: cur.rpd || null,
           keys: GOOGLE_KEY_ENTRIES.map((entryK, idx) => {
@@ -2032,7 +2155,59 @@ function isUnlimitedRetryHop(providerConfig) {
   if (providerConfig.provider === 'nvidia') return true;
   if (providerConfig.provider === 'literouter' && isLiterouterPremium(providerConfig)) return false; // pooled cap, not actually unlimited
   if (providerConfig.provider === 'literouter' && providerConfig.dailyCap == null) return true;
+  if (hugeLimitsOnly(providerConfig)) return true;   // only huge numbers written on it: nothing realistic to run out of
   return false;
+}
+
+// ============================================================
+// LIMIT BASIS — what a hop's quota is actually counted in.
+//   points : every request costs one "try"; tokens never matter (NVIDIA, OpenRouter, Literouter, most others).
+//   tokens : the binding limit is tokens per minute (a token-metered provider).
+//   both   : per-minute tokens AND request counts both bind (Google AI Studio's gemma: 30 rpm + 16K tpm).
+// Derived from the hop's own numbers; a hop field "basis": "points" | "tokens" | "both" overrides it.
+// A limit that is huge counts as no limit at all (Admin → Defaults): 14,400 requests/day or
+// 250K tokens/min will never be the thing that stops you, so only the SMALL numbers decide how a hop behaves.
+// ============================================================
+function declaredLimits(pc) {
+  return { rpm: Number(pc.rpm) || 0, tpm: Number(pc.tpm) || 0, rpd: Number(pc.rpd) || Number(pc.dailyCap) || 0 };
+}
+function tokensBind(pc) { const l = declaredLimits(pc); return l.tpm > 0 && l.tpm < bigTpm(); }
+function pointsBind(pc) {
+  const l = declaredLimits(pc);
+  const rpm = l.rpm || (pc.provider === 'google' ? 0 : (providerDefault(pc.provider, 'rpm') || 0));
+  return (rpm > 0 && rpm < bigRpm()) || (l.rpd > 0 && l.rpd < bigRpd());
+}
+function limitBasis(pc) {
+  if (pc.basis === 'points' || pc.basis === 'tokens' || pc.basis === 'both') return pc.basis;
+  if (tokensBind(pc)) return pointsBind(pc) ? 'both' : 'tokens';
+  if (pc.provider === 'groq') return 'both';   // Groq meters tokens per minute even when the hop doesn't list the number
+  return 'points';
+}
+// At least one limit is written on the hop and every one of them is huge.
+function hugeLimitsOnly(pc) {
+  const l = declaredLimits(pc);
+  if (!l.rpm && !l.tpm && !l.rpd) return false;
+  return !tokensBind(pc) && !(l.rpm > 0 && l.rpm < bigRpm()) && !(l.rpd > 0 && l.rpd < bigRpd());
+}
+// Requests-per-minute window (sliding, per provider account), checked BEFORE sending so a try that would be refused
+// is never spent. Google keeps its own per-key rpm/tpm/rpd windows, so it is not handled here.
+const rpmWindows = new Map();   // provider -> ascending request timestamps
+function rpmLimitFor(pc) {
+  if (pc.provider === 'google') return 0;
+  const r = Number(pc.rpm) || providerDefault(pc.provider, 'rpm') || 0;
+  return r > 0 && r < bigRpm() ? r : 0;
+}
+function rpmWaitMs(pc) {
+  const lim = rpmLimitFor(pc); if (!lim) return 0;
+  const arr = rpmWindows.get(pc.provider) || [];
+  const cutoff = Date.now() - RPM_WINDOW_MS;
+  while (arr.length && arr[0] <= cutoff) arr.shift();
+  if (arr.length < lim) return 0;
+  return Math.max(1, arr[arr.length - lim] + RPM_WINDOW_MS - Date.now());
+}
+function rpmNoteSent(pc) {
+  if (!rpmLimitFor(pc)) return;
+  const arr = rpmWindows.get(pc.provider) || []; arr.push(Date.now()); rpmWindows.set(pc.provider, arr);
 }
 
 const UNLIMITED_MAX_RETRIES = 100;
@@ -2083,6 +2258,133 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 //    to the client (response header) and to the admin dashboard
 //    (trackUsage/trackSkip), instead of only living in server logs.
 // ============================================================
+// ============================================================
+// SMART WAITING — how long one attempt may sit before it is cut.
+//   • an explicit "timeoutMs" on the hop always wins;
+//   • no other hop behind it could be used right now (inactive, out of daily
+//     quota, over its max request size, no tool support…)  → patient: cutting
+//     it only gets the user an error, so it is allowed to keep going;
+//   • the next usable hop serves the SAME model (another provider)  → the usual
+//     5 minutes, then straight on to it (a timeout is not retried here);
+//   • only a DIFFERENT (usually weaker) model is behind it and this hop is an
+//     "unlimited" one  → patient, because the fallback is a worse answer.
+// Anything else keeps the 5-minute default.
+// ============================================================
+function modelFamilyKey(pc) {
+  return String(pc.model || '').toLowerCase().replace(/:free$/, '').split('/').pop();
+}
+// Read-only look: could this hop take the request right now? (Never counts usage.)
+function hopHasRoomNow(pc, nimRequest) {
+  if (pc.status && pc.status !== 'active') return false;
+  if (Array.isArray(nimRequest.tools) && nimRequest.tools.length && pc.tools === false) return false;
+  if (pc.tpmLimit && estimateRequestTokens(nimRequest, pc.provider) > pc.tpmLimit) return false;
+  try {
+    if (pc.provider === 'literouter') {
+      if (!LITEROUTER_KEYS.length) return false;
+      if (isLiterouterPremium(pc)) return LITEROUTER_KEYS.some((_, i) => literouterPremiumUsage(i).count < LITEROUTER_PREMIUM_DAILY_CAP);
+      if (pc.dailyCap == null) return true;
+      return LITEROUTER_KEYS.some((_, i) => literouterUsage(i, pc.model).count < pc.dailyCap);
+    }
+    if (pc.provider === 'google') {
+      if (!GOOGLE_KEYS.length) return false;
+      if (!pc.rpm && !pc.tpm && !pc.rpd) return true;
+      const est = estimateRequestTokens(nimRequest, 'google');
+      const nowMinute = Math.floor(Date.now() / 60000);
+      return GOOGLE_KEYS.some((_, i) => {
+        const st = googleWindowState(pc.model, i);
+        if (pc.rpm && st.rpmWindowMinute === nowMinute && (st.rpmCount || 0) >= pc.rpm) return false;
+        if (pc.tpm && ((st.tpmWindowMinute === nowMinute ? (st.tpmTokens || 0) : 0) + est > pc.tpm)) return false;
+        if (pc.rpd && st.rpdDay === pacificDayKey() && (st.rpdCount || 0) >= pc.rpd) return false;
+        return true;
+      });
+    }
+  } catch (_) { return true; }   // can't tell → assume it has room (keeps the normal timeout)
+  return true;
+}
+function effectiveTimeout(providers, hopIdx, nimRequest) {
+  const pc = providers[hopIdx];
+  if (pc.timeoutMs) return { ms: pc.timeoutMs, why: 'explicit', normal: pc.timeoutMs };
+  const later = providers.slice(hopIdx + 1).filter(n => hopHasRoomNow(n, nimRequest));
+  const normal = providerDefault(pc.provider, 'timeoutMs'), patient = Math.max(globalDefault('patientTimeoutMs'), normal);
+  if (!later.length) return { ms: patient, why: 'no-fallback', normal };
+  if (later.some(n => modelFamilyKey(n) === modelFamilyKey(pc))) return { ms: normal, why: 'same-model', normal };
+  if (isUnlimitedRetryHop(pc)) return { ms: patient, why: 'weaker-fallback', normal };
+  return { ms: normal, why: 'default', normal };
+}
+
+// ============================================================
+// FINISH AFTER DISCONNECT — when the client drops mid-request on a hop where
+// the request is already "paid for" (unlimited hops by default), let it run
+// to the end and write the reply to the log so it can be pasted back in.
+// Hop fields: finishAfterDisconnect (true/false overrides the default) and
+// maxConcurrent (1 = the provider allows ONE generation at a time; a ghost
+// generation would block the user's retry, so it is never kept).
+// ============================================================
+// Silence allowed ONCE A REPLY IS STREAMING (separate from "timeoutMs", the wait for the first output). axios's own timeout
+// is socket-idle for the whole stream, so a long first-output wait (see effectiveTimeout) would otherwise also allow a
+// stalled stream to sit silent just as long. Hop field "idleTimeoutMs" overrides; default 5 minutes (QP_STREAM_IDLE_MS).
+function streamIdleMs(pc) { return Number(pc && pc.idleTimeoutMs) > 0 ? Number(pc.idleTimeoutMs) : providerDefault(pc && pc.provider, 'idleTimeoutMs'); }
+// Re-armable silence watchdog for an upstream stream. Returns { bump, stop }.
+function makeIdleWatchdog(ms, onStall) {
+  let t = null, stopped = false;
+  const bump = () => { if (stopped) return; clearTimeout(t); t = setTimeout(() => { if (!stopped) { stopped = true; onStall(ms); } }, ms); if (t.unref) t.unref(); };
+  const stop = () => { stopped = true; clearTimeout(t); };
+  bump();
+  return { bump, stop };
+}
+function canFinishAfterDisconnect(pc) {
+  if (!pc) return false;
+  if (Number(pc.maxConcurrent) === 1) return false;
+  if (typeof pc.finishAfterDisconnect === 'boolean') return pc.finishAfterDisconnect;
+  // Default ON where the request is already "paid for" in tries: NVIDIA and every points-based hop. Finishing costs no
+  // extra quota there. OFF where tokens bind (tokens or both): the ghost reply would eat the per-minute tokens the
+  // user's retry needs — unless the hop's limits are all huge, which isUnlimitedRetryHop recognises.
+  const pd = providerDefault(pc.provider, 'finishAfterDisconnect');   // Admin → Defaults (NVIDIA ships as ON)
+  if (typeof pd === 'boolean') return pd;
+  if (limitBasis(pc) === 'points') return true;
+  return isUnlimitedRetryHop(pc);
+}
+// Reads the upstream answer to the end for nobody: { content, reasoning, finish, ok }.
+function collectDetachedReply(response, stream, idleMs) {
+  if (!stream) {
+    const m = response.data?.choices?.[0]?.message || {};
+    const raw = m.content || '';
+    const parsed = parseThinkTags(raw);
+    return Promise.resolve({ content: parsed.content, reasoning: m.reasoning_content || (typeof m.reasoning === 'string' ? m.reasoning : '') || parsed.reasoning || '', finish: response.data?.choices?.[0]?.finish_reason || null, ok: true });
+  }
+  return new Promise(resolve => {
+    let buf = '', content = '', reasoning = '', finish = null, done = false;
+    const end = (ok) => {
+      if (done) return; done = true; clearTimeout(timer); idle.stop();
+      const parsed = parseThinkTags(content);
+      resolve({ content: parsed.content, reasoning: reasoning || parsed.reasoning || '', finish, ok });
+    };
+    const timer = setTimeout(() => { try { response.data.destroy(); } catch (_) { /* gone */ } end(false); }, globalDefault('detachMaxMs'));
+    const idle = makeIdleWatchdog(idleMs || providerDefault('*', 'idleTimeoutMs'), () => { try { response.data.destroy(); } catch (_) { /* gone */ } end(false); });
+    response.data.on('data', chunk => {
+      if (chunk.includes('data:')) idle.bump();
+      buf += chunk.toString('utf8');
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        let j; try { j = JSON.parse(payload); } catch (_) { continue; }
+        const ch = j.choices?.[0]; if (!ch) continue;
+        const d = ch.delta || {};
+        if (typeof d.content === 'string') content += d.content;
+        const r = d.reasoning_content || (typeof d.reasoning === 'string' ? d.reasoning : '');
+        if (r) reasoning += r;
+        if (ch.finish_reason) finish = ch.finish_reason;
+      }
+    });
+    response.data.on('end', () => end(true));
+    response.data.on('error', () => end(false));
+    response.data.on('close', () => end(!!finish));
+  });
+}
+
 async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
   const log = logWith(opts.rid);
   let providers;
@@ -2172,13 +2474,37 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
       // Re-checked every attempt, not just on failure — the client can hang
       // up while we're sleeping in backoff between retries, and without this
       // the next attempt fires a full upstream call nobody is waiting for.
-      if (opts.clientGone && opts.clientGone()) {
+      if (opts.clientGone && opts.clientGone(providerConfig, attemptNum > 1 || hopIdx > 0)) {
         attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CLIENT_GONE' });
         const gone = new Error('Client disconnected before the model answered — stopped retrying');
         gone.tag = 'CLIENT_GONE';
         gone.response = { status: 499 };
         gone.attempts = attempts;
         throw gone;
+      }
+      // Requests-per-minute gate (NVIDIA ~40/min by default, or the hop's own "rpm"): never send a try the provider
+      // would refuse. If the same model is waiting on a later hop, go there; otherwise wait for the window to open.
+      if (rpmLimitFor(providerConfig) && rpmWaitMs(providerConfig) > 0) {
+        const waitMs0 = rpmWaitMs(providerConfig);
+        if (providers.slice(hopIdx + 1).some(n => hopHasRoomNow(n, nimRequest) && modelFamilyKey(n) === modelFamilyKey(providerConfig))) {
+          const note = `${rpmLimitFor(providerConfig)} requests/min already used — the same model is next on another provider`;
+          log('WARN', `Skipping ${hopLabel(providerConfig)} — ${note}`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'skipped', reason: `rpm-window:${rpmLimitFor(providerConfig)}`, note });
+          trackSkip(providerConfig.provider, providerConfig.model, `rpm-window (${rpmLimitFor(providerConfig)}/min)`);
+          skippedThisHop = true;
+          break;
+        }
+        log('INFO', `[rpm] ${hopLabel(providerConfig)} — ${rpmLimitFor(providerConfig)} requests/min already used; holding this request ${shortDuration(waitMs0)} instead of spending a refused try`);
+        let w;
+        while ((w = rpmWaitMs(providerConfig)) > 0) {
+          if (opts.clientGone && opts.clientGone(providerConfig, attemptNum > 1 || hopIdx > 0)) {
+            attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CLIENT_GONE' });
+            const gone = new Error('Client disconnected while waiting for a request slot — stopped');
+            gone.tag = 'CLIENT_GONE'; gone.response = { status: 499 }; gone.attempts = attempts;
+            throw gone;
+          }
+          await sleep(Math.min(w, 1000));
+        }
       }
       // Re-picked every attempt, not just once before the loop — so a
       // retried literouter hop rotates to a different key on failure
@@ -2204,9 +2530,9 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
       // one that just hit its rpm/tpm/rpd ceiling. Only actually checks
       // anything if the hop has rpm/tpm/rpd configured at all — a plain
       // Google hop with none of those set behaves exactly as before.
-      let pickedGoogleKey = null;
+      let pickedGoogleKey = null, googleEstTokens = 0, googleReservedAt = 0;
       if (providerConfig.provider === 'google') {
-        const estimatedTokens = estimateRequestTokens(nimRequest, 'google');
+        const estimatedTokens = googleEstTokens = estimateRequestTokens(nimRequest, 'google');
         const googleWhy = [];
         pickedGoogleKey = pickGoogleKey(providerConfig.model, providerConfig, estimatedTokens, googleWhy);
         if (!pickedGoogleKey) {
@@ -2223,6 +2549,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           skippedThisHop = true;
           break;
         }
+        googleReservedAt = Date.now();
       }
       const { base, key } = pickedLiterouterKey
         ? { base: 'https://api.literouter.com/v1', key: pickedLiterouterKey.key }
@@ -2231,7 +2558,15 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           : getProviderConfig(providerConfig.provider);
 
       if (opts.onHop) opts.onHop(providerConfig);
+      rpmNoteSent(providerConfig);   // counts the try whether it succeeds or fails
       const attemptStartedAt = Date.now();
+      const tw = effectiveTimeout(providers, hopIdx, nimRequest);
+      if (attemptNum === 1 && tw.why !== 'explicit' && tw.why !== 'default' && tw.ms !== tw.normal) {
+        log('INFO', `[patience] ${hopLabel(providerConfig)} may take up to ${shortDuration(tw.ms)} to answer — ${tw.why === 'no-fallback' ? 'no other hop could take this request right now' : 'the fallback behind it is a different, weaker model'}`);
+      }
+      // One abort controller PER ATTEMPT (linked to the request-wide one), so "skip this hop" can cancel just this call.
+      const attemptCtl = new AbortController();
+      if (opts.onAttempt) opts.onAttempt(attemptCtl, { canSkip: providers.slice(hopIdx + 1).some(n => hopHasRoomNow(n, nimRequest)), hop: providerConfig });
       try {
         const response = await axios.post(
           `${base}/chat/completions`,
@@ -2242,11 +2577,12 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
               'Content-Type': 'application/json'
             },
             responseType: stream ? 'stream' : 'json',
-            timeout: providerConfig.timeoutMs || 300000,
+            timeout: tw.ms,
             // Aborted when the client hangs up, so a request still waiting in
             // the provider's queue is cancelled instead of running to the end
             // for nobody.
-            ...(opts.signal ? { signal: opts.signal } : {})
+            // AbortSignal.any holds only weak references, so ~100 retries don't pile up listeners on the request-wide signal.
+            signal: opts.signal ? AbortSignal.any([opts.signal, attemptCtl.signal]) : attemptCtl.signal
           }
         );
         trackUsage(providerConfig.provider, providerConfig.model, true);
@@ -2268,6 +2604,9 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const reasonStr = cls.detail ? `${cls.tag} · ${cls.detail}` : cls.tag;
         const reasonWithMsg = cls.providerMessage ? `${reasonStr} — "${cls.providerMessage}"` : reasonStr;
         const who = hopLabel(providerConfig);
+        if (pickedGoogleKey && failureSpendsNoGoogleQuota(err)) {
+          refundGoogleWindow(providerConfig.model, pickedGoogleKey.keyIndex, providerConfig, googleEstTokens, googleReservedAt);
+        }
         // Google says exactly which quota it hit and its value; if that differs from
         // what we have saved, fix it and flag the whole table as possibly outdated.
         if (providerConfig.provider === 'google' && status === 429) learnGoogleLimitsFrom429(providerConfig, bodyText);
@@ -2275,7 +2614,7 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         // The client already left (closed the tab / hit stop / its own
         // timeout fired) — retrying would just burn provider calls nobody
         // is waiting for.
-        if (opts.clientGone && opts.clientGone()) {
+        if (opts.clientGone && opts.clientGone(providerConfig, true)) {
           log('WARN', `[CLIENT_GONE] ${who} failed [${reasonStr}] but the client already disconnected — not retrying`);
           attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'CLIENT_GONE' });
           const gone = new Error('Client disconnected before the model answered — stopped retrying');
@@ -2283,6 +2622,13 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
           gone.response = { status: 499 };
           gone.attempts = attempts;
           throw gone;
+        }
+
+        // The user pressed "skip this hop" while this one was still silent: no retry here, straight to the next hop.
+        if (opts.takeSkip && opts.takeSkip() && !isLastHop) {
+          log('WARN', `[SKIPPED] ${who} skipped by you after ${shortDuration(Date.now() - attemptStartedAt)} with no output — trying the next hop...`);
+          attempts.push({ provider: providerConfig.provider, model: providerConfig.model, outcome: 'failed', reason: 'SKIPPED_BY_USER' });
+          break;
         }
 
         // Token-limit and quota-exhausted errors are NEVER worth retrying
@@ -2335,9 +2681,11 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         const budgetLeft = retryElapsed < budgetMs;
         const attemptsLeft = attemptNum < maxAttempts && !(cls.tag === 'NET_DNS' && attemptNum >= DNS_FAIL_MAX_ATTEMPTS);
 
-        if (unlimited && budgetLeft && attemptsLeft) {
+        // Same model waits on the next hop: after one full timeout, go there instead of burning another 5 minutes here.
+        const timedOutHandOver = cls.tag === 'TIMEOUT' && tw.why === 'same-model';
+        if (unlimited && budgetLeft && attemptsLeft && !timedOutHandOver) {
           const delay = backoffDelayMs(attemptNum);
-          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed (${reasonWithMsg}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop && providers.length > 1 ? ', last hop: nothing to fall back to' : ''})...`);
+          log('WARN', `[${cls.tag}] ${who} attempt ${attemptNum}/${maxAttempts} failed after ${(Date.now() - attemptStartedAt) < 1000 ? `${Date.now() - attemptStartedAt}ms` : shortDuration(Date.now() - attemptStartedAt)} (${reasonWithMsg}; timeout set to ${shortDuration(tw.ms)}${status ? `, HTTP ${status} came back from the provider` : ', no HTTP answer'}) — retrying in ${delay}ms (retry window ${retryElapsed}/${budgetMs}ms${isLastHop && providers.length > 1 ? ', last hop: nothing to fall back to' : ''})...`);
           await sleep(delay);
           continue;
         }
@@ -2387,6 +2735,9 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
 // HEALTH CHECK
 // ============================================================
 app.get('/health', (req, res) => {
+  // Public callers (uptime pings, Render health checks) only get a liveness answer;
+  // user names, env-var names and usage counters need the admin key.
+  if (!ADMIN_KEY || !safeEqual(req.headers['x-admin-key'] || '', ADMIN_KEY)) return res.json({ status: 'ok' });
   const keyMap = buildKeyMap();
   const now = Date.now();
   const status = Object.entries(keyMap).map(([key, info]) => ({
@@ -2424,7 +2775,8 @@ app.get('/health', (req, res) => {
 // ============================================================
 // BUDGET CHECK ENDPOINT
 // ============================================================
-app.get('/budget', (req, res) => {
+const chatAuthFails = new Map(); // ip -> { count, lockedUntil, last }
+app.get('/budget', requireAdmin, (req, res) => {
   res.json({
     providerQuotas: Object.keys(PROVIDER_QUOTAS).map(getProviderQuotaSnapshot),
     note: 'No provider balance is invented. Providers with no configured quota are intentionally omitted from this list.'
@@ -2510,16 +2862,33 @@ app.get('/opencode.json', (req, res) => {
 // ============================================================
 app.post('/v1/chat/completions', async (req, res) => {
   const rid = newRequestId();
+  // Declared out here so the catch block can see them. detached: the client left but the current hop is allowed to finish
+  // (see canFinishAfterDisconnect). stopped: the admin pressed Stop on such a request.
+  let detached = false, detachedAt = 0, stopped = false;
   let log = logWith(rid);   // every line this request writes carries #rid (and, once the key is known, the user's name)
   let waitTimer = null;
   const clearWait = () => { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; } };
-  const authHeader = req.headers['authorization'] || '';
-  const userKey = authHeader.replace('Bearer ', '').trim();
+  const userKey = bearerKey(req);
   const keyMap = buildKeyMap();
   const userName = keyMap[userKey]?.name || 'unknown';
   log = logWith(rid, userName);
 
+  // Wrong keys are counted per IP and locked out, like /admin and /dashboard (5 strikes, then 30s doubling up to 1h).
+  const authIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  const authState = chatAuthFails.get(authIp) || { count: 0, lockedUntil: 0 };
+  if (Date.now() < authState.lockedUntil) {
+    return res.status(429).json({ error: { message: `Too many wrong keys. Try again in ${Math.ceil((authState.lockedUntil - Date.now()) / 1000)}s.`, type: 'rate_limit_error', code: 429 } });
+  }
   const rateCheck = checkRateLimit(userKey);
+  if (rateCheck.invalidKey) {
+    authState.count++; authState.last = Date.now(); pruneFailMap(chatAuthFails);
+    if (authState.count >= 5) {
+      const lockSec = Math.min(3600, 30 * Math.pow(2, authState.count - 5));
+      authState.lockedUntil = Date.now() + lockSec * 1000;
+      log('WARN', `[chat] locking out ${authIp} for ${lockSec}s after ${authState.count} wrong keys`);
+    }
+    chatAuthFails.set(authIp, authState);
+  } else if (rateCheck.allowed) chatAuthFails.delete(authIp);
   if (!rateCheck.allowed) {
     // An unknown key is an auth problem (401), not a rate limit — a 429 here
     // made clients back off and retry a key that would never work.
@@ -2557,14 +2926,14 @@ app.post('/v1/chat/completions', async (req, res) => {
     // Per-message previews go to Render's console only — an agent loop
     // can send dozens of (huge) messages per request and would bury the
     // Admin log.
-    messages.forEach((m, i) => {
+    if (LOG_PROMPT_CONTENT) messages.forEach((m, i) => {
       const extra = Array.isArray(m.tool_calls) && m.tool_calls.length ? ` [+${m.tool_calls.length} tool_calls]` : '';
       log('DEBUG', `  [msg ${i}] ${m.role}: ${messageText(m).slice(0, 300)}${extra}`, 'console');
     });
     // The same previews as ONE Admin entry (not one line per message), so the
     // Admin log shows what was actually sent. Capped so an agent loop with
     // dozens of huge messages can't bury everything else.
-    {
+    if (LOG_PROMPT_CONTENT) {
       const PROMPT_LOG_MAX_MSGS = 100;
       const lines = messages.slice(0, PROMPT_LOG_MAX_MSGS).map((m, i) => {
         const extra = Array.isArray(m.tool_calls) && m.tool_calls.length ? ` [+${m.tool_calls.length} tool_calls]` : '';
@@ -2612,17 +2981,35 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (stop) nimRequest.stop = stop;
 
     let clientGone = false;
+    let currentHopCfg = null;
     const abortCtl = new AbortController();
     const reqStartedAt = Date.now();
+    let attemptCtlNow = null, attemptInfo = { canSkip: false }, skipFlag = false, upstreamAnswered = false;
+    INFLIGHT.set(rid, {
+      rid, user: userName, model, startedAt: reqStartedAt,
+      hop: () => currentHop,
+      waiting: () => !firstOutputAt && !upstreamAnswered && !clientGone,
+      canSkip: () => attemptInfo.canSkip,
+      skip: () => { skipFlag = true; try { attemptCtlNow && attemptCtlNow.abort(); } catch (_) { /* gone */ } },
+      detached: () => detached && !stopped,
+      detachedAt: () => detachedAt,
+      stop: () => { stopped = true; try { abortCtl.abort(); } catch (_) { /* gone */ } }
+    });
     res.on('close', () => {
       clearWait();
-      if (!res.writableEnded && !clientGone) {
+      if (!res.writableEnded && !clientGone && !detached) {
+        if (currentHopCfg && canFinishAfterDisconnect(currentHopCfg)) {
+          detached = true; detachedAt = Date.now();
+          log('INFO', `[${userName}] client disconnected after ${shortDuration(Date.now() - reqStartedAt)} — letting ${hopLabel(currentHopCfg)} finish; the reply will be written to the log (Admin → Logs has a Stop button while it runs)`);
+          return;   // stays in the in-progress list until it ends
+        }
         clientGone = true;
         // Also cancels a call that is still waiting for the provider to answer
         // (a queued NIM request), not just one that is already streaming.
         abortCtl.abort();
         log('INFO', `[${userName}] client disconnected after ${shortDuration(Date.now() - reqStartedAt)} — cancelling the upstream request`);
       }
+      INFLIGHT.delete(rid);
     });
 
     // "Waiting…" notices: from the moment the request starts until the model
@@ -2652,14 +3039,28 @@ app.post('/v1/chat/completions', async (req, res) => {
     };
 
     const { response, usedProvider, usedModel, sentMaxTokens, attempts } = await makeAPICall(model, nimRequest, stream || false, {
-      clientGone: () => clientGone, signal: abortCtl.signal, rid,
+      // afterTry: a retry or the next hop is about to start. Nobody is waiting for the reply, so a failed try ends the request
+      // (only the try already in flight is allowed to finish); a first try on this hop may still start if the hop can finish.
+      clientGone: (pc, afterTry) => clientGone || stopped || (detached && (afterTry || !canFinishAfterDisconnect(pc || currentHopCfg))), signal: abortCtl.signal, rid,
       mapping: ownBundle ? { ...MODEL_MAPPING, [model]: ownBundle } : null,
-      onHop: (pc) => { currentHop = hopLabel(pc); }
+      onHop: (pc) => { currentHop = hopLabel(pc); currentHopCfg = pc; },
+      onAttempt: (ctl, info) => { attemptCtlNow = ctl; attemptInfo = info; skipFlag = false; },
+      takeSkip: () => { const v = skipFlag; skipFlag = false; return v; }
     });
+    upstreamAnswered = true;
     // The client left while we were waiting and the answer arrived anyway
     // (raced the cancel): drop it instead of streaming to nobody.
     if (clientGone) {
       try { response.data && typeof response.data.destroy === 'function' && response.data.destroy(); } catch (_) { /* already gone */ }
+      return;
+    }
+    if (detached) {
+      const got = await collectDetachedReply(response, stream || false, streamIdleMs(currentHopCfg));
+      const lbl = `${usedProvider}/${usedModel}`;
+      logStitchedText('THINK', `[${userName}] reasoning (finished after disconnect, ${lbl})`, got.reasoning, rid, userName);
+      logStitchedText('REPLY', `[${userName}] reply (finished after disconnect, ${lbl})`, got.content, rid, userName);
+      INFLIGHT.delete(rid);
+      log(got.ok ? 'INFO' : 'WARN', `[${userName}] ${got.ok ? '✓' : '⚠ incomplete —'} finished after the client left: ${lbl}, ${(got.content || '').length} chars of reply, finish_reason=${got.finish || 'none'}${got.ok ? '' : ' (stream ended early or hit the safety cap)'}`);
       return;
     }
     if (!stream) markFirstOutput();
@@ -2819,7 +3220,14 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
       };
 
+      // Silence once the stream is open (see streamIdleMs). On a stall: close the upstream; the normal stream-end
+      // handling below closes the reply out cleanly for the client (STREAM_CUT).
+      const idleDog = makeIdleWatchdog(streamIdleMs(currentHopCfg), (ms) => {
+        log('WARN', `[STREAM_STALL] ${currentHop} sent nothing for ${shortDuration(ms)} mid-stream — closing the upstream`, 'both', rid, userName);
+        try { response.data.destroy(); } catch (_) { /* gone */ }
+      });
       response.data.on('data', (chunk) => {
+        if (chunk.includes('data:')) idleDog.bump();
         buffer += chunk.toString();
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -2951,11 +3359,12 @@ app.post('/v1/chat/completions', async (req, res) => {
       const finalizeStream = (how, err) => {
         if (finalized) return;
         finalized = true;
+        INFLIGHT.delete(rid);
         const ms = Date.now() - streamStartedAt;
         const endedPrematurely = !sawDone;
         const truncated = endedPrematurely && !upstreamFinishReason;
 
-        if (endedPrematurely) emitTail('length', truncated);
+        if (endedPrematurely) emitTail(stopped ? 'stop' : 'length', truncated && !stopped);
 
         const note = truncated ? ' — CUT OFF: upstream closed before the model finished' : '';
         if (reasoningLog) reasoningLog.close(`${reasoningChars} chars ≈ ${Math.round(reasoningChars / 4)} tokens${note}`);
@@ -2971,10 +3380,12 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (reasoningLog) consoleBlock('THINK', `[${userName}] reasoning — ${sizeStr(reasoningChars)}`, reasoningLog.text(), rid, ADMIN_STREAM_LOG_MAX_CHARS);
         if (contentLog) consoleBlock('REPLY', `[${userName}] reply — ${sizeStr(contentDelivered)}`, contentLog.text(), rid, ADMIN_STREAM_LOG_MAX_CHARS);
         const errSuffix = parseErrorCount ? ` | ${parseErrorCount} chunk parse error(s), last: ${lastParseError}` : '';
-        if (how === 'error') {
+        if (stopped) {
+          log('INFO', `[${userName}] ⏹ stopped from the admin panel after ${shortDuration(Date.now() - reqStartedAt)} — what had arrived (${chunkCount} chunks, ${sizeStr(totalChars)}) is in the log above`);
+        } else if (how === 'error') {
           log('ERROR', `[${userName}] [${classifyError(err).tag}] stream error after ${chunkCount} chunks: ${err?.message}`);
         }
-        if (truncated) {
+        if (stopped) { /* already reported above */ } else if (truncated) {
           log('WARN', `[${userName}] [STREAM_CUT] stream ended without a finish_reason (${how}) — ${statsStr}. Closed it out with finish_reason + [DONE] so the client keeps what streamed.${errSuffix}`);
         } else if (upstreamFinishReason === 'length') {
           log('WARN', `[${userName}] [TOKEN_CAP] hit the token cap (finish_reason=length) — upstream was given max_tokens=${sentMaxTokens}${contentDelivered === 0 ? ' — all thinking, no reply written' : ' — reply cut off mid-way'} — ${statsStr}${errSuffix}`);
@@ -2984,8 +3395,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         res.end();
       };
 
-      response.data.on('end', () => finalizeStream('end'));
-      response.data.on('error', (err) => finalizeStream('error', err));
+      response.data.on('end', () => { idleDog.stop(); finalizeStream('end'); });
+      response.data.on('error', (err) => { idleDog.stop(); finalizeStream('error', err); });
       // Safety net. With real axios a dropped socket normally arrives as an
       // 'error' (ECONNRESET) and a connection that goes silent is cut by axios's
       // idle timeout (timeoutMs: 300s default, 30 min on glm-5.3-nv) — both are
@@ -2994,16 +3405,25 @@ app.post('/v1/chat/completions', async (req, res) => {
       // Node 22). It fires only once the upstream connection is actually closed,
       // so it can never cut a reply that is still coming in. finalizeStream is
       // idempotent, so this is a no-op when 'end'/'error' already ran.
-      response.data.on('close', () => finalizeStream('close'));
+      response.data.on('close', () => { idleDog.stop(); finalizeStream('close'); });
       // Client hung up mid-stream: stop reading the upstream instead of
       // paying for tokens nobody will ever see. The 'close' handler above
       // closes the client side out afterwards (writes to a closed res are
       // harmless no-ops). On a normal completion 'finalized' is already
       // true, so the post-end 'close' event doesn't destroy anything.
       res.on('close', () => {
-        if (!finalized) {
-          try { response.data.destroy(); } catch (_) { /* already gone */ }
+        if (finalized) return;
+        if (detached) {
+          // This hop is allowed to finish for nobody (see canFinishAfterDisconnect): keep reading so the
+          // stitched THINK/REPLY log lines get the whole answer. A safety cap stops a stream that never ends.
+          const cap = setTimeout(() => {
+            if (!finalized) { log('WARN', `[${userName}] finish-after-disconnect hit the ${shortDuration(globalDefault('detachMaxMs'))} safety cap — stopping the upstream`); try { response.data.destroy(); } catch (_) { /* gone */ } }
+          }, globalDefault('detachMaxMs'));
+          if (cap.unref) cap.unref();
+          response.data.once('close', () => clearTimeout(cap));
+          return;
         }
+        try { response.data.destroy(); } catch (_) { /* already gone */ }
       });
 
 
@@ -3051,6 +3471,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
   } catch (error) {
+    INFLIGHT.delete(rid);
     const rawBody = await getErrorBodyText(error);
     const errorBody = truncateForLog(rawBody);
     const cls = classifyError(error, rawBody);
@@ -3061,7 +3482,16 @@ app.post('/v1/chat/completions', async (req, res) => {
     // The client hung up (our own cancel surfaces here): nothing to send back,
     // and it is not an error worth an ERROR line.
     if (cls.tag === 'CLIENT_GONE' || clientGoneFlag()) {
-      log('INFO', `[${userName}] request ended — client disconnected, upstream cancelled${error.tryNote ? ` (${error.tryNote})` : ''}`);
+      if (stopped) {
+        log('INFO', `[${userName}] ⏹ stopped from the admin panel — the upstream request was cancelled`);
+        // The client is still there: end its request cleanly instead of leaving it hanging.
+        if (!detached && !res.writableEnded && !res.destroyed) {
+          if (!res.headersSent) res.status(499).json({ error: { message: 'This request was stopped from the proxy admin panel.', type: 'request_stopped', code: 'stopped_by_admin' } });
+          else { try { res.write('data: [DONE]\n\n'); } catch (_) {} res.end(); }
+        }
+      }
+      else if (detached) log('INFO', `[${userName}] request ended — the client had already left and this try failed, so it was not retried${error.tryNote ? ` (${error.tryNote})` : ''}`);
+      else log('INFO', `[${userName}] request ended — client disconnected, upstream cancelled${error.tryNote ? ` (${error.tryNote})` : ''}`);
       return;
     }
     const multiHop = (error.chainLength || 0) > 1;
@@ -3158,8 +3588,8 @@ function requireAdmin(req, res, next) {
   // bookmark convenience is a client-side-only convenience (see
   // admin.html) and doesn't need this fallback to keep working.
   const provided = req.headers['x-admin-key'] || '';
-  if (provided !== ADMIN_KEY) {
-    state.count++;
+  if (!safeEqual(provided, ADMIN_KEY)) {
+    state.count++; state.last = now; pruneFailMap(adminAuthFails);
     if (state.count >= 5) {
       const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
       state.lockedUntil = now + lockSec * 1000;
@@ -3524,6 +3954,87 @@ app.post('/admin/api/warnings/check', requireAdmin, async (req, res) => {
 
 // ── Google limits: status (for the "may be outdated" warning), preview/apply of a pasted
 // AI Studio table, and dismissing the mismatch warning ──────────────────────────────
+// In-flight requests, so the admin panel can show who is waiting and offer "skip this hop".
+const INFLIGHT = new Map();
+app.get('/admin/api/inflight', requireAdmin, (req, res) => {
+  res.json({ requests: [...INFLIGHT.values()].map(e => ({ rid: e.rid, user: e.user, model: e.model, hop: e.hop(), ageMs: Date.now() - e.startedAt, waiting: e.waiting() && !e.detached(), streaming: !e.waiting() && !e.detached(), canSkip: e.waiting() && !e.detached() && e.canSkip(), detached: e.detached(), detachedForMs: e.detached() ? Date.now() - e.detachedAt() : 0 })) });
+});
+app.post('/admin/api/skip-hop', requireAdmin, (req, res) => {
+  const e = INFLIGHT.get(String(req.body?.rid || '').replace(/^#/, ''));
+  if (!e) return res.status(404).json({ ok: false, error: 'That request is not running any more.' });
+  if (!e.waiting()) return res.json({ ok: false, error: 'This hop already started answering — skipping now would cut a reply that is coming in.' });
+  if (!e.canSkip()) return res.json({ ok: false, error: 'There is no other usable hop behind this one, so there is nothing to skip to.' });
+  e.skip();
+  log('INFO', `[admin] skip requested for #${e.rid} (${e.hop()})`, 'both', e.rid, e.user);
+  res.json({ ok: true });
+});
+
+// Stop any running request. Cancels the upstream call (no retry, no next hop); what had arrived stays in the log. A client that is still connected gets its reply closed out cleanly.
+app.post('/admin/api/stop-request', requireAdmin, (req, res) => {
+  const e = INFLIGHT.get(String(req.body?.rid || '').replace(/^#/, ''));
+  if (!e) return res.status(404).json({ ok: false, error: 'That request is not running any more.' });
+  log('INFO', `[admin] stop requested for #${e.rid} (${e.hop()})`, 'both', e.rid, e.user);
+  e.stop();
+  res.json({ ok: true });
+});
+
+// Admin → Defaults. GET gives the built-in values, your saved ones and what each provider ends up with.
+function defaultsPayload() {
+  const names = new Set(['nvidia', 'google', 'openrouter', 'literouter', 'zai', 'groq', 'amd', 'meganova']);
+  for (const entry of Object.values(MODEL_MAPPING || {})) { try { for (const h of flattenEntry(entry)) if (h.provider) names.add(h.provider); } catch (_) { /* skip */ } }
+  for (const k of Object.keys(USER_DEFAULTS.providers)) if (k !== '*') names.add(k);
+  for (const k of Object.keys(BUILTIN_DEFAULTS.providers)) if (k !== '*') names.add(k);
+  const effective = {};
+  for (const prov of ['*', ...[...names].sort()]) {
+    effective[prov] = {};
+    for (const k of Object.keys(DEFAULT_PROVIDER_FIELDS)) effective[prov][k] = providerDefault(prov, k) ?? null;
+  }
+  const effGlobal = {}; for (const k of Object.keys(DEFAULT_GLOBAL_FIELDS)) effGlobal[k] = globalDefault(k);
+  return { saved: USER_DEFAULTS, builtin: BUILTIN_DEFAULTS, effective: { providers: effective, global: effGlobal }, providers: [...names].sort() };
+}
+app.get('/admin/api/defaults', requireAdmin, (req, res) => res.json(defaultsPayload()));
+app.put('/admin/api/defaults', requireAdmin, async (req, res) => {
+  const c = cleanDefaults(req.body);
+  if (c.problems.length) return res.status(400).json({ error: { message: c.problems.join('; '), type: 'invalid_request_error', code: 400 } });
+  USER_DEFAULTS = c.value;
+  const sync = await saveDefaults('Q-Proxy admin: update defaults');
+  log('INFO', `[admin] defaults updated${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, ...defaultsPayload(), githubSync: sync });
+});
+
+// What each hop will do by default, derived from its limits: basis, retry class, finish-after-disconnect.
+app.get('/admin/api/hop-behavior', requireAdmin, (req, res) => {
+  const rows = [];
+  for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
+    let hops = []; try { hops = flattenEntry(entry); } catch (_) { continue; }
+    hops.forEach((h, i) => rows.push({
+      id, hop: i + 1, provider: h.provider, model: h.model,
+      basis: limitBasis(h), unlimitedRetry: isUnlimitedRetryHop(h), hugeLimitsOnly: hugeLimitsOnly(h),
+      rpmCap: rpmLimitFor(h) || null, finishAfterDisconnect: canFinishAfterDisconnect(h)
+    }));
+  }
+  res.json({ thresholds: { bigRpd: bigRpd(), bigRpm: bigRpm(), bigTpm: bigTpm() }, hops: rows });
+});
+
+// Limit schema (limit-schema.json): reference data + validation. Also checks any optional per-hop `limits` records.
+let LimitSchemaLib = null;
+try { LimitSchemaLib = require('./limit-schema'); } catch (e) { console.warn('limit-schema.js not loaded: ' + e.message); }
+app.get('/admin/api/limit-schema', requireAdmin, (req, res) => {
+  if (!LimitSchemaLib) return res.status(500).json({ error: { message: 'limit-schema.js is missing', type: 'server_error', code: 500 } });
+  const schema = LimitSchemaLib.loadLimitSchema();
+  const problems = LimitSchemaLib.validateSchemaFile(schema);
+  const hopProblems = [];
+  for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
+    let hops = []; try { hops = flattenEntry(entry); } catch (_) { continue; }
+    hops.forEach((h, i) => {
+      if (h.limits === undefined) return;
+      if (!Array.isArray(h.limits)) { hopProblems.push(`${id} hop ${i + 1}: "limits" must be an array`); return; }
+      for (const rec of h.limits) for (const b of LimitSchemaLib.validateLimitRecord(rec, schema.enums)) hopProblems.push(`${id} hop ${i + 1} / ${rec && rec.id}: ${b}`);
+    });
+  }
+  res.json({ ...schema, problems, hopProblems });
+});
+
 app.get('/admin/api/limits/status', requireAdmin, (req, res) => {
   const meta = limitsMeta('google');
   res.json({ google: meta, mismatches: googleLimitMismatches, outdated: !!(meta && meta.stale) || googleLimitMismatches.length > 0 });
@@ -3562,6 +4073,135 @@ app.post('/admin/api/limits/google/apply', requireAdmin, async (req, res) => {
   const syncModels = plan.hopChanges.length ? await saveModels(MODEL_MAPPING, msg) : { ok: true, skipped: true };
   log('INFO', `[admin] ${msg}${syncLimits.ok ? ' (synced to GitHub)' : ''}`);
   res.json({ ok: true, ...summary, capturedAt: PROVIDER_LIMITS.google.capturedAt, githubSync: { limits: syncLimits, models: syncModels } });
+});
+
+// ── Edit the saved Google / Literouter limit tables by hand (row by row) ──
+// Same file the Google paste-in above writes (provider-limits.json), for the days a dashboard changes one number.
+const GOOGLE_ROW_FIELDS = ['rpm', 'tpm', 'rpd'];
+const numOrNull = (v) => (v === '' || v == null) ? null : (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : NaN);
+function cleanLimitRows(provider, rows, meta) {
+  const problems = [], models = {};
+  const seen = new Set();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const key = String(r && r.key || '').trim();
+    if (!key) { problems.push('a row has no name'); continue; }
+    if (seen.has(key.toLowerCase())) { problems.push(`"${key}" appears twice`); continue; }
+    seen.add(key.toLowerCase());
+    if (provider === 'google') {
+      const row = { label: String(r.label || key).trim(), category: String(r.category || '').trim(), slugs: [...new Set((Array.isArray(r.slugs) ? r.slugs : String(r.slugs || '').split(/[,\s]+/)).map(x => String(x).trim().toLowerCase()).filter(Boolean))] };
+      for (const f of GOOGLE_ROW_FIELDS) { const n = numOrNull(r[f]); if (Number.isNaN(n)) { problems.push(`${key}: ${f} must be a number (0 or more) or empty`); continue; } if (n !== null) row[f] = n; }
+      if (r.noFreeAccess) row.noFreeAccess = true;
+      models[key] = row;
+    } else {
+      const cap = numOrNull(r.freeDailyCap), cost = numOrNull(r.premiumCost);
+      if (Number.isNaN(cap)) problems.push(`${key}: free daily cap must be a number or empty (empty = unlimited)`);
+      if (Number.isNaN(cost)) problems.push(`${key}: premium cost must be a number or empty`);
+      models[key] = { hasFree: !!r.hasFree, freeDailyCap: Number.isNaN(cap) ? null : cap, premiumBasic: !!r.premiumBasic, premiumCost: Number.isNaN(cost) ? null : cost, uncensored: r.uncensored === true || r.uncensored === 'true' ? true : (r.uncensored === false || r.uncensored === 'false' ? false : null) };
+    }
+  }
+  const metaOut = {};
+  if (provider === 'literouter') for (const f of ['freeContextTokens', 'basicDailyPremiumCredits', 'basicMaxContextTokens']) {
+    if (meta && f in meta) { const n = numOrNull(meta[f]); if (n === null || Number.isNaN(n)) problems.push(`${f} must be a number`); else metaOut[f] = n; }
+  }
+  return { models, metaOut, problems };
+}
+app.get('/admin/api/limits/table/:provider', requireAdmin, (req, res) => {
+  const provider = req.params.provider;
+  if (!['google', 'literouter'].includes(provider)) return res.status(400).json({ error: { message: 'Only google and literouter have a saved limit table.' } });
+  const sec = PROVIDER_LIMITS[provider] || {};
+  const rows = Object.entries(sec.models || {}).map(([key, v]) => ({ key, ...v }));
+  const meta = provider === 'literouter' ? { freeContextTokens: sec.freeContextTokens ?? null, basicDailyPremiumCredits: sec.basicDailyPremiumCredits ?? null, basicMaxContextTokens: sec.basicMaxContextTokens ?? null } : null;
+  res.json({ provider, capturedAt: sec.capturedAt || null, source: sec.source || null, rows, meta });
+});
+app.put('/admin/api/limits/table/:provider', requireAdmin, async (req, res) => {
+  const provider = req.params.provider;
+  if (!['google', 'literouter'].includes(provider)) return res.status(400).json({ error: { message: 'Only google and literouter have a saved limit table.' } });
+  const { models, metaOut, problems } = cleanLimitRows(provider, req.body && req.body.rows, req.body && req.body.meta);
+  if (problems.length) return res.status(400).json({ error: { message: problems.slice(0, 6).join('; ') } });
+  if (!Object.keys(models).length) return res.status(400).json({ error: { message: 'Refusing to save an empty table.' } });
+  if (!PROVIDER_LIMITS[provider]) PROVIDER_LIMITS[provider] = { models: {} };
+  const sec = PROVIDER_LIMITS[provider];
+  const before = JSON.stringify(sec.models || {});
+  // Change the SAME object in place: LITEROUTER_KNOWN_MODELS points at it.
+  if (!sec.models) sec.models = {};
+  for (const k of Object.keys(sec.models)) delete sec.models[k];
+  Object.assign(sec.models, models);
+  Object.assign(sec, metaOut);
+  sec.capturedAt = new Date().toISOString().slice(0, 10);
+  let hopChanges = 0;
+  if (provider === 'google') {
+    const plan = planGoogleHopUpdates(sec.models);
+    for (const c of plan.slice()) c.hop[c.field] = c.to;
+    hopChanges = plan.length;
+  } else {
+    for (const entry of Object.values(MODEL_MAPPING || {})) for (let h = entry, d = 0; h && d++ < 50; h = h.fallback) {
+      if (h.provider !== 'literouter') continue;
+      const { base, variants } = literouterBaseAndVariants(h.model);
+      const known = sec.models[base];
+      if (variants.includes('free') && known && known.freeDailyCap != null && h.dailyCap !== known.freeDailyCap) { h.dailyCap = known.freeDailyCap; hopChanges++; }
+    }
+  }
+  fs.writeFileSync(PROVIDER_LIMITS_PATH, JSON.stringify(PROVIDER_LIMITS, null, 2) + '\n');
+  if (provider === 'google') googleLimitMismatches = [];
+  markUsageStateDirty();
+  const changed = JSON.stringify(sec.models) !== before;
+  const msg = `Q-Proxy admin: edit ${provider} limits by hand (${Object.keys(models).length} rows${hopChanges ? `, ${hopChanges} hop value(s)` : ''})`;
+  const syncLimits = await githubSyncFile(GITHUB_LIMITS_PATH, fs.readFileSync(PROVIDER_LIMITS_PATH, 'utf8'), msg);
+  const syncModels = hopChanges ? await saveModels(MODEL_MAPPING, msg) : { ok: true, skipped: true };
+  log('INFO', `[admin] ${msg}${syncLimits.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, rows: Object.keys(models).length, changed, hopChanges, capturedAt: sec.capturedAt, githubSync: { limits: syncLimits, models: syncModels } });
+});
+
+// ── Model cards ──
+const cardKey = (provider, model) => `${String(provider || '').trim()}/${String(model || '').trim()}`;
+const CARD_FACT_RE = /context (window|length|size)|\bparameters?\b|\blicen[sc]e|architecture|max(imum)? (output|tokens|input)|modalit|release date|knowledge cutoff|languages?|tool (use|call)|function call|reasoning|input (type|format)|output (type|format)|\bMoE\b|mixture of experts|quantiz|deployment geography|use case/i;
+function cardFacts(text) {
+  const out = [];
+  for (const raw of String(text).split(/\n+/)) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (line.length < 6 || line.length > 300 || !CARD_FACT_RE.test(line)) continue;
+    if (!out.includes(line)) out.push(line);
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+app.get('/admin/api/model-cards', requireAdmin, (req, res) => {
+  res.json({ cards: Object.fromEntries(Object.entries(MODEL_CARDS).map(([k, v]) => [k, { savedAt: v.savedAt, source: v.source, chars: (v.text || '').length, facts: v.facts || [] }])) });
+});
+app.get('/admin/api/model-card', requireAdmin, (req, res) => {
+  const c = MODEL_CARDS[cardKey(req.query.provider, req.query.model)];
+  if (!c) return res.status(404).json({ error: { message: 'No card saved for this model.' } });
+  res.json({ ok: true, ...c });
+});
+app.put('/admin/api/model-card', requireAdmin, async (req, res) => {
+  const { provider, model } = req.body || {};
+  if (!provider || !model) return res.status(400).json({ error: { message: 'Send provider and model.' } });
+  let text = typeof req.body.text === 'string' ? req.body.text : '';
+  if (!text.trim()) return res.status(400).json({ error: { message: 'Send the card text (or a page address).' } });
+  let ParserLib; try { ParserLib = require('./model-page-parser'); } catch (e) { return res.status(500).json({ error: { message: 'model-page-parser.js is missing' } }); }
+  let source = 'pasted text';
+  if (/^\s*https?:\/\/\S+\s*$/.test(text)) {
+    const got = await ParserLib.fetchPageText(text.trim(), (u) => axios.get(u, { timeout: 15000, maxRedirects: 0, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Q-Proxy-page-reader/1.0)' } }));
+    if (got.error) return res.status(400).json({ error: { message: got.error } });
+    text = got.text; source = text.trim() ? `fetched from ${req.body.text.trim()}` : source;
+  } else if (/<\/?(html|div|script|body)\b/i.test(text)) { text = ParserLib.htmlToText(text); source = 'pasted HTML'; }
+  text = text.trim().slice(0, 80000);
+  if (!text) return res.status(400).json({ error: { message: 'Nothing readable was left after cleaning the text.' } });
+  MODEL_CARDS[cardKey(provider, model)] = { text, source, savedAt: new Date().toISOString(), facts: cardFacts(text) };
+  const json = JSON.stringify(MODEL_CARDS, null, 2) + '\n';
+  fs.writeFileSync(MODEL_CARDS_PATH, json);
+  const sync = await githubSyncFile(GITHUB_MODEL_CARDS_PATH, json, `Q-Proxy admin: save model card for ${cardKey(provider, model)}`);
+  log('INFO', `[admin] saved model card for ${cardKey(provider, model)} (${text.length} chars)${sync.ok ? ' (synced to GitHub)' : ''}`);
+  res.json({ ok: true, chars: text.length, source, facts: MODEL_CARDS[cardKey(provider, model)].facts, githubSync: sync });
+});
+app.delete('/admin/api/model-card', requireAdmin, async (req, res) => {
+  const k = cardKey(req.query.provider, req.query.model);
+  if (!MODEL_CARDS[k]) return res.status(404).json({ error: { message: 'No card saved for this model.' } });
+  delete MODEL_CARDS[k];
+  const json = JSON.stringify(MODEL_CARDS, null, 2) + '\n';
+  fs.writeFileSync(MODEL_CARDS_PATH, json);
+  const sync = await githubSyncFile(GITHUB_MODEL_CARDS_PATH, json, `Q-Proxy admin: remove model card for ${k}`);
+  res.json({ ok: true, githubSync: sync });
 });
 
 app.post('/admin/api/logs/clear', requireAdmin, (req, res) => {
@@ -4054,13 +4694,30 @@ const AUTO_DETECT_PAGE_URL = {
   nvidia: (model) => `https://build.nvidia.com/${model}`
 };
 
+// Reads a model page's TEXT (pasted, or fetched from an allowed host) and reports the reasoning-effort values,
+// default, "off" availability and max_tokens/temperature limits it states — with the verbatim lines it read.
+// Nothing is applied here; the admin panel shows the result and a person confirms.
+app.post('/admin/api/parse-model-page', requireAdmin, async (req, res) => {
+  let ParserLib; try { ParserLib = require('./model-page-parser'); } catch (e) { return res.status(500).json({ error: { message: 'model-page-parser.js is missing', type: 'server_error', code: 500 } }); }
+  let text = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!text.trim()) return res.status(400).json({ error: { message: 'Send { "text": "<page text or a URL>" }', type: 'invalid_request_error', code: 400 } });
+  text = text.slice(0, 400000);
+  let source = 'pasted text';
+  if (/^\s*https?:\/\/\S+\s*$/.test(text)) {
+    const got = await ParserLib.fetchPageText(text.trim(), (u) => axios.get(u, { timeout: 15000, maxRedirects: 0, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Q-Proxy-page-reader/1.0)' } }));
+    if (got.error) return res.json({ ok: false, error: got.error });
+    text = got.text; source = 'fetched page';
+  } else if (/<\/?(html|div|script|body)\b/i.test(text)) { text = ParserLib.htmlToText(text); source = 'pasted HTML'; }
+  res.json({ ok: true, source, ...ParserLib.parseModelText(text) });
+});
+
 app.get('/admin/api/detect/:provider', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   const model = req.query.model;
   if (!model || typeof model !== 'string') {
     return res.status(400).json({ error: { message: 'Query must include ?model=<provider model id>', type: 'invalid_request_error', code: 400 } });
   }
-  const urlBuilder = AUTO_DETECT_PAGE_URL[provider];
+  const urlBuilder = Object.prototype.hasOwnProperty.call(AUTO_DETECT_PAGE_URL, provider) ? AUTO_DETECT_PAGE_URL[provider] : null;
   if (!urlBuilder) {
     return res.status(400).json({ error: { message: `Automatic page-based detection isn't available for "${provider}" yet — no confirmed public per-model doc page at a predictable URL. Use the paste-an-example scanner instead.`, type: 'invalid_request_error', code: 400 } });
   }
@@ -4148,6 +4805,62 @@ function classifyOpenRouterModel(m) {
     context: Number(m.context_length) > 0 ? Number(m.context_length) : null,
     tools: sp ? sp.includes('tools') : null, reasoning: sp ? sp.includes('reasoning') : null };
 }
+// One robust way to read a provider's model list, used by the sync check AND the "API call" panel: follows paging
+// (next_page_token / nextPageToken / has_more), accepts {data:[…]}, {models:[…]} or a bare array, retries once on a network
+// error / 429 / 5xx, and never throws — it always says what happened.
+async function fetchProviderCatalog(provider) {
+  const { base, key } = getProviderConfigReadOnly(provider);
+  const url = `${base}/models`;
+  if (!key) return { ok: false, status: null, url, items: [], pages: 0, message: `No API key is set on the server for ${provider}.`, noKey: true };
+  const listOf = (d) => Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : Array.isArray(d?.models) ? d.models : null;
+  let items = [], first = null, pages = 0, status = null, token = null, lastId = null;
+  for (let page = 0; page < 20; page++) {
+    const params = {};
+    if (token) params.pageToken = token;
+    else if (lastId) params.after = lastId;
+    let r = null, lastErr = null;
+    for (let attempt = 0; attempt < 2 && !r; attempt++) {
+      try { r = await axios.get(url, { headers: { Authorization: `Bearer ${key}` }, params, timeout: 15000 }); }
+      catch (err) {
+        lastErr = err;
+        const st = err.response?.status;
+        if (st && st < 500 && st !== 429) break;          // a real 4xx answer: retrying won't change it
+        await new Promise(ok => setTimeout(ok, 600));
+      }
+    }
+    if (!r) {
+      const err = lastErr;
+      status = err?.response?.status || null;
+      const body = err?.response?.data;
+      return { ok: false, status, url, items, pages, firstData: first, partial: items.length > 0, errBody: body,
+        message: String(extractProviderMessage(typeof body === 'string' ? body : JSON.stringify(body || {})) || err?.message || 'request failed').slice(0, 400) };
+    }
+    status = r.status; pages++;
+    if (first === null) first = r.data;
+    const list = listOf(r.data);
+    if (!list) {
+      if (page === 0) return { ok: true, status, url, items: [], pages, firstData: first, noList: true };
+      break;
+    }
+    items = items.concat(list);
+    const next = r.data?.next_page_token || r.data?.nextPageToken || null;
+    if (next && next !== token) { token = next; continue; }
+    if (r.data?.has_more && list.length && list[list.length - 1]?.id && list[list.length - 1].id !== lastId) { lastId = list[list.length - 1].id; token = null; continue; }
+    break;
+  }
+  const seen = new Set();
+  items = items.filter(m => { const id = m && m.id; if (!id || seen.has(id)) return false; seen.add(id); return true; });
+  return { ok: true, status, url, items, pages, firstData: first };
+}
+function qproxyModelsFor(provider) {
+  const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
+  const slugs = new Set(), ids = new Set();
+  for (const [id, entry] of Object.entries(MODEL_MAPPING || {})) {
+    let hop = entry, depth = 0;
+    while (hop && depth++ < 50) { if (hop.provider === provider && hop.model) { slugs.add(canon(hop.model)); ids.add(id); } hop = hop.fallback; }
+  }
+  return { slugs: [...slugs].sort(), ids: [...ids].sort() };
+}
 // The exact call behind "Check <provider> for updates", for testing it by hand. Without ?send=1 it only describes the call
 // (URL + a curl line with a placeholder key). With ?send=1 it makes the call from the server (the real key never leaves
 // the server and is not echoed) and returns the provider's raw answer.
@@ -4165,28 +4878,37 @@ app.get('/admin/api/sync/:provider/raw', requireAdmin, async (req, res) => {
     const cap = 60000;
     return { raw: text.slice(0, cap), truncated: text.length > cap };
   };
-  try {
-    const r = await axios.get(url, { headers: { Authorization: `Bearer ${key}` }, timeout: 15000 });
-    const list = Array.isArray(r.data?.data) ? r.data.data : null;
-    return res.json({ ...meta, sent: true, ok: true, status: r.status, ms: Date.now() - t0, count: list ? list.length : null, ids: list ? list.map(m => m && m.id).filter(Boolean).slice(0, 500) : [], ...pack(r.data) });
-  } catch (err) {
-    return res.json({ ...meta, sent: true, ok: false, status: err.response?.status || null, ms: Date.now() - t0, count: null, ids: [], message: String(extractProviderMessage(typeof err.response?.data === 'string' ? err.response.data : JSON.stringify(err.response?.data || '')) || err.message || '').slice(0, 400), ...pack(err.response?.data ?? err.message) });
-  }
+  const cat = await fetchProviderCatalog(provider);
+  const canon = provider === 'google' ? normalizeGoogleModelId : (x) => x;
+  const listedIds = cat.items.map(m => canon(m.id));
+  const mine = qproxyModelsFor(provider);
+  const listedSet = new Set(listedIds), mineSet = new Set(mine.slugs);
+  const compare = {
+    qproxyCount: mine.slugs.length, qproxyModels: mine.slugs, qproxyIds: mine.ids,
+    listedNotInQproxy: listedIds.filter(i => !mineSet.has(i)),
+    qproxyNotListed: cat.ok && !cat.noList ? mine.slugs.filter(i => !listedSet.has(i)) : [],
+  };
+  if (!cat.ok) return res.json({ ...meta, sent: true, ok: false, status: cat.status, ms: Date.now() - t0, count: cat.partial ? listedIds.length : null, ids: listedIds, message: cat.message, ...pack(cat.errBody !== undefined ? cat.errBody : ''), ...compare });
+  return res.json({ ...meta, sent: true, ok: true, status: cat.status, ms: Date.now() - t0, pages: cat.pages,
+    count: cat.noList ? null : listedIds.length, ids: listedIds, ...compare, ...pack(cat.noList ? cat.firstData : { ...(typeof cat.firstData === 'object' && cat.firstData && !Array.isArray(cat.firstData) ? cat.firstData : {}), data: cat.items }) });
 });
-app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
-  const provider = req.params.provider;
-  if (!SYNCABLE_PROVIDERS.has(provider)) {
-    return res.status(400).json({
-      error: { message: `No live catalog check available for "${provider}" — either it doesn't publish a /models list, or it isn't wired into SYNCABLE_PROVIDERS yet. Track it manually for now.`, type: 'invalid_request_error', code: 400 }
-    });
+function syncFailMessage(provider, e) {
+  const st = e.response?.status;
+  let msg = `Couldn't reach ${provider}'s /models: ${st || ''} ${e.message}`;
+  if (st === 401 || st === 403) {
+    const { key } = getProviderConfigReadOnly(provider);
+    const k = String(key || '');
+    msg += ` — ${provider} answered but refused the key (the server sent ${k ? `a ${k.length}-character key starting "${k.slice(0, 4)}"` : 'no key'}). Check the key's environment variable on Render: it must be the bare key (no quotes, no "Bearer ", no spaces or line break), not revoked, and from the same account.`;
+    if (provider === 'groq' && k && !k.startsWith('gsk_')) msg += ' Groq keys start with "gsk_", this one does not.';
   }
-
+  return msg;
+}
+async function buildSyncReport(provider, opts) {
   const { base, key } = getProviderConfigReadOnly(provider);
-  try {
-    const r = await axios.get(`${base}/models`, {
-      headers: { Authorization: `Bearer ${key}` },
-      timeout: 15000
-    });
+  {
+    const cat = await fetchProviderCatalog(provider);
+    if (!cat.ok) { const e = new Error(cat.message); e.response = cat.status ? { status: cat.status, data: cat.message } : undefined; throw e; }
+    const r = { data: { data: cat.items } };
     // Google lists ids as "models/xyz" but hops are stored bare (or, in older
     // entries, with the prefix) — compare on the bare slug so a configured
     // model isn't offered again as "new" under the other spelling.
@@ -4256,15 +4978,49 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
     }
 
     // Opening the panel is also a fresh catalog check: flag configured hops the provider dropped.
-    applyCatalogWarnings(provider, catalogDriftFor(provider, liveSet));
+    if (!(opts && opts.readOnly)) applyCatalogWarnings(provider, catalogDriftFor(provider, liveSet));
     const noLongerListedKinds = Object.fromEntries(noLongerListed.map(id => { const w = hopWarnings[hopWarnKey(provider, id)]; return [id, { kind: w ? w.kind : 'gone', instead: w && w.instead || null }]; }));
-    res.json({ provider, liveCount, newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
+    return ({ provider, liveCount, liveIds, linked: liveIds.filter(i => configuredCanon.has(i)), newlyAvailable, noLongerListed, modelInfo, limitsMeta: limitsMeta(provider), partialNote: PARTIAL_SYNC_NOTES[provider] || null,
       tierNotes: tierNotesFor(provider), noLongerListedKinds });
-  } catch (e) {
-    res.status(502).json({
-      error: { message: `Couldn't reach ${provider}'s /models: ${e.response?.status || ''} ${e.message}`, type: 'upstream_error', code: 502 }
+  }
+}
+app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
+  const provider = req.params.provider;
+  if (!SYNCABLE_PROVIDERS.has(provider)) {
+    return res.status(400).json({
+      error: { message: `No live catalog check available for "${provider}" — either it doesn't publish a /models list, or it isn't wired into SYNCABLE_PROVIDERS yet. Track it manually for now.`, type: 'invalid_request_error', code: 400 }
     });
   }
+  try {
+    res.json(await buildSyncReport(provider));
+  } catch (e) {
+    res.status(502).json({
+      error: { message: syncFailMessage(provider, e), type: 'upstream_error', code: 502 }
+    });
+  }
+});
+
+// Tier words that mean "no cost to you" vs "costs money / can't be reached". Anything unclassified counts as free-side but is labelled.
+const PAID_TIERS = new Set(['paid', 'paidonly', 'inaccessible']);
+// Every provider's catalog in one answer: for each one, the models you already have linked and the ones you do not,
+// each with its tier label. Paid ones are included but flagged (paid:true) so the page can hide or show them.
+app.get('/admin/api/all-models', requireAdmin, async (req, res) => {
+  const out = await Promise.all([...SYNCABLE_PROVIDERS].map(async (provider) => {
+    const mine = qproxyModelsFor(provider);
+    try {
+      const r = await buildSyncReport(provider, { readOnly: true });
+      const info = (id) => (r.modelInfo && r.modelInfo[id]) || { tier: 'unknown' };
+      return { provider, ok: true, liveCount: r.liveCount, linked: r.linked, noLongerListed: r.noLongerListed,
+        notLinked: r.newlyAvailable.map(id => { const i = info(id); return { id, tier: i.tier || 'unknown', paid: PAID_TIERS.has(i.tier), cost: i.cost == null ? null : i.cost, uncensored: i.uncensored == null ? null : i.uncensored }; }) };
+    } catch (e) {
+      return { provider, ok: false, error: syncFailMessage(provider, e), linked: mine.slugs, notLinked: [], noLongerListed: [] };
+    }
+  }));
+  // Providers with no live list (DeepSeek, MegaNova, ...): only what you have linked.
+  const extra = new Set();
+  for (const entry of Object.values(MODEL_MAPPING || {})) { let h = entry, d = 0; while (h && d++ < 50) { if (h.provider && !SYNCABLE_PROVIDERS.has(h.provider)) extra.add(h.provider); h = h.fallback; } }
+  for (const provider of [...extra].sort()) out.push({ provider, ok: true, noLiveList: true, linked: qproxyModelsFor(provider).slugs, notLinked: [], noLongerListed: [] });
+  res.json({ providers: out.sort((x, y) => x.provider.localeCompare(y.provider)) });
 });
 
 app.post('/admin/api/sync/:provider/add', requireAdmin, async (req, res) => {
@@ -4430,10 +5186,10 @@ function requireUser(req, res, next) {
   if (now < state.lockedUntil) {
     return res.status(429).json({ error: { message: `Too many wrong keys. Try again in ${Math.ceil((state.lockedUntil - now) / 1000)}s.`, type: 'rate_limit_error', code: 429 } });
   }
-  const k = String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  const k = bearerKey(req);
   const who = k ? buildKeyMap()[k] : null;
   if (!who) {
-    state.count++;
+    state.count++; state.last = now; pruneFailMap(userAuthFails);
     if (state.count >= 5) {
       const lockSec = Math.min(3600, 30 * Math.pow(2, state.count - 5));
       state.lockedUntil = now + lockSec * 1000;

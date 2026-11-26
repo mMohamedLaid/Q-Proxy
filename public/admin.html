@@ -378,6 +378,31 @@
   .logs-row .push { margin-left: auto; }
   #log-rid-filter { width: 112px; font-family: var(--font-mono); font-size: 12px; }
   .log-auto-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+  .tool-panel { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: rgba(255,255,255,.015); }
+  .tool-panel table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+  .tool-panel th, .tool-panel td { padding: 3px 5px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+  .tool-panel input[type=text], .tool-panel input[type=number], .tool-panel textarea, .tool-panel select { background: #0A0D13; color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; font: inherit; }
+  .tool-panel input[type=number] { width: 84px; }
+  .tool-panel .tp-wrap { overflow-x: auto; max-height: 460px; overflow-y: auto; }
+  .tier-chip { display: inline-block; font-size: 9.5px; padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.07); color: var(--text-dim); margin-left: 6px; }
+  .tier-chip.paid { background: rgba(255,120,90,.18); color: var(--broken); }
+  .am-list { columns: 2 280px; font-family: var(--font-mono); font-size: 11px; padding: 4px 10px 8px; }
+  .am-list div { break-inside: avoid; padding: 1px 0; word-break: break-all; }
+  #section-guide { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  #section-guide .sg-btn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--border); background: rgba(20,26,36,.92); color: var(--text); cursor: pointer; font-size: 14px; line-height: 1; }
+  #section-guide .sg-btn:hover { border-color: var(--accent, #2BA89E); }
+  #section-guide .sg-list { display: none; flex-direction: column; background: rgba(20,26,36,.97); border: 1px solid var(--border); border-radius: 10px; padding: 6px; max-height: 70vh; overflow-y: auto; min-width: 170px; }
+  #section-guide.open .sg-list { display: flex; }
+  #section-guide .sg-list button { text-align: left; background: none; border: 0; color: var(--text-dim); padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  #section-guide .sg-list button:hover { background: rgba(255,255,255,.06); color: var(--text); }
+  #section-guide .sg-list button.on { color: var(--text); font-weight: 600; background: rgba(43,168,158,.18); }
+  @media (max-width: 700px) { #section-guide { top: auto; bottom: 14px; transform: none; } }
+  .logs-wrap { position: relative; }
+  .log-jump { position: absolute; right: 14px; bottom: 10px; display: flex; flex-direction: column; gap: 4px; z-index: 3; }
+  .log-jump button { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--border); background: rgba(20,26,36,.92); color: var(--text); cursor: pointer; font-size: 14px; line-height: 1; }
+  .log-jump button:hover { border-color: var(--accent, #2BA89E); }
+  .log-line.peek .msg { max-height: 4.4em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 45%, transparent); mask-image: linear-gradient(#000 45%, transparent); cursor: pointer; }
+  .log-peek { max-height: 7em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); cursor: pointer; }
   .logs-view {
     background: #0A0D13; border: 1px solid var(--border); border-radius: 8px;
     max-height: 480px; overflow-y: auto; font-family: var(--font-mono); font-size: 11.5px;
@@ -481,6 +506,9 @@
   .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
   .field input:not([type=checkbox]):not([type=radio]), .field select { width: 100%; }
   .field input[type="text"], .field input[type="number"], .field input[type="date"] { font-family: var(--font-mono); }
+  .dur-grp { display: flex; gap: 6px; align-items: stretch; }
+  .dur-grp .dur-num { flex: 1 1 auto; min-width: 0; }
+  .field .dur-grp select.dur-unit, .dur-grp select.dur-unit { width: auto; flex: 0 0 auto; }
   /* a tick-box with a sentence next to it (the base .field label style is for short field names) */
   .check-label, .field .check-label { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12.5px; font-weight: 400; color: var(--text-dim); line-height: 1.45; cursor: pointer; }
   .check-label input { margin-top: 2px; flex: none; }
@@ -624,6 +652,12 @@
 </div>
 
 <div id="dashboard" hidden>
+  <nav id="section-guide" aria-label="Jump to a section" hidden>
+    <div class="sg-list" id="sg-list"></div>
+    <button type="button" class="sg-btn" id="sg-up" title="Previous section" aria-label="Previous section">↑</button>
+    <button type="button" class="sg-btn" id="sg-menu" title="Sections: pick one to jump to it" aria-label="Sections menu">☰</button>
+    <button type="button" class="sg-btn" id="sg-down" title="Next section" aria-label="Next section">↓</button>
+  </nav>
   <header class="top">
     <div class="brand">
       <svg class="qmark" aria-hidden="true"><use href="#q-mark"/></svg>
@@ -720,6 +754,18 @@
     <div id="providers"></div>
   </section>
 
+  <section class="admin-only" id="tools-section">
+    <div class="section-head"><h2>Catalog, limits &amp; model cards</h2><span class="count">tools you open when you need them</span></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn-secondary" id="tool-allmodels-btn">📚 All provider models</button>
+      <button type="button" class="btn-secondary" id="tool-limits-btn">✏️ Edit Google / Literouter limits</button>
+      <button type="button" class="btn-secondary" id="tool-cards-btn">📄 Model cards</button>
+    </div>
+    <div id="tool-allmodels" hidden class="tool-panel"></div>
+    <div id="tool-limits" hidden class="tool-panel"></div>
+    <div id="tool-cards" hidden class="tool-panel"></div>
+  </section>
+
   <section class="admin-only">
     <div class="section-head"><h2>Usage &amp; credits</h2></div>
     <div class="usage-grid" id="usage-grid"></div>
@@ -793,7 +839,26 @@
         <button type="button" class="btn-secondary btn-danger push" id="log-clear-btn">Clear</button>
       </div>
     </div>
-    <div class="logs-view" id="logs-view"></div>
+    <div id="inflight-strip" class="admin-only" style="margin:8px 0;"></div>
+    <div class="logs-wrap">
+      <div class="logs-view" id="logs-view"></div>
+      <div class="log-jump" role="group" aria-label="Move around the logs">
+        <button type="button" id="log-jump-prev" title="Previous section" aria-label="Previous section">↑</button>
+        <button type="button" id="log-jump-next" title="Next section" aria-label="Next section">↓</button>
+        <button type="button" id="log-jump-end" title="Jump to the very latest line" aria-label="Jump to the latest line">⤓</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="admin-only" id="defaults-section">
+    <div class="section-head"><h2>Defaults</h2><span class="count">used when a hop's own field is blank</span></div>
+    <div class="acct-hint" style="margin-bottom:8px;">Blank = keep the built-in value (shown in grey). A value on a single hop always wins. The last row applies to any provider that has no row of its own, including ones you add later. To switch the NVIDIA requests/min cap off, set it above the "huge" requests/min value.</div>
+    <div id="defaults-body"></div>
+    <div class="row mt8">
+      <button type="button" class="btn-primary" id="defaults-save">Save defaults</button>
+      <button type="button" class="btn-secondary" id="defaults-reset">Clear all my values</button>
+      <span class="sync-result-note" id="defaults-status"></span>
+    </div>
   </section>
 
   <section class="admin-only">
@@ -1262,6 +1327,12 @@
     return bits.join(' · ');
   }
 
+  function renderHopCard(hop) {
+    const c = lastModelCards[`${hop.provider}/${hop.model}`];
+    if (!c) return '';
+    const facts = (c.facts || []).map(f => `<div>${escapeHtml(f)}</div>`).join('');
+    return `<details class="hop-keys"><summary>📄 model card saved ${escapeHtml((c.savedAt || '').slice(0, 10))} · ${c.facts ? c.facts.length : 0} key lines</summary>${facts || '<div>no key lines recognised — open Model cards to read the whole text</div>'}</details>`;
+  }
   function renderHopKeyBreakdown(hop) {
     if (hop.provider === 'literouter') {
       if (isLiterouterPremiumClientSide(hop)) {
@@ -1274,17 +1345,23 @@
       const parts = capped.keys.map(k => `${escapeHtml(k.envName)}: ${k.used}/${k.cap}`).join('  ');
       return `<div class="hop-keys">${parts}</div>`;
     }
-    if (hop.provider === 'google' && (hop.rpm || hop.tpm || hop.rpd)) {
+    if (hop.provider === 'google') {
+      // Google counts per model AND per key: every key is a "life", its used/limit is that life's hp.
+      // (Other providers share one pool across models, so they are shown differently above.)
       const g = lastGoogleUsage.find(m => m.model === hop.model);
-      if (!g) return '';
+      if (!g || !g.keys.length) return '';
+      if (!(g.rpm || g.tpm || g.rpd)) return `<div class="hop-keys">${g.keys.length} key${g.keys.length === 1 ? '' : 's'} · no limits set, usage not tracked</div>`;
+      let alive = 0;
       const parts = g.keys.map(k => {
         const bits = [];
-        if (g.rpm) bits.push(`${k.rpmUsed}/${g.rpm} rpm`);
-        if (g.tpm) bits.push(`${k.tpmUsed}/${g.tpm} tpm`);
-        if (g.rpd) bits.push(`${k.rpdUsed}/${g.rpd} rpd`);
-        return `${escapeHtml(k.envName)}: ${bits.join(', ')}`;
+        let dead = false;
+        if (g.rpm) { bits.push(`${k.rpmUsed}/${g.rpm} rpm`); if (k.rpmUsed >= g.rpm) dead = true; }
+        if (g.tpm) { bits.push(`${k.tpmUsed}/${g.tpm} tpm`); if (k.tpmUsed >= g.tpm) dead = true; }
+        if (g.rpd) { bits.push(`${k.rpdUsed}/${g.rpd} rpd`); if (k.rpdUsed >= g.rpd) dead = true; }
+        if (!dead) alive++;
+        return `<span${dead ? ' style="opacity:.55;text-decoration:line-through"' : ''}>${escapeHtml(k.envName)}: ${bits.join(', ')}</span>`;
       }).join('  ');
-      return `<div class="hop-keys">${parts}</div>`;
+      return `<div class="hop-keys">${alive}/${g.keys.length} keys have room for this model — ${parts}</div>`;
     }
     return '';
   }
@@ -1335,6 +1412,7 @@
         ${hops.length > 1 ? `<button type="button" class="test-hop-btn" data-test="${escapeHtml(entryId)}" data-hop="${i}" title="Open this hop's settings with the test area ready">🧪 Test</button>` : ''}
         ${skipBadge}${warnBadge}
         ${renderHopKeyBreakdown(hop)}
+        ${renderHopCard(hop)}
         ${showOrder && limitsSummary(hop) ? `<div class="hop-keys">limits: ${escapeHtml(limitsSummary(hop))}</div>` : ''}
       </div>`;
     }).join('');
@@ -1522,6 +1600,11 @@
     const result = r ? `
       <div class="sa-status ${r.ok ? 'ok' : 'bad'}">HTTP ${r.status == null ? '—' : r.status} · ${r.ms} ms${r.ok ? ` · ${r.count == null ? 'no "data" list' : r.count + ' models listed'}` : ''}</div>
       ${r.message ? `<div class="sa-row"><span class="sa-label">Provider says</span><span>${escapeHtml(r.message)}</span></div>` : ''}
+      ${r.qproxyCount != null ? `<div class="sa-row"><span class="sa-label">Q-Proxy has</span><span>${r.qproxyCount} model${r.qproxyCount === 1 ? '' : 's'} from this provider · ${(r.ids || []).length} listed by the provider${r.pages > 1 ? ` (${r.pages} pages)` : ''}</span></div>
+      <details class="sa-row"><summary>All ${(r.ids || []).length} models the provider lists</summary><div class="sa-code">${(r.ids || []).map(i => escapeHtml(i)).join('<br>') || '—'}</div></details>
+      <details class="sa-row"><summary>All ${r.qproxyCount} models Q-Proxy has</summary><div class="sa-code">${(r.qproxyModels || []).map(i => escapeHtml(i)).join('<br>') || '—'}</div></details>
+      ${(r.listedNotInQproxy || []).length ? `<details class="sa-row"><summary>${r.listedNotInQproxy.length} listed but not in Q-Proxy</summary><div class="sa-code">${r.listedNotInQproxy.map(i => escapeHtml(i)).join('<br>')}</div></details>` : ''}
+      ${(r.qproxyNotListed || []).length ? `<details class="sa-row"><summary>${r.qproxyNotListed.length} in Q-Proxy but not listed by the provider</summary><div class="sa-code">${r.qproxyNotListed.map(i => escapeHtml(i)).join('<br>')}</div></details>` : ''}` : ''}
       <pre class="sa-raw">${escapeHtml(r.raw || '')}</pre>
       <div class="sync-result-note">${r.truncated ? 'Shown cut at 60,000 characters. ' : ''}<button type="button" class="sync-item-btn" data-sync-api-copy="${escapeHtml(provider)}">Copy raw answer</button></div>` : '';
     return `<div class="sync-api">
@@ -1685,6 +1768,7 @@
   let lastLiterouterCapped = [];
   let lastLiterouterPremiumPool = [];
   let lastGoogleUsage = [];
+  let lastModelCards = {};
   function renderModelCard(item) {
     const id = item.id;
     const entry = item.entry;
@@ -1998,6 +2082,18 @@
   const logLevels = new Set();          // empty = every level; otherwise only these (picked in the chips)
   let logOrder = 'asc', logGroup = false;
   const logCollapsed = new Set();       // 'g:<rid>' for a request chunk, 'e:<key>' for one THINK / REPLY / PROMPT block
+  // Three states per section: open (everything), peek (older than the newest LOG_RECENT_OPEN: a short preview, fades out) and
+  // collapsed (one line). The newest LOG_RECENT_OPEN sections are open; older ones peek until you open them.
+  const LOG_RECENT_OPEN = 10;
+  const logOpenFull = new Set();        // older sections the user opened all the way
+  let logRecentSec = new Set();         // keys of the newest sections, rebuilt on every render
+  function logSecState(k) { return logCollapsed.has(k) ? 'collapsed' : (logRecentSec.has(k) || logOpenFull.has(k)) ? 'open' : 'peek'; }
+  function logSecToggle(k) {
+    const st = logSecState(k);
+    if (st === 'peek') { logOpenFull.add(k); logCollapsed.delete(k); }
+    else if (st === 'open') { if (logRecentSec.has(k)) logCollapsed.add(k); else logOpenFull.delete(k); }
+    else { logCollapsed.delete(k); }
+  }
   let lastLogRes = null;
   let currentLogRid = '';
   let lastLogSig = '';
@@ -2017,7 +2113,36 @@
     if (!logAutoRefreshTimer) logAutoRefreshTimer = setInterval(() => { loadLogs(); if (++tick % 12 === 0) { loadLimitsStatus(); loadUserActivity(); } }, 5000);
   }
 
+  // Requests running right now. One that is still waiting for its FIRST output gets a "skip this hop" button
+  // (only offered when another usable hop is behind it).
+  async function loadInflight() {
+    const box = $('#inflight-strip');
+    if (!box || USER_MODE) return;
+    try {
+      const r = await api('/admin/api/inflight');
+      const list = (r.requests || []);
+      const secs = ms => { const t = Math.round(ms / 1000); return t >= 60 ? `${Math.floor(t / 60)}m ${t % 60}s` : `${t}s`; };
+      const stopBtn = x => `<button type="button" class="btn-secondary" data-stop-rid="${escapeHtml(x.rid)}" title="Cancel this request at the provider: no retry, no next hop. What has arrived so far stays in the log. If its client is still connected, its reply is closed out.">⏹ Stop</button>`;
+      const row = (icon, x, text, extra) => `<div style="font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;"><span>${icon} <code>#${escapeHtml(x.rid)}</code> ${escapeHtml(x.user || '')} · ${escapeHtml(x.hop || x.model)} · ${text}</span>${extra || ''}${stopBtn(x)}</div>`;
+      box.innerHTML = list.map(x => x.detached
+        ? row('👻', x, `client left ${secs(x.detachedForMs)} ago, still finishing — the reply goes to the logs only`)
+        : x.waiting
+          ? row('⏳', x, `waiting ${secs(x.ageMs)} for first output`, x.canSkip ? `<button type="button" class="btn-secondary" data-skip-rid="${escapeHtml(x.rid)}" title="Stop waiting on this hop and go to the next usable one">⏭ Skip this hop</button>` : '<span style="color:var(--text-faint);">no other usable hop to skip to</span>')
+          : row('▶', x, `answering · running ${secs(x.ageMs)}`)).join('');
+      box.querySelectorAll('[data-stop-rid]').forEach(b => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { const out = await api('/admin/api/stop-request', { method: 'POST', body: { rid: b.dataset.stopRid } }); if (!out.ok) alert(out.error || 'Could not stop.'); } catch (e) { alert(e.message || e); }
+        loadInflight(); loadLogs(true);
+      }));
+      box.querySelectorAll('[data-skip-rid]').forEach(b => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { const out = await api('/admin/api/skip-hop', { method: 'POST', body: { rid: b.dataset.skipRid } }); if (!out.ok) alert(out.error || 'Could not skip.'); } catch (e) { alert(e.message || e); }
+        loadInflight(); loadLogs(true);
+      }));
+    } catch (_) { /* log polling must never break on this */ }
+  }
   async function loadLogs(force) {
+    loadInflight();
     try {
       const qs = [];
       if (logLevels.size) qs.push(`level=${encodeURIComponent([...logLevels].join(','))}`);
@@ -2114,15 +2239,15 @@
   }
   // </arrange-logs>
   function logLineHtml(l) {
-    const foldable = LOG_FOLDABLE.has(l.level), key = logKey(l), isCollapsed = foldable && logCollapsed.has('e:' + key);
+    const foldable = LOG_FOLDABLE.has(l.level), key = logKey(l), secSt = !foldable ? 'open' : logGroup ? (logCollapsed.has('e:' + key) ? 'collapsed' : 'open') : logSecState('e:' + key), isCollapsed = secSt === 'collapsed', isPeek = secSt === 'peek';
     const msg = String(l.msg == null ? '' : l.msg);
     const body = isCollapsed ? escapeHtml(msg.replace(/\s+/g, ' ').slice(0, 140) + (msg.length > 140 ? '…' : '')) : tagifyLogMsg(escapeHtml(msg));
-    return `<div class="log-line lvl-${escapeHtml(l.level)}${isCollapsed ? ' collapsed' : ''}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span>${foldable ? `<span class="fold caret" data-fold="${escapeHtml(key)}" title="Fold / unfold">${isCollapsed ? '▸' : '▾'}</span>` : ''}<span class="lvl">${escapeHtml(l.level)}</span>${l.rid ? `<span class="rid" data-rid="${escapeHtml(l.rid)}" title="Show only this request">#${escapeHtml(l.rid)}</span>` : ''}<span class="msg">${body}</span></div>`;
+    return `<div class="log-line lvl-${escapeHtml(l.level)}${isCollapsed ? ' collapsed' : ''}${isPeek ? ' peek' : ''}" data-sec="${foldable ? '1' : ''}"><span class="ts" title="${escapeHtml(l.ts)} (UTC)">${escapeHtml(fmtLogTs(l.ts))}</span>${foldable ? `<span class="fold caret" data-fold="${escapeHtml(key)}" title="${isPeek ? 'Older entry: showing a preview. Click to open it' : 'Fold / unfold'}">${isCollapsed || isPeek ? '▸' : '▾'}</span>` : ''}<span class="lvl">${escapeHtml(l.level)}</span>${l.rid ? `<span class="rid" data-rid="${escapeHtml(l.rid)}" title="Show only this request">#${escapeHtml(l.rid)}</span>` : ''}<span class="msg">${body}</span></div>`;
   }
   function logGroupHtml(g) {
-    const open = !logCollapsed.has('g:' + g.rid);
+    const st = logSecState('g:' + g.rid), open = st !== 'collapsed', peek = st === 'peek';
     const badges = ['ERROR', 'WARN', 'PROMPT', 'THINK', 'REPLY', 'INFO'].filter(k => g.counts[k]).map(k => `<span class="gbadge lvl-${k}">${k} ${g.counts[k]}</span>`).join('');
-    return `<div class="log-group"><div class="log-group-head" data-gid="${escapeHtml(g.rid)}" title="Fold / unfold this request"><span class="caret">${open ? '▾' : '▸'}</span><span class="gid">#${escapeHtml(g.rid)}</span><span class="gmeta">${escapeHtml(fmtLogTs(g.first))} · ${g.lines.length} line${g.lines.length === 1 ? '' : 's'}</span>${badges}</div>${open ? g.lines.map(logLineHtml).join('') : ''}</div>`;
+    return `<div class="log-group" data-sec="1"><div class="log-group-head" data-gid="${escapeHtml(g.rid)}" title="${peek ? 'Older request: showing a preview. Click to open it' : 'Fold / unfold this request'}"><span class="caret">${open && !peek ? '▾' : '▸'}</span><span class="gid">#${escapeHtml(g.rid)}</span><span class="gmeta">${escapeHtml(fmtLogTs(g.first))} · ${g.lines.length} line${g.lines.length === 1 ? '' : 's'}</span>${badges}</div>${open ? (peek ? `<div class="log-peek">${g.lines.map(logLineHtml).join('')}</div>` : g.lines.map(logLineHtml).join('')) : ''}</div>`;
   }
 
   function renderLogs(res, force, keepScroll) {
@@ -2143,6 +2268,12 @@
     // lines appear (bottom when oldest-first, top when newest-first) — if someone's
     // scrolled away to read older entries, an auto-refresh shouldn't yank them.
     const wasNearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 40;
+    {
+      const keys = [];
+      if (logGroup) { const seen = new Set(); for (const l of res.logs) if (l.rid && !seen.has(l.rid)) { seen.add(l.rid); keys.push('g:' + l.rid); } }
+      else for (const l of res.logs) if (LOG_FOLDABLE.has(l.level)) keys.push('e:' + logKey(l));
+      logRecentSec = new Set(keys.slice(-LOG_RECENT_OPEN));   // logs arrive oldest-first, so the tail is the newest
+    }
     view.innerHTML = arrangeLogs(res.logs, logOrder, logGroup).map(it => it.kind === 'group' ? logGroupHtml(it) : logLineHtml(it.l)).join('');
     if (!keepScroll && logOrder === 'asc' && wasNearBottom) view.scrollTop = view.scrollHeight;
     if (!keepScroll && logOrder === 'desc' && view.scrollTop < 40) view.scrollTop = 0;
@@ -2187,7 +2318,23 @@
     for (const l of lastLogRes.logs) { if (logGroup && l.rid) logCollapsed.add('g:' + l.rid); if (LOG_FOLDABLE.has(l.level)) logCollapsed.add('e:' + logKey(l)); }
     rerenderLogs();
   });
-  $('#log-expand-btn').addEventListener('click', () => { logCollapsed.clear(); rerenderLogs(); });
+  $('#log-expand-btn').addEventListener('click', () => { logCollapsed.clear(); if (lastLogRes) for (const l of lastLogRes.logs) { if (l.rid) logOpenFull.add('g:' + l.rid); if (LOG_FOLDABLE.has(l.level)) logOpenFull.add('e:' + logKey(l)); } rerenderLogs(); });
+  // Jump arrows: the latest line, and previous / next section (a request chunk when grouped, otherwise a THINK / REPLY / PROMPT block).
+  (function () {
+    const view = $('#logs-view');
+    const secs = () => Array.from(view.querySelectorAll(logGroup ? '.log-group' : '.log-line[data-sec="1"]'));
+    const scrollTo = (top) => { if (view.scrollTo) view.scrollTo({ top, behavior: 'smooth' }); else view.scrollTop = top; };
+    const topOf = el => el.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop;
+    $('#log-jump-end').addEventListener('click', () => { scrollTo(logOrder === 'asc' ? view.scrollHeight : 0); });
+    $('#log-jump-next').addEventListener('click', () => {
+      const y = view.scrollTop + 4, nxt = secs().map(topOf).find(t => t > y + 2);
+      scrollTo(nxt != null ? nxt : view.scrollHeight);
+    });
+    $('#log-jump-prev').addEventListener('click', () => {
+      const y = view.scrollTop - 4, prev = secs().map(topOf).filter(t => t < y - 2).pop();
+      scrollTo(prev != null ? prev : 0);
+    });
+  })();
   linkLabels(document);
   ['#add-model-panel', '#schema-editor'].forEach(sel => {
     const box = $(sel);
@@ -2205,9 +2352,13 @@
   $('#log-rid-filter').addEventListener('input', e => { currentLogRid = e.target.value.replace(/^#/, '').trim(); loadLogs(true); });
   $('#logs-view').addEventListener('click', e => {
     const fold = e.target.closest && e.target.closest('.fold');
-    if (fold) { const k = 'e:' + fold.dataset.fold; if (logCollapsed.has(k)) logCollapsed.delete(k); else logCollapsed.add(k); rerenderLogs(); return; }
+    if (fold) { const k = 'e:' + fold.dataset.fold; if (logGroup) { if (logCollapsed.has(k)) logCollapsed.delete(k); else logCollapsed.add(k); } else logSecToggle(k); rerenderLogs(); return; }
+    const peekLine = e.target.closest && e.target.closest('.log-line.peek');
+    if (peekLine && !e.target.closest('.rid') && peekLine.querySelector('.fold')) { logSecToggle('e:' + peekLine.querySelector('.fold').dataset.fold); rerenderLogs(); return; }
     const head = e.target.closest && e.target.closest('.log-group-head');
-    if (head) { const k = 'g:' + head.dataset.gid; if (logCollapsed.has(k)) logCollapsed.delete(k); else logCollapsed.add(k); rerenderLogs(); return; }
+    if (head) { logSecToggle('g:' + head.dataset.gid); rerenderLogs(); return; }
+    const peekBox = e.target.closest && e.target.closest('.log-peek');
+    if (peekBox && !e.target.closest('.rid')) { logSecToggle('g:' + peekBox.parentElement.querySelector('.log-group-head').dataset.gid); rerenderLogs(); return; }
     const chip = e.target.closest && e.target.closest('.rid');
     if (!chip) return;
     const input = $('#log-rid-filter');
@@ -2375,7 +2526,7 @@
   let editingCustomFlag = false; // top-level "custom bundle" flag for the entry being edited
 
   function emptyHop() {
-    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', rpm: '', tpm: '', rpd: '', maxTokens: '', tools: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '' };
+    return { model: '', provider: 'nvidia', reasoningSchema: '', reasoning: {}, reasoningFieldOptions: {}, reasoningFieldKeys: {}, reasoningFieldEnabled: {}, reasoningFieldTransport: {}, status: 'active', limitType: 'rate-limited', notes: '', tpmLimit: '', dailyCap: '', rpm: '', tpm: '', rpd: '', maxTokens: '', tools: '', timeoutMs: '', freeUntil: '', deprecatedOn: '', retryAsUnlimited: '', finishAfterDisconnect: '', maxConcurrent: '', idleTimeoutMs: '', basis: '' };
   }
 
   function normalizeReasoningForSchema(h) {
@@ -2886,8 +3037,10 @@
         : `<div style="margin-top:8px;"><button type="button" class="btn-secondary" style="padding:3px 10px;font-size:11px;" data-act="detect-values-open" data-idx="${i}" title="Only needed when the docs mention an effort setting in words but their example code does not show it">+ The docs list effort values</button></div>`}
       <div style="margin-top:8px;display:flex;gap:8px;">
         <button type="button" class="btn-secondary" data-act="detect-scan" data-idx="${i}">Scan</button>
+        <button type="button" class="btn-secondary" data-act="detect-readpage" data-idx="${i}" title="Paste the model page's text (API Reference / playground panel / model card) — or a build.nvidia.com link — in the box above, then press this. It reads the effort values, default and max_tokens limits and fills the list for you to check.">📖 Read page text</button>
         <button type="button" class="btn-secondary" data-act="detect-cancel" data-idx="${i}">Close</button>
       </div>
+      ${!h._testOpen && h._detectNote ? `<div class="detect-note" style="font-size:12px;margin-top:8px;">${escapeHtml(h._detectNote)}</div>` : ''}
       ${renderDetectResult(h, i)}
     </div>`;
   }
@@ -2925,7 +3078,11 @@
         reasoningThinkingOff: cur.reasoningThinkingOff === true,
         status: cur.status || 'active', limitType: cur.limitType || 'rate-limited', notes: cur.notes || '',
         tpmLimit: cur.tpmLimit ?? '', dailyCap: cur.dailyCap ?? '', rpm: cur.rpm ?? '', tpm: cur.tpm ?? '', rpd: cur.rpd ?? '', maxTokens: cur.maxTokens ?? '', tools: cur.tools === false ? 'false' : '', timeoutMs: cur.timeoutMs ?? '', freeUntil: cur.freeUntil || '', deprecatedOn: cur.deprecatedOn || '',
-        retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : ''
+        retryAsUnlimited: typeof cur.retryAsUnlimited === 'boolean' ? String(cur.retryAsUnlimited) : '',
+        finishAfterDisconnect: typeof cur.finishAfterDisconnect === 'boolean' ? String(cur.finishAfterDisconnect) : '',
+        basis: ['points', 'tokens', 'both'].includes(cur.basis) ? cur.basis : '',
+        maxConcurrent: cur.maxConcurrent ?? '',
+        idleTimeoutMs: cur.idleTimeoutMs ?? ''
       });
       cur = cur.fallback || null;
     }
@@ -2973,6 +3130,11 @@
       if (h.deprecatedOn) entry.deprecatedOn = h.deprecatedOn;
       if (h.retryAsUnlimited === 'true') entry.retryAsUnlimited = true;
       else if (h.retryAsUnlimited === 'false') entry.retryAsUnlimited = false;
+      if (['points', 'tokens', 'both'].includes(h.basis)) entry.basis = h.basis;
+      if (h.finishAfterDisconnect === 'true') entry.finishAfterDisconnect = true;
+      else if (h.finishAfterDisconnect === 'false') entry.finishAfterDisconnect = false;
+      if (h.idleTimeoutMs !== '' && h.idleTimeoutMs != null && Number(h.idleTimeoutMs) > 0) entry.idleTimeoutMs = Math.round(Number(h.idleTimeoutMs));
+      if (h.maxConcurrent !== '' && h.maxConcurrent != null && parseInt(h.maxConcurrent, 10) > 0) entry.maxConcurrent = parseInt(h.maxConcurrent, 10);
       if (result) entry.fallback = result;
       result = entry;
     }
@@ -3340,10 +3502,10 @@
           ${h.provider === 'google' ? `<div class="field"><label>RPM — requests/min (Google, opt.)</label><input type="number" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="blank = not tracked"></div>
           <div class="field"><label>TPM — input tokens/min (Google, opt.)</label><input type="number" data-f="tpm" data-idx="${i}" value="${h.tpm}" placeholder="blank = not tracked"></div>
           <div class="field"><label>RPD — requests/day (Google, opt.)</label><input type="number" data-f="rpd" data-idx="${i}" value="${h.rpd}" placeholder="blank = not tracked"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Google's published per-model limits. Only the ones you fill in are enforced; when one is used up the hop is skipped (next key, then next hop). RPM = requests per minute. TPM = INPUT tokens per minute (max_tokens/output isn't counted; one request bigger than the TPM can never pass). Both reset every minute. RPD = requests per day: once it's used up the model is out until midnight Pacific Time, whatever RPM/TPM say.</div></div>` : ''}
-          <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div></div>
+          <div class="field"><label>Max tokens floor (opt.)</label><input type="number" data-f="maxTokens" data-idx="${i}" value="${h.maxTokens}" placeholder="blank = use what the client sends"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Raises a smaller client max_tokens up to this. For reasoning models that spend max_tokens on thinking AND the reply (e.g. 32000 for GLM-5.3).</div>${(Number(h.maxTokens) > 0 && Number(h.tpmLimit) > 0 && Number(h.maxTokens) >= Number(h.tpmLimit)) ? `<div style="font-size:11px;color:#d9822b;margin-top:4px;">⚠ Floor (${Number(h.maxTokens).toLocaleString()}) is ≥ Max request size (${Number(h.tpmLimit).toLocaleString()}). Prompt + max_tokens will always exceed the cap, so every request is skipped (NO_HOP). Raise Max request size or lower the floor.</div>` : ''}</div>
           <div class="field"><label>Tool calling</label><select data-f="tools" data-idx="${i}"><option value="" ${h.tools === '' ? 'selected' : ''}>Allowed (default)</option><option value="false" ${h.tools === 'false' ? 'selected' : ''}>Not supported — skip this hop for tool requests</option></select></div>
           ${h.provider === 'literouter' ? `<div class="field"><label>Daily cap (opt., Literouter)</label><input type="number" data-f="dailyCap" data-idx="${i}" value="${h.dailyCap}" placeholder="blank = unlimited"><div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Literouter's own per-model daily free-request cap (e.g. 5 or 30). Leave blank if Literouter lists it as unlimited — this drives the per-key rotation and the usage bars below, not the request itself.</div></div>` : ''}
-          <div class="field"><label>Timeout ms (opt.)</label><input type="number" data-f="timeoutMs" data-idx="${i}" value="${h.timeoutMs}"></div>
+          <div class="field"><label title="How long one attempt may wait for the provider to start answering before it is cut. Stored as milliseconds.">Timeout (opt.)</label>${durGroup(`data-f="timeoutMs" data-idx="${i}"`, h.timeoutMs, defMs(h.provider, 'timeoutMs'))}<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Blank = the default for this provider${defMs(h.provider, 'timeoutMs') != null ? ` (${fmtDur(defMs(h.provider, 'timeoutMs'))})` : ''} — change it in Defaults.</div></div>
           <div class="field"><label>Free until (opt.)</label><input type="date" data-f="freeUntil" data-idx="${i}" value="${h.freeUntil}"></div>
           <div class="field"><label>Deprecated on (opt.)</label><input type="date" data-f="deprecatedOn" data-idx="${i}" value="${h.deprecatedOn}"></div>
           <div class="field" style="grid-column:1 / -1;">
@@ -3355,6 +3517,25 @@
             </select>
             <div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Only use this to override the default — e.g. an nvidia model you've found is actually capped, so it shouldn't get the 100x-retry treatment.</div>
           </div>
+          ${h.provider !== 'google' ? `<div class="field"><label title="Cap on requests per minute for this provider account. Checked BEFORE sending, so a refused try is never spent. Blank = the default for this provider (Admin → Defaults).">Requests/min cap (opt.)</label><input type="number" min="1" data-f="rpm" data-idx="${i}" value="${h.rpm}" placeholder="${defHint(h.provider, 'rpm', false, 'blank = not tracked')}"></div>` : ''}
+          <div class="field"><label title="What this hop's quota is counted in. Points = every request is one try, tokens never matter. Tokens = per-minute tokens bind. Both = request counts and per-minute tokens both bind (Google AI Studio gemma).">Limit basis (opt.)</label>
+            <select data-f="basis" data-idx="${i}">
+              <option value="" ${h.basis === '' ? 'selected' : ''}>Auto (from the limits above)</option>
+              <option value="points" ${h.basis === 'points' ? 'selected' : ''}>Points — requests are what is counted</option>
+              <option value="tokens" ${h.basis === 'tokens' ? 'selected' : ''}>Tokens — tokens per minute bind</option>
+              <option value="both" ${h.basis === 'both' ? 'selected' : ''}>Both — requests and tokens bind</option>
+            </select>
+          </div>
+          <div class="field">
+            <label title="If the client disconnects (closed tab, lost internet) while this hop is answering, keep generating and write the whole reply to the log so it can be pasted back in.">Finish after disconnect (opt.)</label>
+            <select data-f="finishAfterDisconnect" data-idx="${i}">
+              <option value="" ${h.finishAfterDisconnect === '' ? 'selected' : ''}>${defFinishLabel(h.provider)}</option>
+              <option value="true" ${h.finishAfterDisconnect === 'true' ? 'selected' : ''}>Force ON — e.g. a "N messages" plan where the request is already spent</option>
+              <option value="false" ${h.finishAfterDisconnect === 'false' ? 'selected' : ''}>Force OFF — cancel upstream when the client leaves</option>
+            </select>
+          </div>
+          <div class="field"><label title="Once the reply is streaming: how long it may go silent before the connection is closed. Stored as milliseconds.">Silence limit mid-reply (opt.)</label>${durGroup(`data-f="idleTimeoutMs" data-idx="${i}"`, h.idleTimeoutMs, defMs(h.provider, 'idleTimeoutMs'))}<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">Separate from the timeout above, which is the wait for the FIRST output.</div></div>
+          <div class="field"><label title="Provider allows only this many generations at once. 1 = a ghost generation would block your retry, so finish-after-disconnect is never used.">Max concurrent generations (opt.)</label><input type="number" min="1" data-f="maxConcurrent" data-idx="${i}" value="${h.maxConcurrent}" placeholder="blank = no known limit"></div>
         </div>
         <div class="field"><label>Notes (opt.)</label><input type="text" data-f="notes" data-idx="${i}" value="${escapeHtml(h.notes)}"></div>
       </div>`;
@@ -3388,6 +3569,10 @@
           tpmLimit: src.tpmLimit ?? '', dailyCap: src.dailyCap ?? '', rpm: src.rpm ?? '', tpm: src.tpm ?? '', rpd: src.rpd ?? '', maxTokens: src.maxTokens ?? '', tools: src.tools === false ? 'false' : '', timeoutMs: src.timeoutMs ?? '',
           freeUntil: src.freeUntil || '', deprecatedOn: src.deprecatedOn || '',
           retryAsUnlimited: typeof src.retryAsUnlimited === 'boolean' ? String(src.retryAsUnlimited) : '',
+          finishAfterDisconnect: typeof src.finishAfterDisconnect === 'boolean' ? String(src.finishAfterDisconnect) : '',
+          basis: ['points', 'tokens', 'both'].includes(src.basis) ? src.basis : '',
+          maxConcurrent: src.maxConcurrent ?? '',
+          idleTimeoutMs: src.idleTimeoutMs ?? '',
           notes
         };
         normalizeReasoningForSchema(hopState[idx]);
@@ -3404,7 +3589,7 @@
           renderHopList();
           return;
         }
-        hopState[idx][field] = e.target.value;
+        hopState[idx][field] = e.target.closest('.dur-grp') ? durRead(e.target) : e.target.value;
       });
       el.addEventListener('change', e => {
         const idx = +e.target.dataset.idx;
@@ -3414,11 +3599,11 @@
           renderHopList();
           return;
         }
-        hopState[idx][field] = e.target.value;
+        hopState[idx][field] = e.target.closest('.dur-grp') ? durRead(e.target) : e.target.value;
         staleCfgTest(idx);
         // Daily cap only applies to (and is only shown for) literouter hops —
         // re-render so switching provider in/out of literouter shows/hides it.
-        if (field === 'provider') renderHopList();
+        if (field === 'provider' || field === 'tpmLimit' || field === 'maxTokens') renderHopList();
       });
     });
 
@@ -3586,6 +3771,36 @@
       h._detectResult = detectReasoningFromExample(h._detectInput, h._detectValues);
       renderHopList();
     }));
+    $$('#hop-list [data-act="detect-readpage"]').forEach(btn => btn.addEventListener('click', async e => {
+      const idx = +e.currentTarget.dataset.idx;
+      const h = hopState[idx];
+      const text = String(h._detectInput || '').trim();
+      if (!text) { h._detectNote = 'Paste the page text (or a build.nvidia.com link) into the box first.'; renderHopList(); return; }
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Reading…';
+      try {
+        const r = await api('/admin/api/parse-model-page', { method: 'POST', body: { text } });
+        if (!r.ok) { h._detectNote = '⚠ ' + (r.error || 'Could not read that.'); }
+        else {
+          const bits = [];
+          const re = r.reasoningEffort;
+          if (re && re.values && re.values.length) {
+            h._detectValues = re.values.join(', '); h._detectValuesOpen = true;
+            bits.push(`Effort values: ${re.values.join(', ')}${re.hasOff ? ' (includes an off value)' : ' (no off value listed)'}`);
+            if (re.default) bits.push(`default: ${re.default}`);
+            if (re.omittedMeans) bits.push(`if omitted: ${re.omittedMeans}`);
+            if (re.partial) bits.push('only a sample value was visible');
+          } else bits.push('No effort values found');
+          if (r.maxTokens) bits.push(`max_tokens ${[r.maxTokens.default ? 'default ' + r.maxTokens.default : '', r.maxTokens.max ? 'max ' + r.maxTokens.max : ''].filter(Boolean).join(', ')}`);
+          if (r.temperature) bits.push(`temperature ${r.temperature.min != null ? r.temperature.min + '–' + r.temperature.max : ''}${r.temperature.default != null ? ' default ' + r.temperature.default : ''}`);
+          let note = '📖 Read ' + r.source + ': ' + bits.join(' · ') + '. Check these against the page, then press Scan.';
+          if ((r.conflicts || []).length) note += ' ⚠ The page contradicts itself — ' + r.conflicts.map(c => c.what + ': ' + JSON.stringify(c.a ? c.a.values : c.values) + (c.b ? ' vs ' + JSON.stringify(c.b.values) : '')).join('; ') + '. The API-reference wording was used; verify.';
+          if (r.thinkingControl) note += ` Thinking control spotted: ${r.thinkingControl.key}.`;
+          if ((r.notes || []).length) note += ' ' + r.notes.join(' ');
+          h._detectNote = note;
+        }
+      } catch (err) { h._detectNote = '⚠ ' + (err && err.message || err); }
+      renderHopList();
+    }));
     $$('#hop-list [data-act="detect-values-open"]').forEach(btn => btn.addEventListener('click', e => {
       hopState[+e.currentTarget.dataset.idx]._detectValuesOpen = true;
       renderHopList();
@@ -3711,6 +3926,8 @@
   }
 
   $('#add-form-toggle').addEventListener('click', () => openForm(null, null));
+  $('#defaults-save').addEventListener('click', () => saveDefaultsNow(collectDefaults(), 'Defaults saved'));
+  $('#defaults-reset').addEventListener('click', () => { if (confirm('Clear every value you set in Defaults and go back to the built-in ones?')) saveDefaultsNow({ providers: {}, global: {} }, 'Back to the built-in defaults'); });
 
   // ---------- load ----------
   let githubSyncEnabled = true; // optimistic until checked, so we don't flash a false warning
@@ -3838,6 +4055,98 @@
     $('#acct-base').textContent = location.origin + '/v1';
   }
 
+  // ── Durations: a number plus a unit (ms / s / min). Stored everywhere as milliseconds. ──
+  const DUR_FACTOR = { ms: 1, s: 1000, min: 60000 };
+  function durUnitFor(ms) { ms = Number(ms); if (!(ms > 0) || ms % 60000 === 0) return 'min'; return ms % 1000 === 0 ? 's' : 'ms'; }   // largest unit that divides evenly
+  function durNum(ms, unit) { return +(Number(ms) / DUR_FACTOR[unit]).toFixed(3); }
+  function fmtDur(ms) { ms = Number(ms); if (!(ms >= 0)) return ''; const u = ms === 0 ? 'ms' : durUnitFor(ms); return `${durNum(ms, u)} ${u}`; }
+  function durGroup(attrs, ms, placeholderMs) {
+    const has = ms !== '' && ms != null && Number(ms) >= 0;
+    const unit = has ? durUnitFor(ms) : (placeholderMs != null ? durUnitFor(placeholderMs) : 'min');
+    const ph = placeholderMs != null ? `${durNum(placeholderMs, unit)}` : '';
+    return `<span class="dur-grp"><input type="number" class="dur-num" min="0" step="any" ${attrs} value="${has ? durNum(ms, unit) : ''}" placeholder="${escapeHtml(ph)}"><select class="dur-unit" ${attrs.replace(/data-dp="[^"]*"|data-dk="[^"]*"|data-dg="[^"]*"|data-kind="[^"]*"/g, '')} aria-label="Unit">${['ms', 's', 'min'].map(u => `<option value="${u}" ${u === unit ? 'selected' : ''}>${u}</option>`).join('')}</select></span>`;
+  }
+  // The value of a duration group in ms, or '' when the number box is empty.
+  function durRead(el) {
+    const grp = el.closest('.dur-grp'); if (!grp) return '';
+    const n = grp.querySelector('.dur-num').value;
+    if (n === '' || !(Number(n) >= 0)) return '';
+    return Math.round(Number(n) * DUR_FACTOR[grp.querySelector('.dur-unit').value]);
+  }
+  // Wrap a duration field so its saved default shows as the placeholder / hint.
+  function defMs(provider, key) {
+    const e = defaultsData && defaultsData.effective && defaultsData.effective.providers;
+    const v = e && (e[provider] || e['*']) ? (e[provider] || e['*'])[key] : null;
+    return v == null ? null : v;
+  }
+
+  // ── Defaults (Admin → Defaults): the grey hints in the hop form read from here ──
+  let defaultsData = null;
+  function defHint(provider, key, minutes, none) {
+    const e = defaultsData && defaultsData.effective && defaultsData.effective.providers;
+    const v = e && (e[provider] || e['*']) ? (e[provider] || e['*'])[key] : null;
+    if (v == null) return none || '';
+    return key === 'rpm' ? `${v} (default)` : `${fmtDur(v)} (default)`;
+  }
+  function defFinishLabel(provider) {
+    const e = defaultsData && defaultsData.effective && defaultsData.effective.providers;
+    const v = e && (e[provider] || e['*']) ? (e[provider] || e['*']).finishAfterDisconnect : null;
+    return v === true ? 'Default: ON for this provider' : v === false ? 'Default: OFF for this provider' : 'Default: automatic (on for points-based hops, off where tokens bind)';
+  }
+  const DEF_FIELDS = [['timeoutMs', 'First-output wait', 'min'], ['idleTimeoutMs', 'Silence limit mid-reply', 'min'], ['rpm', 'Requests/min cap', 'num'], ['finishAfterDisconnect', 'Finish after disconnect', 'bool']];
+  const DEF_GLOBALS = [['patientTimeoutMs', 'Patient wait (nothing else to fall back to)', 'min'], ['detachMaxMs', 'Finish-after-disconnect safety cap', 'min'], ['bigRpd', '"Huge" requests/day (counts as no limit)', 'num'], ['bigRpm', '"Huge" requests/min', 'num'], ['bigTpm', '"Huge" tokens/min', 'num']];
+  function renderDefaults() {
+    const box = $('#defaults-body'); if (!box || !defaultsData) return;
+    const d = defaultsData, saved = d.saved || { providers: {}, global: {} };
+    const names = ['*', ...(d.providers || [])];
+    const inheritFor = (prov, k) => {
+      const b = d.builtin.providers;
+      if (prov === '*') return b['*'] ? b['*'][k] : undefined;
+      return (b[prov] && b[prov][k] !== undefined) ? b[prov][k] : d.effective.providers['*'][k];
+    };
+    const cell = (prov, [k, , kind]) => {
+      const mine = (saved.providers[prov] || {})[k], inh = inheritFor(prov, k);
+      if (kind === 'bool') return `<td><select data-dp="${escapeHtml(prov)}" data-dk="${k}"><option value="" ${mine === undefined ? 'selected' : ''}>${inh === true ? 'Default: on' : inh === false ? 'Default: off' : 'Auto (from basis)'}</option><option value="true" ${mine === true ? 'selected' : ''}>On</option><option value="false" ${mine === false ? 'selected' : ''}>Off</option></select></td>`;
+      if (kind === 'min') return `<td>${durGroup(`data-dp="${escapeHtml(prov)}" data-dk="${k}" data-kind="min"`, mine === undefined ? '' : mine, inh == null ? null : inh)}</td>`;
+      const val = mine === undefined ? '' : mine;
+      const ph = inh == null ? 'none' : inh;
+      return `<td><input type="number" min="0" step="${kind === 'min' ? '0.5' : '1'}" data-dp="${escapeHtml(prov)}" data-dk="${k}" data-kind="${kind}" value="${val}" placeholder="${ph}" style="width:7.5em;"></td>`;
+    };
+    box.innerHTML = `<div style="overflow-x:auto;"><table class="usage-table"><thead><tr><th>Provider</th>${DEF_FIELDS.map(f => `<th>${escapeHtml(f[1])}</th>`).join('')}</tr></thead><tbody>${names.map(prov => `<tr><td><b>${prov === '*' ? 'Every other / new provider' : escapeHtml(PROVIDER_LABELS[prov] || prov)}</b>${prov === '*' ? '' : `<br><code style="font-size:11px;">${escapeHtml(prov)}</code>`}</td>${DEF_FIELDS.map(f => cell(prov, f)).join('')}</tr>`).join('')}</tbody></table></div>
+      <h3 style="margin:14px 0 6px;font-size:13px;">Global</h3>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">${DEF_GLOBALS.map(([k, label, kind]) => { const mine = (saved.global || {})[k], inh = d.builtin.global[k]; return `<label style="font-size:12px;display:flex;flex-direction:column;gap:4px;">${escapeHtml(label)}${kind === 'min' ? durGroup(`data-dg="${k}" data-kind="min"`, mine === undefined ? '' : mine, inh == null ? null : inh) : `<input type="number" min="0" step="1" data-dg="${k}" data-kind="${kind}" value="${mine === undefined ? '' : mine}" placeholder="${inh}" style="width:12em;">`}</label>`; }).join('')}</div>`;
+  }
+  function collectDefaults() {
+    const out = { providers: {}, global: {} };
+    $$('#defaults-body [data-dp]').forEach(el => {
+      const prov = el.dataset.dp, k = el.dataset.dk;
+      let v = el.value;
+      if (v === '') return;
+      if (el.tagName === 'SELECT') v = v === 'true';
+      else if (el.dataset.kind === 'min') { v = durRead(el); if (v === '') return; }
+      else v = Number(v);
+      (out.providers[prov] = out.providers[prov] || {})[k] = v;
+    });
+    $$('#defaults-body [data-dg]').forEach(el => {
+      if (el.value === '') return;
+      const v = el.dataset.kind === 'min' ? durRead(el) : Number(el.value);
+      if (v === '') return;
+      out.global[el.dataset.dg] = v;
+    });
+    return out;
+  }
+  async function loadDefaults() {
+    try { defaultsData = await api('/admin/api/defaults'); renderDefaults(); } catch (_) { /* hop-form hints just stay empty */ }
+  }
+  async function saveDefaultsNow(payload, okMsg) {
+    const st = $('#defaults-status'); st.textContent = 'Saving…';
+    try {
+      const r = await api('/admin/api/defaults', { method: 'PUT', body: payload });
+      defaultsData = r; renderDefaults();
+      st.textContent = okMsg + (r.githubSync && r.githubSync.ok ? ' — synced to GitHub.' : r.githubSync && r.githubSync.skipped ? ' — saved here (GitHub sync is not set up, so a restart on a free host can lose it).' : ' — saved here, but the GitHub sync failed.');
+    } catch (e) { st.textContent = '⚠ ' + (e.message || e); }
+  }
+
   async function loadAll() {
     if (USER_MODE) return loadAllUser();
     const [modelsRes, usageRes, profileRes, githubRes, presetsRes, warnRes, logosRes] = await Promise.all([
@@ -3846,6 +4155,7 @@
       api('/admin/api/logos').catch(() => ({ logos: {} }))   // optional: letter badges are used when there are no logo files
     ]);
     providerLogos = (logosRes && logosRes.logos) || {};
+    lastModelCards = ((await api('/admin/api/model-cards').catch(() => ({ cards: {} }))).cards) || {};
     currentModels = modelsRes.models;
     lastHopWarnings = Object.fromEntries(((warnRes && warnRes.hops) || []).map(w => [w.key, w]));
     lastCatalogChecked = (warnRes && warnRes.catalogCheckedAt) || {};
@@ -3867,6 +4177,7 @@
     await loadUserActivity();
     await loadLogs(true);
     loadLimitsStatus();
+    loadDefaults();
     if ($('#log-auto-refresh').checked) startLogAutoRefresh();
     $('#header-meta').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
@@ -4026,6 +4337,148 @@
     });
     $('#acct-copy').addEventListener('click', async () => { const ok = await copyText($('#acct-base').textContent); toast(ok ? 'Copied to clipboard' : "Couldn't copy — select the text and press Ctrl+C"); });
   }
+
+  // ---------- Tools: all provider models / limits by hand / model cards ----------
+  (function () {
+    const PAID_NOTE = 'costs money or this plan cannot reach it';
+    const TIER_LABEL = { free: 'free', premium: 'premium pool', inaccessible: 'not reachable on this plan', paid: 'paid', paidonly: 'paid only', generous: 'generous free', thin: 'thin free', unknown: 'no tier info' };
+    const open = (id) => { ['tool-allmodels', 'tool-limits', 'tool-cards'].forEach(x => { if (x !== id) $('#' + x).hidden = true; }); const el = $('#' + id); el.hidden = !el.hidden; return !el.hidden; };
+
+    // 1) every provider's models: linked vs not linked
+    let allData = null, showPaid = false, allFilter = '';
+    function renderAll() {
+      const box = $('#tool-allmodels');
+      if (!allData) { box.innerHTML = '<div class="sync-result-note">Loading every provider\'s model list…</div>'; return; }
+      const q = allFilter.toLowerCase();
+      const match = id => !q || id.toLowerCase().includes(q);
+      let totLinked = 0, totNot = 0, hiddenPaid = 0;
+      const blocks = allData.providers.map(p => {
+        const linked = (p.linked || []).filter(match);
+        const notAll = (p.notLinked || []).filter(m => match(m.id));
+        const not = notAll.filter(m => showPaid || !m.paid);
+        hiddenPaid += notAll.length - not.length; totLinked += linked.length; totNot += not.length;
+        const label = PROVIDER_LABELS[p.provider] || p.provider;
+        const err = !p.ok ? `<div class="sync-result-note" style="color:var(--broken);">${escapeHtml(p.error || 'could not be read')}</div>` : (p.noLiveList ? '<div class="sync-result-note">This provider has no live model list, so only your linked models are shown.</div>' : '');
+        const linkedHtml = linked.length ? `<details class="sync-tier"><summary>Already linked <span class="sync-tier-count">${linked.length}</span></summary><div class="am-list">${linked.map(i => `<div>${escapeHtml(i)}</div>`).join('')}</div></details>` : '';
+        const notHtml = not.length ? `<details class="sync-tier"><summary>Not linked <span class="sync-tier-count">${not.length}</span></summary><div class="am-list">${not.map(m => `<div>${escapeHtml(m.id)}<span class="tier-chip${m.paid ? ' paid' : ''}" title="${m.paid ? PAID_NOTE : ''}">${escapeHtml(TIER_LABEL[m.tier] || m.tier)}${m.cost != null ? ' · cost ' + escapeHtml(String(m.cost)) : ''}</span></div>`).join('')}</div></details>` : '';
+        return `<div style="margin:8px 0;"><b>${escapeHtml(label)}</b>${p.ok ? `<span class="sync-result-note"> ${p.liveCount != null ? p.liveCount + ' listed' : ''}</span>` : ''}${err}${linkedHtml}${notHtml}</div>`;
+      }).join('');
+      box.innerHTML = `<div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="am-filter" placeholder="filter by name" value="${escapeHtml(allFilter)}" style="min-width:180px;">
+        <label class="log-auto-label"><input type="checkbox" id="am-paid" ${showPaid ? 'checked' : ''}> Also show paid / unreachable (labelled)</label>
+        <button type="button" class="btn-secondary" id="am-reload">Reload</button>
+        <span class="sync-result-note">${totLinked} linked · ${totNot} not linked${hiddenPaid ? ` · ${hiddenPaid} paid hidden` : ''}</span></div>${blocks}`;
+      const f = $('#am-filter'); if (f && document.activeElement !== f && allFilter) { /* keep focus behaviour simple */ }
+    }
+    async function loadAllModels() {
+      allData = null; renderAll();
+      try { allData = await api('/admin/api/all-models'); } catch (e) { $('#tool-allmodels').innerHTML = `<div class="sync-result-note" style="color:var(--broken);">${escapeHtml(e.message || e)}</div>`; return; }
+      renderAll();
+    }
+    $('#tool-allmodels-btn').addEventListener('click', () => { if (open('tool-allmodels') && !allData) loadAllModels(); });
+    $('#tool-allmodels').addEventListener('change', e => { if (e.target.id === 'am-paid') { showPaid = e.target.checked; renderAll(); } });
+    $('#tool-allmodels').addEventListener('input', e => { if (e.target.id === 'am-filter') { allFilter = e.target.value; const pos = e.target.selectionStart; renderAll(); const f = $('#am-filter'); f.focus(); f.setSelectionRange(pos, pos); } });
+    $('#tool-allmodels').addEventListener('click', e => { if (e.target.id === 'am-reload') loadAllModels(); });
+
+    // 2) limits by hand
+    let lim = null, limProv = 'google';
+    function limRowHtml(r, i) {
+      if (limProv === 'google') return `<tr data-i="${i}"><td><input type="text" data-f="key" value="${escapeHtml(r.key || '')}" size="22"></td><td><input type="text" data-f="label" value="${escapeHtml(r.label || '')}" size="18"></td><td><input type="text" data-f="slugs" value="${escapeHtml((r.slugs || []).join(', '))}" size="22" title="model ids this row applies to, comma separated"></td><td><input type="number" data-f="rpm" min="0" value="${r.rpm ?? ''}"></td><td><input type="number" data-f="tpm" min="0" value="${r.tpm ?? ''}"></td><td><input type="number" data-f="rpd" min="0" value="${r.rpd ?? ''}"></td><td><input type="checkbox" data-f="noFreeAccess" ${r.noFreeAccess ? 'checked' : ''}></td><td><button type="button" class="btn-secondary" data-lim-del="${i}" title="Remove this row">✕</button></td></tr>`;
+      return `<tr data-i="${i}"><td><input type="text" data-f="key" value="${escapeHtml(r.key || '')}" size="28"></td><td><input type="checkbox" data-f="hasFree" ${r.hasFree ? 'checked' : ''}></td><td><input type="number" data-f="freeDailyCap" min="0" value="${r.freeDailyCap ?? ''}" placeholder="unlimited"></td><td><input type="checkbox" data-f="premiumBasic" ${r.premiumBasic ? 'checked' : ''}></td><td><input type="number" data-f="premiumCost" min="0" step="0.1" value="${r.premiumCost ?? ''}"></td><td><select data-f="uncensored"><option value="" ${r.uncensored == null ? 'selected' : ''}>?</option><option value="true" ${r.uncensored === true ? 'selected' : ''}>yes</option><option value="false" ${r.uncensored === false ? 'selected' : ''}>no</option></select></td><td><button type="button" class="btn-secondary" data-lim-del="${i}" title="Remove this row">✕</button></td></tr>`;
+    }
+    function renderLim(msg) {
+      const box = $('#tool-limits');
+      if (!lim) { box.innerHTML = '<div class="sync-result-note">Loading…</div>'; return; }
+      const head = limProv === 'google' ? '<tr><th>Row name</th><th>Label</th><th>Model ids</th><th>RPM</th><th>TPM</th><th>RPD</th><th title="AI Studio lists 0/0/0 on the free tier">Paid only</th><th></th></tr>' : '<tr><th>Base model</th><th>Free version</th><th>Free daily cap</th><th>On Premium Basic</th><th>Premium cost</th><th>Uncensored</th><th></th></tr>';
+      const meta = limProv === 'literouter' ? `<div class="row" style="gap:12px;flex-wrap:wrap;margin:6px 0;">${[['freeContextTokens', 'Free context (tokens)'], ['basicDailyPremiumCredits', 'Basic daily premium credits'], ['basicMaxContextTokens', 'Basic max context']].map(([k, l]) => `<label>${l} <input type="number" min="0" data-meta="${k}" value="${lim.meta && lim.meta[k] != null ? lim.meta[k] : ''}"></label>`).join('')}</div>` : '';
+      box.innerHTML = `<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="lim-prov"><option value="google" ${limProv === 'google' ? 'selected' : ''}>Google AI Studio</option><option value="literouter" ${limProv === 'literouter' ? 'selected' : ''}>Literouter</option></select>
+        <span class="sync-result-note">snapshot from ${escapeHtml(lim.capturedAt || 'never')}. Saving also updates the numbers on your existing ${limProv === 'google' ? 'Google hops (RPM / TPM / RPD)' : 'Literouter :free hops (daily cap)'}.</span></div>${meta}
+        <div class="tp-wrap"><table><thead>${head}</thead><tbody>${lim.rows.map(limRowHtml).join('')}</tbody></table></div>
+        <div class="row" style="gap:8px;margin-top:8px;align-items:center;"><button type="button" class="btn-secondary" id="lim-add">+ Add a row</button><button type="button" class="btn-primary" id="lim-save">Save</button><span class="sync-result-note" id="lim-msg">${msg || ''}</span></div>`;
+    }
+    function readLim() {
+      const rows = $$('#tool-limits tbody tr').map(tr => { const r = {}; $$('[data-f]', tr).forEach(el => { r[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; }); return r; });
+      const meta = {}; $$('#tool-limits [data-meta]').forEach(el => { if (el.value !== '') meta[el.dataset.meta] = el.value; });
+      return { rows, meta };
+    }
+    async function loadLim() { lim = null; renderLim(); try { lim = await api('/admin/api/limits/table/' + limProv); } catch (e) { $('#tool-limits').innerHTML = `<div class="sync-result-note" style="color:var(--broken);">${escapeHtml(e.message || e)}</div>`; return; } renderLim(); }
+    $('#tool-limits-btn').addEventListener('click', () => { if (open('tool-limits') && !lim) loadLim(); });
+    $('#tool-limits').addEventListener('change', e => { if (e.target.id === 'lim-prov') { limProv = e.target.value; loadLim(); } });
+    $('#tool-limits').addEventListener('click', async e => {
+      const del = e.target.closest('[data-lim-del]');
+      if (del) { const cur = readLim(); cur.rows.splice(Number(del.dataset.limDel), 1); lim.rows = cur.rows; lim.meta = Object.assign({}, lim.meta, cur.meta); renderLim(); return; }
+      if (e.target.id === 'lim-add') { const cur = readLim(); lim.rows = cur.rows.concat([{ key: '' }]); lim.meta = Object.assign({}, lim.meta, cur.meta); renderLim(); return; }
+      if (e.target.id === 'lim-save') {
+        const cur = readLim(); $('#lim-msg').textContent = 'Saving…';
+        try {
+          const r = await api('/admin/api/limits/table/' + limProv, { method: 'PUT', body: cur });
+          const gh = r.githubSync && r.githubSync.ok ? ' · saved to GitHub' : (r.githubSync && r.githubSync.skipped ? ' · GitHub sync is off, so this will not survive a restart' : ' · GitHub sync failed');
+          await loadLim(); $('#lim-msg').textContent = `Saved ${r.rows} rows${r.hopChanges ? `, ${r.hopChanges} hop value(s) updated` : ''}${gh}`; loadAll();
+        } catch (err) { $('#lim-msg').textContent = err.message || String(err); }
+      }
+    });
+
+    // 3) model cards
+    let cardsIdx = {};
+    function allHops() {
+      const out = new Map();
+      for (const [id, entry] of Object.entries(currentModels || {})) { try { for (const h of flattenHops(entry)) out.set(`${h.provider}/${h.model}`, { provider: h.provider, model: h.model }); } catch (_) {} }
+      return [...out.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    function renderCards(msg) {
+      const hops = allHops();
+      const saved = Object.entries(cardsIdx).sort((a, b) => a[0].localeCompare(b[0]));
+      $('#tool-cards').innerHTML = `<div class="sync-result-note">Paste a model's card (the whole page text, or its HTML, or just its address on build.nvidia.com / huggingface.co) and it is kept with that model. Key lines are picked out and shown on the model's card.</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center;">
+          <select id="mc-model">${hops.map(([k]) => `<option value="${escapeHtml(k)}">${escapeHtml(k)}${cardsIdx[k] ? ' ✓' : ''}</option>`).join('')}</select>
+          <input type="text" id="mc-model-custom" placeholder="or type provider/model" size="30"></div>
+        <textarea id="mc-text" rows="8" style="width:100%;margin-top:6px;font-family:var(--font-mono);font-size:11px;" placeholder="Paste the model card text, its HTML, or its address…"></textarea>
+        <div class="row" style="gap:8px;margin-top:6px;align-items:center;"><button type="button" class="btn-primary" id="mc-save">Save card</button><span class="sync-result-note" id="mc-msg">${msg || ''}</span></div>
+        <div style="margin-top:10px;">${saved.length ? saved.map(([k, c]) => `<details class="sync-tier"><summary>${escapeHtml(k)} <span class="sync-tier-count">${c.chars.toLocaleString()} chars</span><span class="sync-tier-hint">${escapeHtml((c.savedAt || '').slice(0, 10))} · ${escapeHtml(c.source || '')}</span></summary><div class="am-list" style="columns:1;">${(c.facts || []).map(f => `<div>${escapeHtml(f)}</div>`).join('') || '<div>no key lines recognised</div>'}</div><div style="padding:0 10px 8px;"><button type="button" class="btn-secondary" data-mc-view="${escapeHtml(k)}">Show full text</button> <button type="button" class="btn-secondary btn-danger" data-mc-del="${escapeHtml(k)}">Remove</button><pre class="mc-full" data-mc-full="${escapeHtml(k)}" hidden style="white-space:pre-wrap;max-height:300px;overflow:auto;font-size:11px;"></pre></div></details>`).join('') : '<div class="sync-result-note">No cards saved yet.</div>'}</div>`;
+    }
+    async function loadCards(msg) { try { cardsIdx = (await api('/admin/api/model-cards')).cards || {}; } catch (_) { cardsIdx = {}; } lastModelCards = cardsIdx; renderCards(msg); }
+    $('#tool-cards-btn').addEventListener('click', () => { if (open('tool-cards')) loadCards(); });
+    $('#tool-cards').addEventListener('click', async e => {
+      if (e.target.id === 'mc-save') {
+        const sel = ($('#mc-model-custom').value.trim() || $('#mc-model').value), i = sel.indexOf('/');
+        if (i < 1) { $('#mc-msg').textContent = 'Pick a model (provider/model).'; return; }
+        $('#mc-msg').textContent = 'Saving…';
+        try {
+          const r = await api('/admin/api/model-card', { method: 'PUT', body: { provider: sel.slice(0, i), model: sel.slice(i + 1), text: $('#mc-text').value } });
+          await loadCards(`Saved ${r.chars.toLocaleString()} characters (${r.facts.length} key lines)${r.githubSync && r.githubSync.ok ? ' · saved to GitHub' : ''}`); loadAll();
+        } catch (err) { $('#mc-msg').textContent = err.message || String(err); }
+        return;
+      }
+      const v = e.target.closest('[data-mc-view]');
+      if (v) { const k = v.dataset.mcView, i = k.indexOf('/'); const pre = $(`[data-mc-full="${CSS.escape(k)}"]`); if (!pre.hidden) { pre.hidden = true; return; } try { const r = await api(`/admin/api/model-card?provider=${encodeURIComponent(k.slice(0, i))}&model=${encodeURIComponent(k.slice(i + 1))}`); pre.textContent = r.text; pre.hidden = false; } catch (err) { toast(err.message || String(err)); } return; }
+      const d = e.target.closest('[data-mc-del]');
+      if (d) { const k = d.dataset.mcDel, i = k.indexOf('/'); if (!confirm('Remove the saved card for ' + k + '?')) return; try { await api(`/admin/api/model-card?provider=${encodeURIComponent(k.slice(0, i))}&model=${encodeURIComponent(k.slice(i + 1))}`, { method: 'DELETE' }); await loadCards('Removed.'); loadAll(); } catch (err) { toast(err.message || String(err)); } }
+    });
+  })();
+
+  // ---------- floating section guide ----------
+  (function () {
+    const nav = $('#section-guide'), list = $('#sg-list');
+    let secs = [];
+    function build() {
+      secs = $$('#dashboard section').filter(sec => sec.querySelector('h2') && !sec.hidden && !sec.closest('[hidden]') && getComputedStyle(sec).display !== 'none');
+      secs.forEach((sec, i) => { if (!sec.id) sec.id = 'sec-auto-' + i; });
+      list.innerHTML = secs.map(sec => `<button type="button" data-sec="${sec.id}">${escapeHtml(sec.querySelector('h2').textContent.trim())}</button>`).join('');
+      nav.hidden = secs.length < 2;
+    }
+    const go = (el) => { if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    function current() { let idx = 0; secs.forEach((sec, i) => { if (sec.getBoundingClientRect().top <= window.innerHeight * 0.35) idx = i; }); return idx; }
+    function mark() { const c = current(); $$('#sg-list button').forEach((b, i) => b.classList.toggle('on', i === c)); }
+    $('#sg-menu').addEventListener('click', () => { build(); nav.classList.toggle('open'); mark(); });
+    $('#sg-up').addEventListener('click', () => { build(); const c = current(), cur = secs[c], atTop = cur && cur.getBoundingClientRect().top < -8; go(atTop ? cur : secs[Math.max(0, c - 1)]); });
+    $('#sg-down').addEventListener('click', () => { build(); go(secs[Math.min(secs.length - 1, current() + 1)]); });
+    list.addEventListener('click', e => { const b = e.target.closest('button[data-sec]'); if (b) { go(document.getElementById(b.dataset.sec)); nav.classList.remove('open'); } });
+    window.addEventListener('scroll', () => { if (nav.classList.contains('open')) mark(); }, { passive: true });
+    document.addEventListener('click', e => { if (!nav.contains(e.target)) nav.classList.remove('open'); });
+    setInterval(() => { if (!document.getElementById('dashboard').hidden) build(); }, 4000);
+    setTimeout(build, 800);
+  })();
   if (ADMIN_KEY) {
     $('#key-input').value = ADMIN_KEY;
     if (SAVED_KEY && !params.get('key')) $('#stay-signed-in').checked = true;

@@ -35,7 +35,13 @@ async function until(fn, ms = 4000, step = 50) {
 
 function stageProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qp-ui-'));
-  for (const f of ['server.js', 'models.json', 'reasoning-schemas.json', 'reasoning-vocab.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+  for (const f of ['server.js', 'limit-schema.js', 'limit-schema.json', 'model-page-parser.js', 'models.json', 'reasoning-schemas.json', 'reasoning-vocab.json', 'provider-limits.json', 'package.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+  // These tests open two specific hops (an effort-select hop and a hop with no reasoning schema). The real models.json is edited live
+  // from the Admin panel and those models get renamed or removed, so the staged copy gets its own fixed copies of them.
+  const stagedModels = JSON.parse(fs.readFileSync(path.join(dir, 'models.json'), 'utf8'));
+  stagedModels['kimi-k3-nv'] = { model: 'moonshotai/kimi-k3', provider: 'nvidia', status: 'active', limitType: 'rate-limited', ignoreCatalog: true, reasoningSchema: 'reasoning-effort-select', reasoningFieldOptions: { reasoning_effort: ['low', 'high', 'max'] }, reasoning: { reasoning_effort: 'max' } };
+  stagedModels['glm-5.3-nv'] = { model: 'z-ai/glm-5.3', provider: 'nvidia', status: 'active', limitType: 'unlimited', timeoutMs: 1800000, retryAsUnlimited: true, maxTokens: 32000 };
+  fs.writeFileSync(path.join(dir, 'models.json'), JSON.stringify(stagedModels, null, 2));
   fs.cpSync(path.join(ROOT, 'public'), path.join(dir, 'public'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'test'));
   fs.copyFileSync(path.join(ROOT, 'test', 'mock-axios.js'), path.join(dir, 'test', 'mock-axios.js'));
@@ -795,6 +801,133 @@ else:
       vdom.window.close();
       for (const id of ['zz-var-base', 'zz-var-nothink']) { const rr = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: ah }); await rr.text(); }
     }
+
+    // ── 15. Durations take ms / s / min, and Stop appears for a request finishing after its client left (last: it saves settings, which the User activity counts above must not see) ──
+    {
+      const ndom = await openAdmin('?key=' + KEY); dones.push(ndom);
+      const w = ndom.window, d = w.document;
+      await until(() => d.getElementById('dashboard').hidden === false && d.querySelector('.edit-btn[data-edit="glm-5.3-nv"]'), 8000); await sleep(400);
+      const scenFile = path.join(dir, 'test', 'scenario.json');
+      const scenBefore = fs.readFileSync(scenFile, 'utf8');
+      w.alert = () => {};
+      const eb = d.querySelector('.edit-btn[data-edit="glm-5.3-nv"]');
+      check('duration: the staged glm-5.3-nv model has an Edit button', !!eb);
+      if (eb) {
+        click(w, eb);
+        const tNum = await until(() => d.querySelector('#hop-list .dur-num[data-f="timeoutMs"]'));
+        const tUnit = tNum && tNum.parentElement.querySelector('.dur-unit');
+        check('duration: 1800000 ms shows as 30 with unit min (largest unit that divides evenly)', !!tNum && tNum.value === '30' && tUnit.value === 'min', tNum && (tNum.value + ' ' + (tUnit && tUnit.value)));
+        check('duration: one control for every provider — the old minutes-only label is gone', !/Timeout, minutes|Timeout ms/.test(d.getElementById('hop-list').textContent));
+        check('duration: all three units are offered', [...tUnit.options].map(o => o.value).join() === 'ms,s,min');
+        const iNum = d.querySelector('#hop-list .dur-num[data-f="idleTimeoutMs"]');
+        check('duration: the silence-limit field uses the same control', !!iNum && !!iNum.parentElement.querySelector('.dur-unit'));
+        // 90 seconds
+        tUnit.value = 's'; tUnit.dispatchEvent(new w.Event('change', { bubbles: true }));
+        setVal(w, tNum, '90');
+        // 800 ms on the silence limit
+        const iUnit = iNum.parentElement.querySelector('.dur-unit');
+        iUnit.value = 'ms'; iUnit.dispatchEvent(new w.Event('change', { bubbles: true }));
+        setVal(w, iNum, '2500');
+        click(w, d.getElementById('submit-model'));
+        await sleep(900);
+        let saved = (await (await fetch(BASE + '/admin/api/models', { headers: { 'X-Admin-Key': KEY } })).json());
+        saved = (saved.models || saved)['glm-5.3-nv'] || {};
+        check('duration: 90 with unit s is saved as 90000 ms', saved.timeoutMs === 90000, JSON.stringify(saved));
+        check('duration: 2500 with unit ms is saved as 2500 ms', saved.idleTimeoutMs === 2500, JSON.stringify(saved));
+        // reopen: shows 90 s and 2500 ms, then put the original back
+        click(w, d.querySelector('.edit-btn[data-edit="glm-5.3-nv"]'));
+        const t2 = await until(() => { const e = d.querySelector('#hop-list .dur-num[data-f="timeoutMs"]'); return e && e.value === '90' ? e : null; });
+        check('duration: reopened, 90000 ms shows as 90 s and 2500 ms as 2500 ms', !!t2 && t2.parentElement.querySelector('.dur-unit').value === 's' && d.querySelector('#hop-list .dur-num[data-f="idleTimeoutMs"]').value === '2500' && d.querySelector('#hop-list .dur-num[data-f="idleTimeoutMs"]').parentElement.querySelector('.dur-unit').value === 'ms');
+        const t3 = d.querySelector('#hop-list .dur-num[data-f="timeoutMs"]'); const u3 = t3.parentElement.querySelector('.dur-unit');
+        u3.value = 'min'; u3.dispatchEvent(new w.Event('change', { bubbles: true })); setVal(w, t3, '30');
+        const i3 = d.querySelector('#hop-list .dur-num[data-f="idleTimeoutMs"]'); setVal(w, i3, ''); 
+        click(w, d.getElementById('submit-model')); await sleep(900);
+        let back = (await (await fetch(BASE + '/admin/api/models', { headers: { 'X-Admin-Key': KEY } })).json()); back = (back.models || back)['glm-5.3-nv'] || {};
+        check('duration: 30 min is saved back as 1800000 ms and an empty box clears the silence limit', back.timeoutMs === 1800000 && back.idleTimeoutMs === undefined, JSON.stringify(back));
+      }
+
+      // Defaults panel
+      const dNum = await until(() => d.querySelector('#defaults-body .dur-num[data-dp="nvidia"][data-dk="timeoutMs"]'), 4000);
+      check('duration: the Defaults table uses number + unit too', !!dNum && !!dNum.parentElement.querySelector('.dur-unit'));
+      if (dNum) {
+        const du = dNum.parentElement.querySelector('.dur-unit');
+        du.value = 's'; setVal(w, dNum, '45');
+        const gl = d.querySelector('#defaults-body .dur-num[data-dg="patientTimeoutMs"]');
+        const gu = gl.parentElement.querySelector('.dur-unit'); gu.value = 'min'; setVal(w, gl, '25');
+        click(w, d.getElementById('defaults-save')); await sleep(900);
+        const dj = await (await fetch(BASE + '/admin/api/defaults', { headers: { 'X-Admin-Key': KEY } })).json();
+        check('duration: Defaults saves 45 s as 45000 ms and 25 min as 1500000 ms', dj.saved && dj.saved.providers.nvidia && dj.saved.providers.nvidia.timeoutMs === 45000 && dj.saved.global.patientTimeoutMs === 1500000, JSON.stringify(dj.saved));
+        w.confirm = () => true; click(w, d.getElementById('defaults-reset')); await sleep(700);
+      }
+
+      // Stop button: a request whose client left while it is still waiting
+      fs.writeFileSync(scenFile, JSON.stringify({ mode: 'hang' }));
+      const acU = new AbortController();
+      const pU = fetch(BASE + '/v1/chat/completions', { method: 'POST', signal: acU.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model: 'glm-5.3-nv', stream: true, messages: [{ role: 'user', content: 'hi' }] }) }).catch(() => 'aborted');
+      await sleep(500);
+      const liveBtn = await until(() => d.querySelector('#inflight-strip [data-stop-rid]'), 9000, 250);
+      check('stop: a call whose client is still connected has a Stop button too', !!liveBtn && !/client left/.test(d.getElementById('inflight-strip').textContent), d.getElementById('inflight-strip').textContent.slice(0, 200));
+      acU.abort(); await pU;
+      const stopBtn = await until(() => /client left/.test(d.getElementById('inflight-strip').textContent) && d.querySelector('#inflight-strip [data-stop-rid]'), 12000, 250);
+      check('stop: a request finishing for nobody gets a Stop button in the in-progress strip', !!stopBtn && /client left/.test(d.getElementById('inflight-strip').textContent), d.getElementById('inflight-strip').textContent.slice(0, 200));
+      if (stopBtn) {
+        click(w, stopBtn);
+        const gone = await until(async () => !((await (await fetch(BASE + '/admin/api/inflight', { headers: { 'X-Admin-Key': KEY } })).json()).requests || []).length, 6000, 250);
+        check('stop: pressing it ends the request (it leaves the in-progress list)', !!gone);
+        await until(() => !d.querySelector('#inflight-strip [data-stop-rid]'), 6000, 250);
+        check('stop: and the button goes away', !d.querySelector('#inflight-strip [data-stop-rid]'));
+      }
+      fs.writeFileSync(scenFile, scenBefore);
+
+    // 16: catalog / limits / model cards tools, section guide, log peek + jump arrows (same window as 15, last)
+      click(w, d.getElementById('tool-allmodels-btn'));
+      const amOk = await until(() => /Already linked|Not linked|No API key|Couldn't/.test(d.getElementById('tool-allmodels').textContent), 15000, 300);
+      check('all models: the button opens a list per provider', !d.getElementById('tool-allmodels').hidden && !!amOk && /NVIDIA/i.test(d.getElementById('tool-allmodels').textContent), d.getElementById('tool-allmodels').textContent.slice(0, 200));
+      check('all models: paid / unreachable models are behind a checkbox', !!d.getElementById('am-paid') && d.getElementById('am-paid').checked === false);
+      click(w, d.getElementById('tool-limits-btn'));
+      const limOk = await until(() => d.querySelectorAll('#tool-limits tbody tr').length > 0, 6000, 200);
+      check('limits editor: Google rows load into a table', !!limOk && /RPM/.test(d.getElementById('tool-limits').textContent));
+      const ps = d.getElementById('lim-prov'); setVal(w, ps, 'literouter', 'change');
+      const litOk = await until(() => /Free daily cap/.test(d.getElementById('tool-limits').textContent), 6000, 200);
+      check('limits editor: switching to Literouter shows its own columns', !!litOk);
+      click(w, d.getElementById('tool-cards-btn'));
+      const mcOk = await until(() => d.getElementById('mc-text'), 6000, 200);
+      check('model cards: the paste box opens', !!mcOk && d.getElementById('tool-allmodels').hidden && d.getElementById('tool-limits').hidden);
+      if (mcOk) {
+        setVal(w, d.getElementById('mc-model-custom'), 'nvidia/zz/ui-card'); setVal(w, d.getElementById('mc-text'), 'Context window: 8,000 tokens\nLicense: MIT');
+        click(w, d.getElementById('mc-save'));
+        const saved = await until(() => /Saved \d/.test((d.getElementById('mc-msg') || {}).textContent || ''), 6000, 200);
+        check('model cards: saving shows how many key lines were found', !!saved && /2 key lines/.test(d.getElementById('mc-msg').textContent), (d.getElementById('mc-msg') || {}).textContent);
+        await fetch(BASE + '/admin/api/model-card?provider=nvidia&model=zz%2Fui-card', { method: 'DELETE', headers: { 'X-Admin-Key': KEY } });
+        try { fs.unlinkSync(path.join(dir, 'model-cards.json')); } catch (_) {}
+      }
+      // section guide
+      click(w, d.getElementById('sg-menu'));
+      const sgBtns = d.querySelectorAll('#sg-list button').length;
+      check('section guide: the menu lists the page sections and opens', d.getElementById('section-guide').classList.contains('open') && sgBtns >= 4, 'buttons=' + sgBtns);
+      let scrolled = null; const logsSec = d.getElementById('logs-view').closest('section'); logsSec.scrollIntoView = () => { scrolled = true; };
+      const logBtn = [...d.querySelectorAll('#sg-list button')].find(b => /^Logs$/.test(b.textContent.trim()));
+      if (logBtn) click(w, logBtn);
+      check('section guide: picking a section jumps to it and closes the menu', scrolled === true && !d.getElementById('section-guide').classList.contains('open'));
+      // logs: 12+ requests, grouped; only the newest 10 are fully open, older ones show a short preview
+      fs.writeFileSync(scenFile, JSON.stringify({ mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } }));
+      for (let i = 0; i < 13; i++) await (await fetch(BASE + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer testkey' }, body: JSON.stringify({ model: 'glm-5.3-nv', messages: [{ role: 'user', content: 'p' + i }] }) })).text();
+      const gb = d.getElementById('log-group'); if (!gb.checked) { gb.checked = true; gb.dispatchEvent(new w.Event('change', { bubbles: true })); }
+      click(w, d.getElementById('log-refresh-btn')); await sleep(900);
+      const groups = d.querySelectorAll('#logs-view .log-group').length, peeks = d.querySelectorAll('#logs-view .log-peek').length;
+      check('logs: only the newest 10 requests are fully open, the older ones show a preview', groups > 10 && peeks === groups - 10, `groups=${groups} peeks=${peeks}`);
+      const lastGroup = [...d.querySelectorAll('#logs-view .log-group')].pop();
+      check('logs: the newest request is fully open', !!lastGroup && !lastGroup.querySelector('.log-peek'));
+      const firstPeek = d.querySelector('#logs-view .log-peek');
+      if (firstPeek) { click(w, firstPeek); await sleep(300); check('logs: clicking a preview opens that request fully', d.querySelectorAll('#logs-view .log-peek').length === peeks - 1); }
+      const viewEl = d.getElementById('logs-view'); let to = null; viewEl.scrollTo = (o) => { to = o; };
+      click(w, d.getElementById('log-jump-end'));
+      check('logs: the ⤓ arrow scrolls to the very latest line', to && typeof to.top === 'number');
+      to = null; click(w, d.getElementById('log-jump-next')); check('logs: the ↓ arrow scrolls to the next section', to && typeof to.top === 'number');
+      to = null; click(w, d.getElementById('log-jump-prev')); check('logs: the ↑ arrow scrolls to the previous section', to && typeof to.top === 'number');
+      fs.writeFileSync(scenFile, scenBefore);
+    }
+
   } finally {
     finished = true;
     for (const x of dones) { try { x.window.close(); } catch (_) {} }
