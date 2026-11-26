@@ -69,6 +69,14 @@ Literouter has no request-time reasoning parameters at all (no `chat_template_kw
 - **Provider + model maker in one icon:** a model's *provider* (who serves it) and its *maker* (who built it) are often different, e.g. NVIDIA serving Z.AI's GLM. When they differ, the model's icon is split by a `/`: upper-left = provider (hover: "Provider: …"), lower-right = maker (hover: "Model by: …"). Same company, or a maker the Admin can't tell from the model name, gives the plain provider badge. The maker is read from the name (`z-ai/…`, `glm-`, `deepseek`, `gemma`/`gemini`, `gpt-`, `claude`, `nemotron`, `kimi`, `qwen`, `minimax`, `llama`, `mistral`…); logos for makers use the same folder: `chatgpt.svg` (OpenAI), `claude.svg` (Anthropic), `deepseek.svg`, `google.svg`, `zai.svg`, `nvidia.svg`, `amd.svg`. A maker with no file gets a letter.
 - **View as <user>** (Admin header) now also hides every editing control and the Admin-only panels (stats, setup warnings, usage, tester, schemas, add model), so you see just the models and logs that user sees.
 
+## CrowLLM
+
+**Key** (Render → Environment): **`CROWLLM_API_KEY`**, from https://crowllm.com/keys (Discord sign-in, no card). Provider `crowllm`, base `https://crowllm.com/v1`, new models get the suffix `-cr`, and it is in the Model tester and the Sync panel (`GET /v1/models` needs no key). Model ids ending `:free` bill $0, but CrowLLM's own author says about 14 `:free` ids still bill credit, so check https://crowllm.com/api/pricing before relying on one. No per-minute or per-day limits are published, so leave rpm/rpd blank. Facts come from CrowLLM's integration pull requests, not a docs page; not tested against the live service.
+
+## Model info for clients (OpenCode and friends)
+
+A models.json entry can carry `"info": { "context": 200000, "maxOutput": 32000, "input": ["text","image"], "output": ["text"], "tools": true, "reasoning": true }` (every field optional). Anything not set is derived from facts Q-Proxy already has (tools, reasoning, Literouter's 5,000-token context) or left out; nothing is guessed. `GET /v1/models` then includes `context_length`, `max_output_tokens`, `architecture.input_modalities` and `supported_parameters`, and `GET /opencode.json` (same auth) returns a paste-ready OpenCode `provider` block so the picker shows "200K context · Text, Image, Tools".
+
 ## Groq and AMD
 
 **Keys** (Render → Environment, one each): **`GROQ_API_KEY`** (the name Groq's docs use) and **`RADEON_API_KEY`** (the name AMD's docs use; `AMD_API_KEY` works too, and `RADEON_API_KEY` wins if both are set). Providers: `groq` (base `https://api.groq.com/openai/v1`) and `amd` (base `https://developer.amd.com.cn/radeon/api/v1`). In the Admin they appear as Groq and AMD, new models get the suffixes `-gq` / `-amd`, and both are in the Model tester and the Sync panel (live list + "no longer listed" warnings; no free/paid grouping yet).

@@ -142,223 +142,11 @@
     "rpm": 5,
     "tpm": 250000
   },
-  "deepseek-r1": {
-    "model": "deepseek-r1:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "deepseek-v4": {
-    "model": "deepseek-v4-flash:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
-  },
-  "deepseek-v3": {
-    "model": "deepseek-v3.2:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). Renamed from deepseek-v3-0324 to deepseek-v3.2 in Literouter's 2026-09 catalog refresh. Free-tier daily cap: briefly showed 30/day, back to unlimited as of the last check — Literouter's caps for this catalog are evidently still moving. Recheck the live page if this starts erroring."
-  },
   "gpt-oss-20b-nv": {
     "model": "openai/gpt-oss-20b",
     "provider": "nvidia",
     "status": "active",
     "limitType": "rate-limited"
-  },
-  "gpt-oss-120b-lr": {
-    "model": "gpt-oss-120b:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "gpt-oss-20b-lr": {
-    "model": "gpt-oss-20b:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "gpt-oss-120b": {
-    "model": "gpt-oss-120b:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": null,
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "minimax-m2.7-lr": {
-    "model": "minimax-m2.7:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context",
-    "dailyCap": 100
-  },
-  "gemma-4-31b-it-lr": {
-    "model": "gemma-4-31b-it:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "unlimited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone. context cap of 5000"
-  },
-  "glm-4.7-flash-lr": {
-    "model": "glm-4.7-flash:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
-  },
-  "gemma-3-27b-it-lr": {
-    "model": "gemma-3-27b-it:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
-  },
-  "gemini-2.5-flash-lite-lr": {
-    "model": "gemini-2.5-flash-lite:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "dailyCap": 100
-  },
-  "gemini-2.5-flash-lr": {
-    "model": "gemini-2.5-flash:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "deepseek-v4-flash-lr": {
-    "model": "deepseek-v4-flash:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
-  },
-  "deepseek-v3.2-lr": {
-    "model": "deepseek-v3.2:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
-  },
-  "deepseek-reasoner-lr": {
-    "model": "deepseek-reasoner:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "deepseek-v4-flash-0731-lr": {
-    "model": "deepseek-v4-flash-0731:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "gemma-4-26b-a4b-it-lr": {
-    "model": "gemma-4-26b-a4b-it:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "gemma-4-31b-lr": {
-    "model": "gemma-4-31b:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "glm-5.3-flash-lr": {
-    "model": "glm-5.3-flash:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
-  },
-  "l3-8b-lunaris-lr": {
-    "model": "l3-8b-lunaris:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "tools": false
-  },
-  "llama-3-8b-instruct-lr": {
-    "model": "llama-3-8b-instruct:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "tools": false
-  },
-  "llama-3.3-70b-instruct-turbo-lr": {
-    "model": "llama-3.3-70b-instruct-turbo:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "ministral-3b-2512-lr": {
-    "model": "ministral-3b-2512:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited"
-  },
-  "mistral-large-2512-lr": {
-    "model": "mistral-large-2512:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "mistral-large-3-lr": {
-    "model": "mistral-large-3:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "mistral-medium-2508-lr": {
-    "model": "mistral-medium-2508:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
-  },
-  "mistral-small-2603-lr": {
-    "model": "mistral-small-2603:free",
-    "provider": "literouter",
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone. Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
-  },
-  "mythomax-l2-13b-lr": {
-    "model": "mythomax-l2-13b:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "tools": false
-  },
-  "glm-5.2:free-lr": {
-    "model": "glm-5.2:free",
-    "provider": "literouter",
-    "status": "active",
-    "limitType": "rate-limited",
-    "dailyCap": 100
   },
   "gemini-3.8-flash-g": {
     "model": "models/gemini-3.8-flash",
@@ -383,16 +171,6 @@
     "provider": "nvidia",
     "status": "active",
     "limitType": "unlimited"
-  },
-  "glm-5.3-cheap-free-lr": {
-    "model": "glm-5.3-cheap:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "deprecated",
-    "limitType": "rate-limited",
-    "dailyCap": 100,
-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
   },
   "gemini-3.6-flash-g": {
     "model": "models/gemini-3.6-flash",
@@ -429,14 +207,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "glm-5.1-cheap-free-lr": {
-    "model": "glm-5.1-cheap:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "glm-5.3-flash-nv": {
     "model": "z-ai/glm-5.3-flash",
     "provider": "nvidia",
@@ -444,14 +214,6 @@
     "limitType": "unlimited",
     "tpmLimit": 32000000,
     "timeoutMs": 1200000
-  },
-  "deepseek-v4-pro-cheap-free-lr": {
-    "model": "deepseek-v4-pro-cheap:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
   },
   "kimi-k3.1-pro-nv": {
     "model": "moonshotai/kimi-k3.1-pro",
@@ -515,13 +277,5 @@
       "thinking_toggle": "chat_template_kwargs",
       "reasoning_effort": "chat_template_kwargs"
     }
-  },
-  "nvidia-llama-3.1-nemotron-safety-guard-8b-v3-nv": {
-    "model": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
-    "provider": "nvidia",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
   }
 }

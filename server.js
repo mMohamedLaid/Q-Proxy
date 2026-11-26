@@ -160,6 +160,9 @@ const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY;
 const GROQ_API_KEY      = process.env.GROQ_API_KEY;     // the name Groq's own docs use
 // AMD Radeon API (developer.amd.com.cn). AMD's own docs call the key RADEON_API_KEY; AMD_API_KEY (the name Mastra uses) works too.
 const AMD_API_KEY       = process.env.RADEON_API_KEY || process.env.AMD_API_KEY;
+// CrowLLM (crowllm.com): one OpenAI-compatible endpoint, one key (https://crowllm.com/keys, Discord sign-in, no card).
+// Base https://crowllm.com/v1 and GET /v1/models (no auth) are from CrowLLM's own integration PRs, not from a docs page I could read.
+const CROWLLM_API_KEY   = process.env.CROWLLM_API_KEY;
 
 // Both key lists are unbounded — set as many PREFIX_KEY_1, PREFIX_KEY_2,
 // PREFIX_KEY_3... env vars as you have keys for. Numbers don't need to be
@@ -672,6 +675,7 @@ function estimateRequestTokens(req, provider) {
 //   MegaNova:     https://api.meganova.ai/v1
 //   Groq:         https://api.groq.com/openai/v1   (key: GROQ_API_KEY)
 //   AMD:          https://developer.amd.com.cn/radeon/api/v1   (key: RADEON_API_KEY or AMD_API_KEY)
+//   CrowLLM:      https://crowllm.com/v1                        (key: CROWLLM_API_KEY; model ids ending :free bill $0)
 //   DeepSeek:     DISABLED — $0 balance, no free tokens
 // ============================================================
 const MODELS_PATH = path.join(__dirname, 'models.json');
@@ -1483,6 +1487,7 @@ function getProviderConfig(provider) {
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
     case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
     case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
+    case 'crowllm':    return { base: 'https://crowllm.com/v1',                      key: CROWLLM_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
 }
@@ -1502,6 +1507,7 @@ function getProviderConfigReadOnly(provider) {
     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
     case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
     case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
+    case 'crowllm':    return { base: 'https://crowllm.com/v1',                      key: CROWLLM_API_KEY };
     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
   }
 }
@@ -2126,12 +2132,18 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
         continue;
       }
     }
-    // Literouter's free tier has a fixed context (5,000 tokens). A longer prompt is NOT rejected: Literouter
-    // summarizes it to fit, so the model answers from a condensed history. Say so in the log (once per hop).
-    const freeCtxCap = literouterFreeContextCap(providerConfig);
-    if (freeCtxCap) {
+    // Literouter trims what it sends the model: free ids have a fixed 5,000-token context, base ids default to 5,000
+    // (the dashboard's Chat memory sliders can raise it). A longer prompt is NOT rejected: Literouter summarizes it to
+    // fit, so the model answers from a condensed history. Say so in the log (the proxy cannot see or change that setting).
+    const ctxCap = literouterContextCap(providerConfig);
+    if (ctxCap) {
       const promptTokens = estimateInputTokens(nimRequest);
-      if (promptTokens > freeCtxCap) log('WARN', `[context] ${hopLabel(providerConfig)} — prompt ≈ ${fmtN(promptTokens)} tokens is over Literouter's free ${fmtN(freeCtxCap)}-token context, so Literouter will summarize it and the model sees a condensed history, not the full chat (set "tpmLimit" on this hop to skip it for long chats instead)`);
+      if (promptTokens > ctxCap.cap) {
+        const what = ctxCap.kind === 'free'
+          ? `Literouter's free ${fmtN(ctxCap.cap)}-token context (fixed)`
+          : `Literouter's ${fmtN(ctxCap.cap)}-token context for base models (the Chat memory sliders in the Literouter dashboard can raise it)`;
+        log('WARN', `[context] ${hopLabel(providerConfig)} — prompt ≈ ${fmtN(promptTokens)} tokens is over ${what}, so Literouter will summarize it and the model sees a condensed history, not the full chat (set "tpmLimit" on this hop to skip it for long chats instead)`);
+      }
     }
 
     const extraBody = getReasoningBody(providerConfig);
@@ -2422,12 +2434,75 @@ app.get('/budget', (req, res) => {
 // ============================================================
 // MODELS LIST
 // ============================================================
+// ---- Per-model info (what OpenCode shows beside a model: "200K context · Text, Image, Tools") ----
+// An entry in models.json may carry   "info": { "context": 200000, "maxOutput": 32000, "input": ["text","image"],
+// "output": ["text"], "tools": true, "reasoning": true }.  Whatever is missing is DERIVED, never invented:
+//   tools     <- false when the first hop says "tools": false, otherwise true (the proxy passes tools through)
+//   reasoning <- true when the first hop has a reasoning schema
+//   context   <- Literouter hops: the smallest of the hops' real Literouter context (free 5,000 / base default 5,000)
+//                when no explicit value is saved
+// context / maxOutput / modalities stay null when nobody has said what they are. The same function feeds /v1/models and /opencode.json,
+// so a model added tomorrow shows up in both with no extra step.
+function modelInfoFor(entry) {
+  const info = (entry && typeof entry.info === 'object' && entry.info) || {};
+  const hops = [];
+  for (let h = entry; h && hops.length < 20; h = h.fallback) hops.push(h);
+  const first = hops[0] || {};
+  const derivedCtx = (() => {
+    const caps = hops.map(h => { const c = literouterContextCap(h); return c ? c.cap : null; });
+    if (!caps.length || caps.some(c => c == null)) return null;   // one hop with an unknown/full context -> don't claim a small number
+    return Math.min(...caps);
+  })();
+  const num = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v) : null);
+  const list = (v) => (Array.isArray(v) && v.length ? v.map(String) : null);
+  return {
+    context: num(info.context) || derivedCtx,
+    maxOutput: num(info.maxOutput),
+    input: list(info.input),
+    output: list(info.output),
+    tools: typeof info.tools === 'boolean' ? info.tools : first.tools !== false,
+    reasoning: typeof info.reasoning === 'boolean' ? info.reasoning : !!(first.reasoningSchema),
+  };
+}
+
 app.get('/v1/models', (req, res) => {
   const who = userNameFromReq(req);
   const ids = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who));
   if (who) for (const b of Object.keys((USER_BUNDLES.bundles[who]) || {})) if (!ids.includes(b) && materializeBundle(who, b)) ids.push(b);
-  const models = ids.map(m => ({ id: m, object: 'model', created: Date.now(), owned_by: 'q' }));
+  const models = ids.map(m => {
+    const e = MODEL_MAPPING[m] || materializeBundle(who, m);
+    const inf = e ? modelInfoFor(e) : null;
+    // Extra OpenRouter-style fields next to the OpenAI ones; a client that ignores them is unaffected.
+    return { id: m, object: 'model', created: Date.now(), owned_by: 'q',
+      ...(inf && inf.context ? { context_length: inf.context } : {}),
+      ...(inf && inf.maxOutput ? { max_output_tokens: inf.maxOutput } : {}),
+      ...(inf && (inf.input || inf.output) ? { architecture: { input_modalities: inf.input || ['text'], output_modalities: inf.output || ['text'] } } : {}),
+      ...(inf ? { supported_parameters: [...(inf.tools ? ['tools', 'tool_choice'] : []), ...(inf.reasoning ? ['reasoning'] : [])] } : {}) };
+  });
   res.json({ object: 'list', data: models });
+});
+
+// Paste-ready OpenCode provider block: every model you may use, with context / modalities / tools where known.
+// Put it in opencode.json (it is only the "provider" part). Same auth as /v1/models; the key is NOT included - OpenCode reads it
+// from the env var named in options.apiKey. Models with no known context are listed without a limit (OpenCode then shows none).
+app.get('/opencode.json', (req, res) => {
+  const who = userNameFromReq(req);
+  const ids = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who));
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  const base = `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}/v1`;
+  const models = {};
+  for (const id of ids) {
+    const inf = modelInfoFor(MODEL_MAPPING[id]);
+    models[id] = {
+      name: id,
+      ...(inf.context ? { limit: { context: inf.context, output: inf.maxOutput || Math.min(inf.context, 32000) } } : {}),
+      ...(inf.input || inf.output ? { modalities: { input: inf.input || ['text'], output: inf.output || ['text'] } } : {}),
+      tool_call: inf.tools,
+      reasoning: inf.reasoning,
+    };
+  }
+  res.json({ $schema: 'https://opencode.ai/config.json', provider: { 'q-proxy': { npm: '@ai-sdk/openai-compatible', name: 'Q-proxy',
+    options: { baseURL: base, apiKey: '{env:QPROXY_KEY}' }, models } } });
 });
 
 // ============================================================
@@ -3142,6 +3217,13 @@ app.post('/admin/api/models', requireAdmin, async (req, res) => {
   if (shapeError) {
     return res.status(400).json({ error: { message: shapeError, type: 'invalid_request_error', code: 400 } });
   }
+  if (entry.info !== undefined) {
+    const i = entry.info, okList = (v) => v === undefined || (Array.isArray(v) && v.every(x => typeof x === 'string'));
+    const okNum = (v) => v === undefined || (Number.isFinite(v) && v > 0);
+    const ok = i && typeof i === 'object' && !Array.isArray(i) && okNum(i.context) && okNum(i.maxOutput) && okList(i.input) && okList(i.output)
+      && (i.tools === undefined || typeof i.tools === 'boolean') && (i.reasoning === undefined || typeof i.reasoning === 'boolean');
+    if (!ok) return res.status(400).json({ error: { message: '"info" must look like { context: number, maxOutput: number, input: ["text","image"], output: ["text"], tools: bool, reasoning: bool } (every field optional).', type: 'invalid_request_error', code: 400 } });
+  }
   if (entry.private !== undefined) {
     const ok = Array.isArray(entry.private) && entry.private.every(n => typeof n === 'string' && n.trim());
     if (!ok) return res.status(400).json({ error: { message: '"private" must be a list of user names.', type: 'invalid_request_error', code: 400 } });
@@ -3276,7 +3358,7 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
 // works / paid (needs balance) / gone / key rejected / daily quota used up / rate limited / rejected / error.
 // It does not touch usage counters, cooldowns or warnings, so testing never changes how the proxy behaves.
 // It does use one real request of the provider's quota, and the provider's FIRST key when there are several.
-const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'groq', 'amd', 'deepseek']);
+const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'groq', 'amd', 'crowllm', 'deepseek']);
 const TEST_VERDICT_LABEL = {
   'works': 'works', 'works-empty': 'works (no text)', 'paid': 'paid — needs balance', 'gone': 'model not found',
   'auth': 'key rejected', 'quota': 'quota / credits used up', 'rate-limited': 'rate limited (alive)',
@@ -3590,7 +3672,7 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
 // that would have caught the glm-5.2 deprecation, and the way to
 // confirm whether kimi-k3 is actually live, days ahead of time.
 // ============================================================
-const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
+const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd', 'crowllm']);
 
 // Snapshot of Literouter's account dashboard (Sep 2026) — the free-tier
 // list's own daily caps, and the Premium Basic list: specifically the
@@ -3712,13 +3794,30 @@ function literouterBaseAndVariants(id) {
   return { base, variants };
 }
 
-// The fixed context of Literouter's FREE tier (provider-limits.json "freeContextTokens"), or null when this
-// hop isn't a Literouter :free model / the table has no number.
-function literouterFreeContextCap(pc) {
+// The context Literouter gives a hop when you send a long chat (provider-limits.json "literouter").
+//   free  (":free" ids)  -> freeContextTokens (5,000), fixed: nothing you change moves it.
+//   base  (no suffix, or ":metered") -> baseContextTokens (default 5,000, the "Chat memory" sliders in the Literouter
+//          dashboard can raise it; Q-Proxy cannot read that setting, so after raising it edit baseContextTokens to match).
+//   ":full-context", ":metered:full-context", ":payg", ":32k-context".. ":256k-context" -> null (Literouter sends the full
+//          chat / a window of the size in the name, so there is nothing to warn about).
+// Returns { cap, kind } or null.
+function literouterContextCap(pc) {
   if (!pc || pc.provider !== 'literouter') return null;
-  if (!literouterBaseAndVariants(pc.model).variants.includes('free')) return null;
-  const cap = PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.freeContextTokens;
-  return Number.isFinite(cap) && cap > 0 ? cap : null;
+  const L = PROVIDER_LIMITS.literouter || {};
+  const id = String(pc.model || '');
+  if (/:(full-context|payg|\d+k-context)(:|$)/.test(id)) return null;
+  const pick = (v) => (Number.isFinite(v) && v > 0 ? v : null);
+  if (literouterBaseAndVariants(id).variants.includes('free')) {
+    const cap = pick(L.freeContextTokens);
+    return cap ? { cap, kind: 'free' } : null;
+  }
+  const cap = pick(L.baseContextTokens) || pick(L.freeContextTokens);
+  return cap ? { cap, kind: 'base' } : null;
+}
+// Kept for the callers/tests that only care about the free tier.
+function literouterFreeContextCap(pc) {
+  const c = literouterContextCap(pc);
+  return c && c.kind === 'free' ? c.cap : null;
 }
 
 // Sync tiers:
@@ -3751,6 +3850,7 @@ function literouterKnownInfo(model) {
 // whenever a new provider turns out to have the same kind of gap, rather
 // than treating it as a one-off Literouter thing.
 const PARTIAL_SYNC_NOTES = {
+  crowllm: 'CrowLLM\'s /models list is public and needs no key, but it carries no limits. ":free" in the id means $0, though CrowLLM\'s own author says ~14 ":free" ids still bill credit — check https://crowllm.com/api/pricing before trusting one. Per-minute and per-day limits are not published anywhere I could find, so leave rpm/rpd blank until a real 429 teaches you.',
   literouter: 'Literouter\'s /models list is confirmed complete for what your key can reach (their docs: "every model available to your key") — but it never exposes any of the three credit balances (free, premium pool, permanent premium beta), so dailyCap/premium-pool tracking here is still Q-Proxy\'s own estimate, not Literouter\'s real number.'
 };
 const PROVIDER_SUFFIX = {
@@ -3762,6 +3862,7 @@ const PROVIDER_SUFFIX = {
   meganova: 'mn',
   groq: 'gq',
   amd: 'amd',
+  crowllm: 'cr',
   deepseek: 'ds'
 };
 
@@ -4050,7 +4151,7 @@ function classifyOpenRouterModel(m) {
 // The exact call behind "Check <provider> for updates", for testing it by hand. Without ?send=1 it only describes the call
 // (URL + a curl line with a placeholder key). With ?send=1 it makes the call from the server (the real key never leaves
 // the server and is not echoed) and returns the provider's raw answer.
-const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY', groq: 'YOUR_GROQ_API_KEY', amd: 'YOUR_RADEON_API_KEY' };
+const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY', groq: 'YOUR_GROQ_API_KEY', amd: 'YOUR_RADEON_API_KEY', crowllm: 'YOUR_CROWLLM_API_KEY' };
 app.get('/admin/api/sync/:provider/raw', requireAdmin, async (req, res) => {
   const provider = req.params.provider;
   if (!SYNCABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: `No live catalog check for "${provider}".`, type: 'invalid_request_error', code: 400 } });
@@ -4139,6 +4240,11 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
       }
     } else if (provider === 'openrouter') {
       for (const id of newlyAvailable) modelInfo[id] = classifyOpenRouterModel(rawById.get(id) || { id });
+      newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
+    } else if (provider === 'crowllm') {
+      // CrowLLM: a ":free" id bills $0 ... except some (14 of ~90 when its author counted) that still bill credit, so "free" here means
+      // "named :free", not "verified $0". The exact per-model price is in GET https://crowllm.com/api/pricing (public, no key).
+      for (const id of newlyAvailable) modelInfo[id] = { tier: /:free(-thinking)?$/.test(id) ? 'free' : 'paid', cost: null, uncensored: null };
       newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
     } else if (provider === 'zai') {
       // Z.ai's /models has no prices; the free list is baked into provider-limits.json (from Z.ai's official pricing page).

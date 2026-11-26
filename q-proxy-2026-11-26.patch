@@ -1,0 +1,1377 @@
+diff --git a/README.md b/README.md
+index a6794cb..e00bdf3 100644
+--- a/README.md
++++ b/README.md
+@@ -69,6 +69,14 @@ Literouter has no request-time reasoning parameters at all (no `chat_template_kw
+ - **Provider + model maker in one icon:** a model's *provider* (who serves it) and its *maker* (who built it) are often different, e.g. NVIDIA serving Z.AI's GLM. When they differ, the model's icon is split by a `/`: upper-left = provider (hover: "Provider: …"), lower-right = maker (hover: "Model by: …"). Same company, or a maker the Admin can't tell from the model name, gives the plain provider badge. The maker is read from the name (`z-ai/…`, `glm-`, `deepseek`, `gemma`/`gemini`, `gpt-`, `claude`, `nemotron`, `kimi`, `qwen`, `minimax`, `llama`, `mistral`…); logos for makers use the same folder: `chatgpt.svg` (OpenAI), `claude.svg` (Anthropic), `deepseek.svg`, `google.svg`, `zai.svg`, `nvidia.svg`, `amd.svg`. A maker with no file gets a letter.
+ - **View as <user>** (Admin header) now also hides every editing control and the Admin-only panels (stats, setup warnings, usage, tester, schemas, add model), so you see just the models and logs that user sees.
+ 
++## CrowLLM
++
++**Key** (Render → Environment): **`CROWLLM_API_KEY`**, from https://crowllm.com/keys (Discord sign-in, no card). Provider `crowllm`, base `https://crowllm.com/v1`, new models get the suffix `-cr`, and it is in the Model tester and the Sync panel (`GET /v1/models` needs no key). Model ids ending `:free` bill $0, but CrowLLM's own author says about 14 `:free` ids still bill credit, so check https://crowllm.com/api/pricing before relying on one. No per-minute or per-day limits are published, so leave rpm/rpd blank. Facts come from CrowLLM's integration pull requests, not a docs page; not tested against the live service.
++
++## Model info for clients (OpenCode and friends)
++
++A models.json entry can carry `"info": { "context": 200000, "maxOutput": 32000, "input": ["text","image"], "output": ["text"], "tools": true, "reasoning": true }` (every field optional). Anything not set is derived from facts Q-Proxy already has (tools, reasoning, Literouter's 5,000-token context) or left out; nothing is guessed. `GET /v1/models` then includes `context_length`, `max_output_tokens`, `architecture.input_modalities` and `supported_parameters`, and `GET /opencode.json` (same auth) returns a paste-ready OpenCode `provider` block so the picker shows "200K context · Text, Image, Tools".
++
+ ## Groq and AMD
+ 
+ **Keys** (Render → Environment, one each): **`GROQ_API_KEY`** (the name Groq's docs use) and **`RADEON_API_KEY`** (the name AMD's docs use; `AMD_API_KEY` works too, and `RADEON_API_KEY` wins if both are set). Providers: `groq` (base `https://api.groq.com/openai/v1`) and `amd` (base `https://developer.amd.com.cn/radeon/api/v1`). In the Admin they appear as Groq and AMD, new models get the suffixes `-gq` / `-amd`, and both are in the Model tester and the Sync panel (live list + "no longer listed" warnings; no free/paid grouping yet).
+diff --git a/handof.md b/handof.md
+index d399c6c..cc0e199 100644
+--- a/handof.md
++++ b/handof.md
+@@ -30,9 +30,21 @@ LOOKS WRONG BUT IS DELIBERATE - don't undo without asking
+ - Resets are baked in, no env vars: Literouter 00:00 GMT+7 (17:00 UTC), OpenRouter 00:00 UTC, Google midnight Pacific (DST-aware).
+ - Tests: `node test/run-tests.js` (mocked axios, real HTTP). The files MUST live in test/ (ROOT is the parent folder). The harness backs up, blanks and restores models.json, usage-state.json AND provider-limits.json - usage-state holds the persisted Google windows and an old run polluted the next. QP_WAIT_NOTICE_MS exists only so tests don't wait 10s.
+ 
++NOTES FOR FUTURE ME (added 2026-11-26) - read before touching timeouts, waiting or Literouter
++- TWO UNRELATED 5-MINUTE PROBLEMS. Do not mix them up (I did once, in this file).
++  (A) Long THINKING, months ago. GLM-5.3 (or Kimi 3, I forget which) on NVIDIA with thinking at MAX and no way to lower or turn it off thought for 600+ seconds, easily. One site I used the proxy on had a HIDDEN 5-minute cut-off on thinking that I did not know about; it counts from the FIRST token, so the wait before the first token can be as long as it likes. On another site without that cut-off the model just spiralled for 600+ s. At first I blamed the token limit; it never reached it, and that was ruled out for certain. So (A) was that site's limit (plus a model that cannot be told to think less), not Q-Proxy and not NVIDIA.
++  (B) Waiting to even START, 2026-11-26. On a very slow NVIDIA day, if no output at all (not one token) arrives within 5 minutes, NVIDIA itself gives up with HTTP 504. Seen in the Admin log: "still waiting for nvidia/z-ai/glm-5.3-flash to start answering - 5m 0s and no output yet (queue/connect time, not thinking)" and two seconds later "GATEWAY_TIMEOUT nvidia/z-ai/glm-5.3-flash attempt 1/100 failed (GATEWAY_TIMEOUT - HTTP 504) - retrying in 250ms". How I got there: I first thought the NEWEST version (a57f15e, "Limits, waiting and defaults") caused it, so I reverted it (09e21e3). Then I confirmed the OLD version had the same 504, so the commit was never the cause (it was reverted for nothing; that is why the zip can re-apply it). Then I took it for a rehash of (A) because I had forgotten the specifics, until the log above showed it is a different problem: (A) is a site's cut-off AFTER the first token, (B) is NVIDIA's own cut-off BEFORE any token. A longer Q-Proxy wait cannot help (B); the 504 retry (NVIDIA hops retry up to 100 times) is the right response.
++- The zip I sent on 2026-11-26 (q-proxy-update-v4) re-applies most of that reverted commit (defaults.json, limit basis, finishAfterDisconnect, hop-behavior, admin-key hardening) plus extra Admin pages. It is NOT merged. Do not call anything in it "missing" from the repo: the repo is behind on purpose.
++- GOOGLE LIMITS re-pasted 2026-11-26 from 4 screenshots (provider-limits.json google, capturedAt 2026-11-26). New rows: Genie 4, Gemini 4 Neon / Hydrogen / Carbon / Argon, Gemini Decision 1 (Decisions API, 200 RPM / 50K TPM / 10K RPD), Gemini Omni 1.2 Flash, Gemini Nano Banana 2.1, Lyria Realtime (15 RPM / - / 1.5K RPD). Only Gemini 4 Hydrogen has free chat limits (5 / 250K / 20). Not seen in the screenshots, kept on purpose: gemini-3.7-flash (a live hop), gemini-omni-flash, veo-3-*. A gap between screenshots 1 and 2 may hide them; confirm before deleting.
++- LITEROUTER CONTEXT. Free (":free", 0x cost) models are a FIXED 5,000 tokens whatever you set. Base models (no suffix, or ":metered") also default to 5,000 and the dashboard's Chat memory sliders can raise it; by hand I see non-free models stop at 15,000, but docs.literouter.com/chat-optimization publishes no per-plan maximum (its only ceilings are Claude's separate memory: 5,000 on Basic/Standard, 25,000 Plus, 50,000 Pro and above). Those docs describe NO API, header or request parameter for the sliders: dashboard only, as far as they say. Not affected: ":full-context", ":metered:full-context", ":payg", ":32k-context" to ":256k-context". What "summarized" means: a longer chat is condensed or left out by Literouter, never rejected. I decided I do not care how. The proxy only WARNS: server.js literouterContextCap() logs [context] for free ids (5,000, fixed) and for base ids (provider-limits.json literouter.baseContextTokens, default 5,000; edit it after raising the sliders, Q-Proxy cannot read them).
++- LITEROUTER /v1/models: their docs (docs.literouter.com/endpoints) say each model has minimum_tier, model_cost and modality, in the OpenAI /models shape. Nobody here reads those yet (the sync still uses the hand-typed table), so it is the first thing to try if I want live tier/cost instead of pasting. Not verified against a real response.
++- LITEROUTER MODEL CARDS 2026-11-26 (provider-limits.json): deepseek-v4.1-flash:free and -cheap:free and minimax-m3.1-flash:free = 100/day on Basic, deepseek-v4.1-flash-1017:free = unlimited on Basic; the base versions cost 1x, qwen3.6-27b 1.4x. ":32k-context" variants of those (1.4x-1.8x flat) need the Standard plan: unusable, listed under literouter.standardOnly.
++- CROWLLM (crowllm.com): added as provider "crowllm" (model suffix -cr, env CROWLLM_API_KEY, base https://crowllm.com/v1, one key from https://crowllm.com/keys, Discord sign-in, no card). GET https://crowllm.com/v1/models needs no key (a third party counted 232 ids); GET https://crowllm.com/api/pricing lists billing per model. Its author counts ~70 free of 153 chat models; ids ending ":free" bill $0, but about 14 ":free" ids still bill credit, so the sync only labels ":free" as "free", check /api/pricing before trusting one. Rate limits per minute/day are NOT published anywhere I could read, so rpm/rpd are blank (let a 429 teach me). I did not find the "slow way to earn tokens" on any page I could read (docs, pricing and models pages came back empty); the facts above come from CrowLLM's own integration pull requests (litellm #48022, awesome-freellm-apis #52), written by the person who runs it, not from a docs page, and tools/streaming support is unverified. Untested against the live service.
++- OPENCODE-STYLE MODEL INFO. OpenCode shows "200K context / Text, Image, Tools" for a model because its config says so; Q-Proxy models showed nothing because /v1/models had no such fields. Now: any models.json entry may carry "info": {context, maxOutput, input:[..], output:[..], tools, reasoning}. modelInfoFor() fills what it can FROM FACTS (tools from the hop's "tools" flag, reasoning from its schema, context for Literouter hops) and leaves the rest empty; it never guesses a context or a modality. /v1/models now adds context_length, max_output_tokens, architecture.input_modalities, supported_parameters. GET /opencode.json (same auth as /v1/models) returns a paste-ready OpenCode provider block (limit.context/output, modalities, tool_call, reasoning; key via {env:QPROXY_KEY}). The schema is written from memory of OpenCode's custom-provider config: check it against my OpenCode version. Most models still have NO context/modalities until I fill "info" (no Admin form for it yet; POST /admin/api/models accepts and validates it). Sync-add does not pre-fill it yet.
++
+ CONFUSING BUT NOT BUGS
+ - Measured: the same 503 gets 1 try on Google and up to 100 on NIM (~6.4 min of 250ms->4s backoff); a plain 429 is retried like a 503 and ignores Retry-After. Accepted for now.
+-- Time to first output on GLM-5.3 can be minutes (seen 4m14s). It is queue/connect time, not thinking; the Admin log prints a waiting notice after 10s and "first output arrived after ...".
++- Time to first output on GLM-5.3 can be minutes (seen 4m14s). It is queue/connect time, not thinking (on a very slow day NVIDIA itself answers 504 after 5 minutes with no output - see "TWO UNRELATED 5-MINUTE PROBLEMS" below); the Admin log prints a waiting notice after 10s and "first output arrived after ...".
+ - Clocks: every console stamp is UTC (boot prints the server clock); the Admin panel shows my local time (GMT+1); Render's own dashboard prefix is a third, unexplained clock - trust the stamp inside the line.
+ - Google limits are per PROJECT. I run ONE Google key and won't get more accounts (ban risk). Extra keys from the same project add no quota, but the proxy tracks each key's window separately and would count them as extra capacity. Never suggest more Google accounts.
+ - Google 429 learning (Admin banner "limits may be outdated -> Refresh limits") corrects a hop's value from the 429's quotaId/quotaValue. It can only learn when a request gets past our own limits and Google rejects it.
+diff --git a/models.json b/models.json
+index d9c968c..a98e071 100644
+--- a/models.json
++++ b/models.json
+@@ -142,224 +142,12 @@
+     "rpm": 5,
+     "tpm": 250000
+   },
+-  "deepseek-r1": {
+-    "model": "deepseek-r1:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": null,
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "deepseek-v4": {
+-    "model": "deepseek-v4-flash:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": null,
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+-  "deepseek-v3": {
+-    "model": "deepseek-v3.2:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": null,
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). Renamed from deepseek-v3-0324 to deepseek-v3.2 in Literouter's 2026-09 catalog refresh. Free-tier daily cap: briefly showed 30/day, back to unlimited as of the last check — Literouter's caps for this catalog are evidently still moving. Recheck the live page if this starts erroring."
+-  },
+   "gpt-oss-20b-nv": {
+     "model": "openai/gpt-oss-20b",
+     "provider": "nvidia",
+     "status": "active",
+     "limitType": "rate-limited"
+   },
+-  "gpt-oss-120b-lr": {
+-    "model": "gpt-oss-120b:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+-  "gpt-oss-20b-lr": {
+-    "model": "gpt-oss-20b:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+-  "gpt-oss-120b": {
+-    "model": "gpt-oss-120b:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": null,
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+-  "minimax-m2.7-lr": {
+-    "model": "minimax-m2.7:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version). near-frontier open-weight coder — 56.2 SWE-bench Pro, 200K context",
+-    "dailyCap": 100
+-  },
+-  "gemma-4-31b-it-lr": {
+-    "model": "gemma-4-31b-it:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "unlimited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone. context cap of 5000"
+-  },
+-  "glm-4.7-flash-lr": {
+-    "model": "glm-4.7-flash:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+-  "gemma-3-27b-it-lr": {
+-    "model": "gemma-3-27b-it:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+-  "gemini-2.5-flash-lite-lr": {
+-    "model": "gemini-2.5-flash-lite:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100
+-  },
+-  "gemini-2.5-flash-lr": {
+-    "model": "gemini-2.5-flash:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "deepseek-v4-flash-lr": {
+-    "model": "deepseek-v4-flash:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+-  "deepseek-v3.2-lr": {
+-    "model": "deepseek-v3.2:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+-  "deepseek-reasoner-lr": {
+-    "model": "deepseek-reasoner:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "deepseek-v4-flash-0731-lr": {
+-    "model": "deepseek-v4-flash-0731:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "gemma-4-26b-a4b-it-lr": {
+-    "model": "gemma-4-26b-a4b-it:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "gemma-4-31b-lr": {
+-    "model": "gemma-4-31b:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "glm-5.3-flash-lr": {
+-    "model": "glm-5.3-flash:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "notes": "Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
+-  },
+-  "l3-8b-lunaris-lr": {
+-    "model": "l3-8b-lunaris:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "tools": false
+-  },
+-  "llama-3-8b-instruct-lr": {
+-    "model": "llama-3-8b-instruct:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "tools": false
+-  },
+-  "llama-3.3-70b-instruct-turbo-lr": {
+-    "model": "llama-3.3-70b-instruct-turbo:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+-  "ministral-3b-2512-lr": {
+-    "model": "ministral-3b-2512:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+-  "mistral-large-2512-lr": {
+-    "model": "mistral-large-2512:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "mistral-large-3-lr": {
+-    "model": "mistral-large-3:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "mistral-medium-2508-lr": {
+-    "model": "mistral-medium-2508:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone."
+-  },
+-  "mistral-small-2603-lr": {
+-    "model": "mistral-small-2603:free",
+-    "provider": "literouter",
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "notes": "DEPRECATED 2026-10-09: no longer in Literouter's Free or Basic lists, so the :free model is gone. Briefly showed a 30/day cap, back to unlimited as of the last check — recheck the live page if this starts erroring."
+-  },
+-  "mythomax-l2-13b-lr": {
+-    "model": "mythomax-l2-13b:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "tools": false
+-  },
+-  "glm-5.2:free-lr": {
+-    "model": "glm-5.2:free",
+-    "provider": "literouter",
+-    "status": "active",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100
+-  },
+   "gemini-3.8-flash-g": {
+     "model": "models/gemini-3.8-flash",
+     "provider": "google",
+@@ -384,16 +172,6 @@
+     "status": "active",
+     "limitType": "unlimited"
+   },
+-  "glm-5.3-cheap-free-lr": {
+-    "model": "glm-5.3-cheap:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": {},
+-    "status": "deprecated",
+-    "limitType": "rate-limited",
+-    "dailyCap": 100,
+-    "notes": "DEPRECATED 2026-10-09: Literouter now lists this model on the paid Basic tier only (no free version)."
+-  },
+   "gemini-3.6-flash-g": {
+     "model": "models/gemini-3.6-flash",
+     "provider": "google",
+@@ -429,14 +207,6 @@
+     "status": "active",
+     "limitType": "rate-limited"
+   },
+-  "glm-5.1-cheap-free-lr": {
+-    "model": "glm-5.1-cheap:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": {},
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+   "glm-5.3-flash-nv": {
+     "model": "z-ai/glm-5.3-flash",
+     "provider": "nvidia",
+@@ -445,14 +215,6 @@
+     "tpmLimit": 32000000,
+     "timeoutMs": 1200000
+   },
+-  "deepseek-v4-pro-cheap-free-lr": {
+-    "model": "deepseek-v4-pro-cheap:free",
+-    "provider": "literouter",
+-    "reasoningSchema": null,
+-    "reasoning": {},
+-    "status": "active",
+-    "limitType": "rate-limited"
+-  },
+   "kimi-k3.1-pro-nv": {
+     "model": "moonshotai/kimi-k3.1-pro",
+     "provider": "nvidia",
+diff --git a/provider-limits.json b/provider-limits.json
+index ebb4534..8c2731e 100644
+--- a/provider-limits.json
++++ b/provider-limits.json
+@@ -5,9 +5,9 @@
+   ],
+   "_tpmNote": "Providers whose TPM (tokens per minute) limit counts INPUT tokens only — max_tokens/output is NOT added when checking it. Confirmed for Google AI Studio. For any provider not listed, how the limit is counted is unknown, so Q-Proxy stays conservative and counts input + max_tokens. Add a provider here only once its dashboard confirms it counts input only.",
+   "google": {
+-    "capturedAt": "2026-10-09",
++    "capturedAt": "2026-11-26",
+     "staleAfterDays": 30,
+-    "source": "Google AI Studio rate-limit page (free tier). Columns are RPM / TPM (input tokens per minute) / RPD.",
++    "source": "Google AI Studio rate-limit page (free tier). Columns are RPM / TPM (input tokens per minute) / RPD. Re-pasted 2026-11-26 from 4 screenshots of the page (sorted by RPM): adds Genie 4, Gemini 4 Neon/Hydrogen/Carbon/Argon, Gemini Decision 1, Gemini Omni 1.2 Flash, Gemini Nano Banana 2.1, Lyria Realtime. Every other row in the screenshots matched the saved table.",
+     "slugNote": "\"slugs\" are the API model ids matched against; derived by naming convention from the display name (AI Studio does not show API slugs), so a brand-new model may need a slug added here. null = Unlimited / not applicable.",
+     "models": {
+       "antigravity": {
+@@ -422,453 +422,161 @@
+         "rpm": null,
+         "tpm": 65000,
+         "rpd": null
++      },
++      "genie-4": {
++        "label": "Genie 4",
++        "category": "Multi-modal generative models",
++        "slugs": [],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "gemini-4-neon": {
++        "label": "Gemini 4 Neon",
++        "category": "Text-out models",
++        "slugs": [
++          "gemini-4-neon",
++          "gemini-4-neon-preview"
++        ],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "gemini-4-hydrogen": {
++        "label": "Gemini 4 Hydrogen",
++        "category": "Text-out models",
++        "slugs": [
++          "gemini-4-hydrogen",
++          "gemini-4-hydrogen-preview"
++        ],
++        "rpm": 5,
++        "tpm": 250000,
++        "rpd": 20
++      },
++      "gemini-decision-1": {
++        "label": "Gemini Decision 1",
++        "category": "Decisions API",
++        "slugs": [],
++        "rpm": 200,
++        "tpm": 50000,
++        "rpd": 10000
++      },
++      "gemini-4-carbon": {
++        "label": "Gemini 4 Carbon",
++        "category": "Text-out models",
++        "slugs": [
++          "gemini-4-carbon",
++          "gemini-4-carbon-preview"
++        ],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "gemini-omni-1.2-flash": {
++        "label": "Gemini Omni 1.2 Flash",
++        "category": "Multi-modal generative models",
++        "slugs": [],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "gemini-4-argon": {
++        "label": "Gemini 4 Argon",
++        "category": "Text-out models",
++        "slugs": [
++          "gemini-4-argon",
++          "gemini-4-argon-preview"
++        ],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "gemini-nano-banana-2.1": {
++        "label": "Gemini Nano Banana 2.1",
++        "category": "Multi-modal generative models",
++        "slugs": [],
++        "rpm": 0,
++        "tpm": 0,
++        "rpd": 0,
++        "noFreeAccess": true
++      },
++      "lyria-realtime": {
++        "label": "Lyria Realtime",
++        "category": "Multi-modal generative models",
++        "slugs": [],
++        "rpm": 15,
++        "tpm": null,
++        "rpd": 1500
+       }
+-    }
++    },
++    "notSeenInLatestCapture": [
++      "gemini-3.7-flash",
++      "gemini-omni-flash",
++      "veo-3-fast-generate",
++      "veo-3-generate",
++      "veo-3-lite-generate"
++    ],
++    "notSeenNote": "These rows are in the table but were NOT visible in the 2026-11-26 screenshots (a gap between screenshots 1 and 2 could be hiding them, or Google removed them). Kept on purpose: gemini-3.7-flash-g is a live hop. Confirm on the Google page before deleting."
+   },
+   "literouter": {
+-    "capturedAt": "2026-10-09",
++    "capturedAt": "2026-11-26",
+     "staleAfterDays": 30,
+-    "source": "Literouter dashboard (Free + Basic tier lists).",
++    "source": "Literouter dashboard model cards, re-captured 2026-11-26 (REPLACES the 2026-10-09 table of 62 models: what is listed here is all that is left). Free + Basic.",
+     "freeContextTokens": 5000,
+     "basicDailyPremiumCredits": 50,
+     "basicMaxContextTokens": 15000,
+     "notes": "Free tier: fixed 5,000-token context (longer requests are summarized to fit). Basic tier: 50 daily premium credits shared by all premium models; cost per request = base x model multiplier x context multiplier (capped 3.0). freeDailyCap null with hasFree=true means unlimited.",
+     "models": {
+-      "aion-rp-llama-3.1-8b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v3.1": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v3.2": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v4-flash": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v4-flash-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v4-pro-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.7,
+-        "uncensored": true
+-      },
+-      "deepseek-v4.1-flash": {
+-        "hasFree": false,
++      "deepseek-v4.1-flash-1017": {
++        "hasFree": true,
+         "freeDailyCap": null,
+         "premiumBasic": true,
+         "premiumCost": 1.0,
+         "uncensored": true
+       },
+       "deepseek-v4.1-flash-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "deepseek-v4.1-flash-stable": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "gemini-2.5-flash-lite": {
+         "hasFree": true,
+         "freeDailyCap": 100,
+-        "premiumBasic": false,
+-        "premiumCost": null,
+-        "uncensored": true
+-      },
+-      "gemma-3-27b-it": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 2.0,
+-        "uncensored": true
+-      },
+-      "glm-4.5": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "glm-4.5-air": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "glm-4.7": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.7,
+-        "uncensored": true
+-      },
+-      "glm-4.7-flash": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "glm-4.7-flash-heretic": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+         "premiumBasic": true,
+         "premiumCost": 1.0,
+         "uncensored": true
+       },
+-      "glm-5": {
+-        "hasFree": true,
+-        "freeDailyCap": 100,
+-        "premiumBasic": true,
+-        "premiumCost": 1.7,
+-        "uncensored": true
+-      },
+-      "glm-5.1": {
+-        "hasFree": true,
+-        "freeDailyCap": 100,
+-        "premiumBasic": false,
+-        "premiumCost": null,
+-        "uncensored": true
+-      },
+-      "glm-5.2": {
++      "deepseek-v4.1-flash": {
+         "hasFree": true,
+         "freeDailyCap": 100,
+         "premiumBasic": true,
+-        "premiumCost": 1.6,
+-        "uncensored": true
+-      },
+-      "glm-5.2-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "glm-5.3": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.7,
+-        "uncensored": true
+-      },
+-      "glm-5.3-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "glm-5.3-flash": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "glm-5.3-flash-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "gpt-4o-mini": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-5-mini": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.2,
+-        "uncensored": false
+-      },
+-      "gpt-5-mini-stable": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.4,
+-        "uncensored": false
+-      },
+-      "gpt-5.4-nano": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.5,
+-        "uncensored": false
+-      },
+-      "gpt-5.6-luna": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-5.6-luna-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-6-luna": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-6-luna-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-oss-120b": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "gpt-oss-20b": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "hy3": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "hy4-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "kimi-k2.6-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "kimi-k2.7-code-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.3,
+-        "uncensored": true
+-      },
+-      "l3-8b-lunaris": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "llama-3-8b-instruct": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": false,
+-        "premiumCost": null,
+-        "uncensored": true
+-      },
+-      "llama-3.3-70b-instruct-turbo": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": false,
+-        "premiumCost": null,
+-        "uncensored": true
+-      },
+-      "minimax-m2.7": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "minimax-m2.7-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "minimax-m3": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "minimax-m3-cheap": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+         "premiumCost": 1.0,
+         "uncensored": true
+       },
+       "minimax-m3.1-flash": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.1,
+-        "uncensored": true
+-      },
+-      "ministral-3b-2512": {
+-        "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "ministral-8b-2512": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "mythomax-l2-13b": {
+         "hasFree": true,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "phi-4-mini-instruct": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-235b-a22b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-30b-a3b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-32b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-coder-30b-a3b-instruct": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-coder-next": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-next-80b-a3b-instruct": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3-vl-235b-a22b-instruct": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3.5-9b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": true
+-      },
+-      "qwen3.6-35b-a3b": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
++        "freeDailyCap": 100,
+         "premiumBasic": true,
+         "premiumCost": 1.0,
+         "uncensored": true
+       },
+-      "qwen3.8-flash": {
++      "qwen3.6-27b": {
+         "hasFree": false,
+         "freeDailyCap": null,
+         "premiumBasic": true,
+-        "premiumCost": 1.0,
++        "premiumCost": 1.4,
+         "uncensored": true
+-      },
+-      "step-3.5-flash": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.0,
+-        "uncensored": false
+-      },
+-      "step-3.7-flash": {
+-        "hasFree": false,
+-        "freeDailyCap": null,
+-        "premiumBasic": true,
+-        "premiumCost": 1.8,
+-        "uncensored": false
+       }
+-    }
++    },
++    "baseContextTokens": 5000,
++    "contextNote": "Context Literouter keeps from a long chat. FREE (\":free\", 0x cost) models: fixed freeContextTokens, nothing changes it. BASE models (no suffix, or \":metered\"): default 5,000, raisable with the \"Chat memory\" sliders in the Literouter dashboard (System Context 1x = 1,250 tokens, Conversation Context 1x = 3,750 tokens; equal sliders scale the window, 1x = 5,000, 10x = 50,000; the plan caps a weighted score ((1 x system) + (3 x conversation)) / 4). Q-Proxy cannot read those sliders, so after raising them edit baseContextTokens to match or the [context] warning stays at 5,000. Not affected (full chat or a fixed window): \":full-context\", \":metered:full-context\", \":payg\", \":32k-context\" to \":256k-context\". Longer prompts are summarized by Literouter, never rejected. Observed by hand: non-free models top out at 15,000 for this account; docs.literouter.com/chat-optimization does not publish a per-plan maximum and describes no API or header to change it (dashboard only, as far as the docs say).",
++    "standardOnly": [
++      "deepseek-v4.1-flash-1017:32k-context",
++      "deepseek-v4.1-flash-cheap:32k-context",
++      "deepseek-v4.1-flash:32k-context"
++    ],
++    "standardOnlyNote": "Seen on the 2026-11-26 model cards as \"Requires the Standard plan or permanent credit\" (1.4x-1.8x flat). Not reachable on Basic, so Q-Proxy should not offer them.",
++    "replacedNote": "On 2026-11-26 the table was replaced, not extended. Removed from the table: aion-rp-llama-3.1-8b, deepseek-v3.1, deepseek-v3.2, deepseek-v4-flash, deepseek-v4-flash-cheap, deepseek-v4-pro-cheap, deepseek-v4.1-flash-stable, gemini-2.5-flash-lite, gemma-3-27b-it, glm-4.5, glm-4.5-air, glm-4.7, glm-4.7-flash, glm-4.7-flash-heretic, glm-5, glm-5.1, glm-5.2, glm-5.2-cheap, glm-5.3, glm-5.3-cheap, glm-5.3-flash, glm-5.3-flash-cheap, gpt-4o-mini, gpt-5-mini, gpt-5-mini-stable, gpt-5.4-nano, gpt-5.6-luna, gpt-5.6-luna-cheap, gpt-6-luna, gpt-6-luna-cheap, gpt-oss-120b, gpt-oss-20b, hy3, hy4-cheap, kimi-k2.6-cheap, kimi-k2.7-code-cheap, l3-8b-lunaris, llama-3-8b-instruct, llama-3.3-70b-instruct-turbo, minimax-m2.7, minimax-m2.7-cheap, minimax-m3, minimax-m3-cheap, ministral-3b-2512, ministral-8b-2512, mythomax-l2-13b, phi-4-mini-instruct, qwen3-235b-a22b, qwen3-30b-a3b, qwen3-32b, qwen3-coder-30b-a3b-instruct, qwen3-coder-next, qwen3-next-80b-a3b-instruct, qwen3-vl-235b-a22b-instruct, qwen3.5-9b, qwen3.6-35b-a3b, qwen3.8-flash, step-3.5-flash, step-3.7-flash."
+   },
+   "zai": {
+     "capturedAt": "2026-10-09",
+@@ -881,4 +589,3 @@
+     "listNote": "Z.ai's /models list does NOT include the free flash models, yet they work: probed 2026-10-09, glm-4.7-flash and glm-4.5-flash answer HTTP 200 while every other listed model (glm-5.3, glm-5.3-flash, glm-5.3-flashx, glm-5.2, glm-5.1, glm-5, glm-5-turbo, glm-4.7, glm-4.6, glm-4.5, glm-4.5-air, glm-4.7-flashx, glm-4.5-airx, glm-4.5-x) answers HTTP 429 code 1113 'Insufficient balance or no resource package'. So the free list above, not /models, is what says a Z.ai model is free. glm-4.6v-flash (the free VISION model) was confirmed working on 2026-10-10 as well."
+   }
+ }
+-
+diff --git a/public/admin.html b/public/admin.html
+index e80af36..90bc4db 100644
+--- a/public/admin.html
++++ b/public/admin.html
+@@ -825,8 +825,8 @@
+   const $ = (sel, root) => (root || document).querySelector(sel);
+   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+ 
+-  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', deepseek: 'DeepSeek' };
+-  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
++  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', crowllm: 'CrowLLM', deepseek: 'DeepSeek' };
++  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd', 'crowllm']);
+ 
+   // ---------- provider badges ----------
+   // A small letter badge per provider on a muted tint picked from the provider's position in PROVIDER_LABELS (never a brand colour).
+diff --git a/server.js b/server.js
+index 7f640bc..bcccd0f 100644
+--- a/server.js
++++ b/server.js
+@@ -160,6 +160,9 @@ const MEGANOVA_API_KEY  = process.env.MEGANOVA_API_KEY;
+ const GROQ_API_KEY      = process.env.GROQ_API_KEY;     // the name Groq's own docs use
+ // AMD Radeon API (developer.amd.com.cn). AMD's own docs call the key RADEON_API_KEY; AMD_API_KEY (the name Mastra uses) works too.
+ const AMD_API_KEY       = process.env.RADEON_API_KEY || process.env.AMD_API_KEY;
++// CrowLLM (crowllm.com): one OpenAI-compatible endpoint, one key (https://crowllm.com/keys, Discord sign-in, no card).
++// Base https://crowllm.com/v1 and GET /v1/models (no auth) are from CrowLLM's own integration PRs, not from a docs page I could read.
++const CROWLLM_API_KEY   = process.env.CROWLLM_API_KEY;
+ 
+ // Both key lists are unbounded — set as many PREFIX_KEY_1, PREFIX_KEY_2,
+ // PREFIX_KEY_3... env vars as you have keys for. Numbers don't need to be
+@@ -672,6 +675,7 @@ function estimateRequestTokens(req, provider) {
+ //   MegaNova:     https://api.meganova.ai/v1
+ //   Groq:         https://api.groq.com/openai/v1   (key: GROQ_API_KEY)
+ //   AMD:          https://developer.amd.com.cn/radeon/api/v1   (key: RADEON_API_KEY or AMD_API_KEY)
++//   CrowLLM:      https://crowllm.com/v1                        (key: CROWLLM_API_KEY; model ids ending :free bill $0)
+ //   DeepSeek:     DISABLED — $0 balance, no free tokens
+ // ============================================================
+ const MODELS_PATH = path.join(__dirname, 'models.json');
+@@ -1483,6 +1487,7 @@ function getProviderConfig(provider) {
+     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+     case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
+     case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
++    case 'crowllm':    return { base: 'https://crowllm.com/v1',                      key: CROWLLM_API_KEY };
+     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
+   }
+ }
+@@ -1502,6 +1507,7 @@ function getProviderConfigReadOnly(provider) {
+     case 'meganova':   return { base: 'https://api.meganova.ai/v1',                  key: MEGANOVA_API_KEY };
+     case 'groq':       return { base: 'https://api.groq.com/openai/v1',              key: GROQ_API_KEY };
+     case 'amd':        return { base: 'https://developer.amd.com.cn/radeon/api/v1',  key: AMD_API_KEY };
++    case 'crowllm':    return { base: 'https://crowllm.com/v1',                      key: CROWLLM_API_KEY };
+     default:           return { base: 'https://integrate.api.nvidia.com/v1',         key: NIM_API_KEY };
+   }
+ }
+@@ -2126,12 +2132,18 @@ async function makeAPICall(modelId, nimRequest, stream, opts = {}) {
+         continue;
+       }
+     }
+-    // Literouter's free tier has a fixed context (5,000 tokens). A longer prompt is NOT rejected: Literouter
+-    // summarizes it to fit, so the model answers from a condensed history. Say so in the log (once per hop).
+-    const freeCtxCap = literouterFreeContextCap(providerConfig);
+-    if (freeCtxCap) {
++    // Literouter trims what it sends the model: free ids have a fixed 5,000-token context, base ids default to 5,000
++    // (the dashboard's Chat memory sliders can raise it). A longer prompt is NOT rejected: Literouter summarizes it to
++    // fit, so the model answers from a condensed history. Say so in the log (the proxy cannot see or change that setting).
++    const ctxCap = literouterContextCap(providerConfig);
++    if (ctxCap) {
+       const promptTokens = estimateInputTokens(nimRequest);
+-      if (promptTokens > freeCtxCap) log('WARN', `[context] ${hopLabel(providerConfig)} — prompt ≈ ${fmtN(promptTokens)} tokens is over Literouter's free ${fmtN(freeCtxCap)}-token context, so Literouter will summarize it and the model sees a condensed history, not the full chat (set "tpmLimit" on this hop to skip it for long chats instead)`);
++      if (promptTokens > ctxCap.cap) {
++        const what = ctxCap.kind === 'free'
++          ? `Literouter's free ${fmtN(ctxCap.cap)}-token context (fixed)`
++          : `Literouter's ${fmtN(ctxCap.cap)}-token context for base models (the Chat memory sliders in the Literouter dashboard can raise it)`;
++        log('WARN', `[context] ${hopLabel(providerConfig)} — prompt ≈ ${fmtN(promptTokens)} tokens is over ${what}, so Literouter will summarize it and the model sees a condensed history, not the full chat (set "tpmLimit" on this hop to skip it for long chats instead)`);
++      }
+     }
+ 
+     const extraBody = getReasoningBody(providerConfig);
+@@ -2422,14 +2434,77 @@ app.get('/budget', (req, res) => {
+ // ============================================================
+ // MODELS LIST
+ // ============================================================
++// ---- Per-model info (what OpenCode shows beside a model: "200K context · Text, Image, Tools") ----
++// An entry in models.json may carry   "info": { "context": 200000, "maxOutput": 32000, "input": ["text","image"],
++// "output": ["text"], "tools": true, "reasoning": true }.  Whatever is missing is DERIVED, never invented:
++//   tools     <- false when the first hop says "tools": false, otherwise true (the proxy passes tools through)
++//   reasoning <- true when the first hop has a reasoning schema
++//   context   <- Literouter hops: the smallest of the hops' real Literouter context (free 5,000 / base default 5,000)
++//                when no explicit value is saved
++// context / maxOutput / modalities stay null when nobody has said what they are. The same function feeds /v1/models and /opencode.json,
++// so a model added tomorrow shows up in both with no extra step.
++function modelInfoFor(entry) {
++  const info = (entry && typeof entry.info === 'object' && entry.info) || {};
++  const hops = [];
++  for (let h = entry; h && hops.length < 20; h = h.fallback) hops.push(h);
++  const first = hops[0] || {};
++  const derivedCtx = (() => {
++    const caps = hops.map(h => { const c = literouterContextCap(h); return c ? c.cap : null; });
++    if (!caps.length || caps.some(c => c == null)) return null;   // one hop with an unknown/full context -> don't claim a small number
++    return Math.min(...caps);
++  })();
++  const num = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v) : null);
++  const list = (v) => (Array.isArray(v) && v.length ? v.map(String) : null);
++  return {
++    context: num(info.context) || derivedCtx,
++    maxOutput: num(info.maxOutput),
++    input: list(info.input),
++    output: list(info.output),
++    tools: typeof info.tools === 'boolean' ? info.tools : first.tools !== false,
++    reasoning: typeof info.reasoning === 'boolean' ? info.reasoning : !!(first.reasoningSchema),
++  };
++}
++
+ app.get('/v1/models', (req, res) => {
+   const who = userNameFromReq(req);
+   const ids = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who));
+   if (who) for (const b of Object.keys((USER_BUNDLES.bundles[who]) || {})) if (!ids.includes(b) && materializeBundle(who, b)) ids.push(b);
+-  const models = ids.map(m => ({ id: m, object: 'model', created: Date.now(), owned_by: 'q' }));
++  const models = ids.map(m => {
++    const e = MODEL_MAPPING[m] || materializeBundle(who, m);
++    const inf = e ? modelInfoFor(e) : null;
++    // Extra OpenRouter-style fields next to the OpenAI ones; a client that ignores them is unaffected.
++    return { id: m, object: 'model', created: Date.now(), owned_by: 'q',
++      ...(inf && inf.context ? { context_length: inf.context } : {}),
++      ...(inf && inf.maxOutput ? { max_output_tokens: inf.maxOutput } : {}),
++      ...(inf && (inf.input || inf.output) ? { architecture: { input_modalities: inf.input || ['text'], output_modalities: inf.output || ['text'] } } : {}),
++      ...(inf ? { supported_parameters: [...(inf.tools ? ['tools', 'tool_choice'] : []), ...(inf.reasoning ? ['reasoning'] : [])] } : {}) };
++  });
+   res.json({ object: 'list', data: models });
+ });
+ 
++// Paste-ready OpenCode provider block: every model you may use, with context / modalities / tools where known.
++// Put it in opencode.json (it is only the "provider" part). Same auth as /v1/models; the key is NOT included - OpenCode reads it
++// from the env var named in options.apiKey. Models with no known context are listed without a limit (OpenCode then shows none).
++app.get('/opencode.json', (req, res) => {
++  const who = userNameFromReq(req);
++  const ids = Object.keys(MODEL_MAPPING).filter(m => canUseModel(MODEL_MAPPING[m], who));
++  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
++  const base = `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}/v1`;
++  const models = {};
++  for (const id of ids) {
++    const inf = modelInfoFor(MODEL_MAPPING[id]);
++    models[id] = {
++      name: id,
++      ...(inf.context ? { limit: { context: inf.context, output: inf.maxOutput || Math.min(inf.context, 32000) } } : {}),
++      ...(inf.input || inf.output ? { modalities: { input: inf.input || ['text'], output: inf.output || ['text'] } } : {}),
++      tool_call: inf.tools,
++      reasoning: inf.reasoning,
++    };
++  }
++  res.json({ $schema: 'https://opencode.ai/config.json', provider: { 'q-proxy': { npm: '@ai-sdk/openai-compatible', name: 'Q-proxy',
++    options: { baseURL: base, apiKey: '{env:QPROXY_KEY}' }, models } } });
++});
++
+ // ============================================================
+ // CHAT ENDPOINT
+ // ============================================================
+@@ -3142,6 +3217,13 @@ app.post('/admin/api/models', requireAdmin, async (req, res) => {
+   if (shapeError) {
+     return res.status(400).json({ error: { message: shapeError, type: 'invalid_request_error', code: 400 } });
+   }
++  if (entry.info !== undefined) {
++    const i = entry.info, okList = (v) => v === undefined || (Array.isArray(v) && v.every(x => typeof x === 'string'));
++    const okNum = (v) => v === undefined || (Number.isFinite(v) && v > 0);
++    const ok = i && typeof i === 'object' && !Array.isArray(i) && okNum(i.context) && okNum(i.maxOutput) && okList(i.input) && okList(i.output)
++      && (i.tools === undefined || typeof i.tools === 'boolean') && (i.reasoning === undefined || typeof i.reasoning === 'boolean');
++    if (!ok) return res.status(400).json({ error: { message: '"info" must look like { context: number, maxOutput: number, input: ["text","image"], output: ["text"], tools: bool, reasoning: bool } (every field optional).', type: 'invalid_request_error', code: 400 } });
++  }
+   if (entry.private !== undefined) {
+     const ok = Array.isArray(entry.private) && entry.private.every(n => typeof n === 'string' && n.trim());
+     if (!ok) return res.status(400).json({ error: { message: '"private" must be a list of user names.', type: 'invalid_request_error', code: 400 } });
+@@ -3276,7 +3358,7 @@ app.get('/admin/api/usage', requireAdmin, async (req, res) => {
+ // works / paid (needs balance) / gone / key rejected / daily quota used up / rate limited / rejected / error.
+ // It does not touch usage counters, cooldowns or warnings, so testing never changes how the proxy behaves.
+ // It does use one real request of the provider's quota, and the provider's FIRST key when there are several.
+-const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'groq', 'amd', 'deepseek']);
++const TESTABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'meganova', 'groq', 'amd', 'crowllm', 'deepseek']);
+ const TEST_VERDICT_LABEL = {
+   'works': 'works', 'works-empty': 'works (no text)', 'paid': 'paid — needs balance', 'gone': 'model not found',
+   'auth': 'key rejected', 'quota': 'quota / credits used up', 'rate-limited': 'rate limited (alive)',
+@@ -3590,7 +3672,7 @@ app.delete('/admin/api/presets/:key', requireAdmin, async (req, res) => {
+ // that would have caught the glm-5.2 deprecation, and the way to
+ // confirm whether kimi-k3 is actually live, days ahead of time.
+ // ============================================================
+-const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
++const SYNCABLE_PROVIDERS = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd', 'crowllm']);
+ 
+ // Snapshot of Literouter's account dashboard (Sep 2026) — the free-tier
+ // list's own daily caps, and the Premium Basic list: specifically the
+@@ -3712,13 +3794,30 @@ function literouterBaseAndVariants(id) {
+   return { base, variants };
+ }
+ 
+-// The fixed context of Literouter's FREE tier (provider-limits.json "freeContextTokens"), or null when this
+-// hop isn't a Literouter :free model / the table has no number.
+-function literouterFreeContextCap(pc) {
++// The context Literouter gives a hop when you send a long chat (provider-limits.json "literouter").
++//   free  (":free" ids)  -> freeContextTokens (5,000), fixed: nothing you change moves it.
++//   base  (no suffix, or ":metered") -> baseContextTokens (default 5,000, the "Chat memory" sliders in the Literouter
++//          dashboard can raise it; Q-Proxy cannot read that setting, so after raising it edit baseContextTokens to match).
++//   ":full-context", ":metered:full-context", ":payg", ":32k-context".. ":256k-context" -> null (Literouter sends the full
++//          chat / a window of the size in the name, so there is nothing to warn about).
++// Returns { cap, kind } or null.
++function literouterContextCap(pc) {
+   if (!pc || pc.provider !== 'literouter') return null;
+-  if (!literouterBaseAndVariants(pc.model).variants.includes('free')) return null;
+-  const cap = PROVIDER_LIMITS.literouter && PROVIDER_LIMITS.literouter.freeContextTokens;
+-  return Number.isFinite(cap) && cap > 0 ? cap : null;
++  const L = PROVIDER_LIMITS.literouter || {};
++  const id = String(pc.model || '');
++  if (/:(full-context|payg|\d+k-context)(:|$)/.test(id)) return null;
++  const pick = (v) => (Number.isFinite(v) && v > 0 ? v : null);
++  if (literouterBaseAndVariants(id).variants.includes('free')) {
++    const cap = pick(L.freeContextTokens);
++    return cap ? { cap, kind: 'free' } : null;
++  }
++  const cap = pick(L.baseContextTokens) || pick(L.freeContextTokens);
++  return cap ? { cap, kind: 'base' } : null;
++}
++// Kept for the callers/tests that only care about the free tier.
++function literouterFreeContextCap(pc) {
++  const c = literouterContextCap(pc);
++  return c && c.kind === 'free' ? c.cap : null;
+ }
+ 
+ // Sync tiers:
+@@ -3751,6 +3850,7 @@ function literouterKnownInfo(model) {
+ // whenever a new provider turns out to have the same kind of gap, rather
+ // than treating it as a one-off Literouter thing.
+ const PARTIAL_SYNC_NOTES = {
++  crowllm: 'CrowLLM\'s /models list is public and needs no key, but it carries no limits. ":free" in the id means $0, though CrowLLM\'s own author says ~14 ":free" ids still bill credit — check https://crowllm.com/api/pricing before trusting one. Per-minute and per-day limits are not published anywhere I could find, so leave rpm/rpd blank until a real 429 teaches you.',
+   literouter: 'Literouter\'s /models list is confirmed complete for what your key can reach (their docs: "every model available to your key") — but it never exposes any of the three credit balances (free, premium pool, permanent premium beta), so dailyCap/premium-pool tracking here is still Q-Proxy\'s own estimate, not Literouter\'s real number.'
+ };
+ const PROVIDER_SUFFIX = {
+@@ -3762,6 +3862,7 @@ const PROVIDER_SUFFIX = {
+   meganova: 'mn',
+   groq: 'gq',
+   amd: 'amd',
++  crowllm: 'cr',
+   deepseek: 'ds'
+ };
+ 
+@@ -4050,7 +4151,7 @@ function classifyOpenRouterModel(m) {
+ // The exact call behind "Check <provider> for updates", for testing it by hand. Without ?send=1 it only describes the call
+ // (URL + a curl line with a placeholder key). With ?send=1 it makes the call from the server (the real key never leaves
+ // the server and is not echoed) and returns the provider's raw answer.
+-const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY', groq: 'YOUR_GROQ_API_KEY', amd: 'YOUR_RADEON_API_KEY' };
++const SYNC_KEY_HINT = { nvidia: 'YOUR_NVIDIA_KEY', zai: 'YOUR_ZAI_API_KEY', google: 'YOUR_GOOGLE_KEY', openrouter: 'YOUR_OPENROUTER_KEY', literouter: 'YOUR_LITEROUTER_KEY', groq: 'YOUR_GROQ_API_KEY', amd: 'YOUR_RADEON_API_KEY', crowllm: 'YOUR_CROWLLM_API_KEY' };
+ app.get('/admin/api/sync/:provider/raw', requireAdmin, async (req, res) => {
+   const provider = req.params.provider;
+   if (!SYNCABLE_PROVIDERS.has(provider)) return res.status(400).json({ error: { message: `No live catalog check for "${provider}".`, type: 'invalid_request_error', code: 400 } });
+@@ -4140,6 +4241,11 @@ app.get('/admin/api/sync/:provider', requireAdmin, async (req, res) => {
+     } else if (provider === 'openrouter') {
+       for (const id of newlyAvailable) modelInfo[id] = classifyOpenRouterModel(rawById.get(id) || { id });
+       newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
++    } else if (provider === 'crowllm') {
++      // CrowLLM: a ":free" id bills $0 ... except some (14 of ~90 when its author counted) that still bill credit, so "free" here means
++      // "named :free", not "verified $0". The exact per-model price is in GET https://crowllm.com/api/pricing (public, no key).
++      for (const id of newlyAvailable) modelInfo[id] = { tier: /:free(-thinking)?$/.test(id) ? 'free' : 'paid', cost: null, uncensored: null };
++      newlyAvailable = [...newlyAvailable].sort((a, b) => a.localeCompare(b));
+     } else if (provider === 'zai') {
+       // Z.ai's /models has no prices; the free list is baked into provider-limits.json (from Z.ai's official pricing page).
+       const freeIds = new Set(((PROVIDER_LIMITS.zai && PROVIDER_LIMITS.zai.freeModels) || []).map(x => x.toLowerCase()));
+diff --git a/test/run-tests.js b/test/run-tests.js
+index bc4032c..d75006e 100644
+--- a/test/run-tests.js
++++ b/test/run-tests.js
+@@ -69,7 +69,7 @@ async function main() {
+ 
+   const child = spawn(process.execPath, ['-r', './test/mock-axios.js', 'server.js'], {
+     cwd: ROOT,
+-    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', GROQ_API_KEY: 'gq1', AMD_API_KEY: 'amd1', QP_NO_CATALOG_WATCH: '1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
++    env: { ...process.env, MY_KEY: 'testkey', ADMIN_KEY: 'adminkey', NIM_API_KEY: 'nv', GOOGLE_KEY_1: 'g1', CROWLLM_API_KEY: 'cw1', LITEROUTER_KEY_1: 'lr1', OPENROUTER_KEY_1: 'or1', ZAI_API_KEY: 'z1', GROQ_API_KEY: 'gq1', AMD_API_KEY: 'amd1', QP_NO_CATALOG_WATCH: '1', QP_WAIT_NOTICE_MS: '600', PORT: String(PORT), MOCK_FILE: SCEN },
+     stdio: ['ignore', 'pipe', 'pipe']
+   });
+   child.stdout.on('data', d => { serverLog += d; });
+@@ -272,14 +272,14 @@ async function main() {
+     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+     r = await fetch(BASE + '/admin/api/models/gemini-2.5-flash-lite-g', { method: 'DELETE', headers: admin2 }); await r.text();
+ 
+-    a = await addSync('literouter', 'glm-5.1:free');
++    a = await addSync('literouter', 'deepseek-v4.1-flash-cheap:free');
+     check('literouter add: :free model with a 100/day cap gets dailyCap 100', a.j.entry?.dailyCap === 100, JSON.stringify(a.j.entry));
+     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+     a = await addSync('literouter', 'l3-8b-lunaris:free');
+     check('literouter add: unlimited :free model gets NO dailyCap', a.j.entry && a.j.entry.dailyCap === undefined, JSON.stringify(a.j.entry));
+     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+-    a = await addSync('literouter', 'qwen3-32b');
+-    check('literouter add: premium model notes its credit multiplier, no dailyCap', a.j.entry && a.j.entry.dailyCap === undefined && /1x/.test(a.j.entry.notes || ''), JSON.stringify(a.j.entry));
++    a = await addSync('literouter', 'qwen3.6-27b');
++    check('literouter add: premium model notes its credit multiplier, no dailyCap', a.j.entry && a.j.entry.dailyCap === undefined && /1\.4x/.test(a.j.entry.notes || ''), JSON.stringify(a.j.entry));
+     if (a.j.id) { r = await fetch(BASE + '/admin/api/models/' + a.j.id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+ 
+     // ── sync GET: Google prefix-insensitive matching; Literouter keeps unreachable models ──
+@@ -289,10 +289,10 @@ async function main() {
+       Array.isArray(j.newlyAvailable) && j.newlyAvailable.length === 1 && j.newlyAvailable[0] === 'gemini-2.5-flash-lite', JSON.stringify(j.newlyAvailable));
+     check('google sync: offered model carries its limits preview', j.modelInfo?.['gemini-2.5-flash-lite']?.limits?.rpm === 10, JSON.stringify(j.modelInfo));
+     check('sync: limits snapshot age is reported', j.limitsMeta && j.limitsMeta.capturedAt && typeof j.limitsMeta.stale === 'boolean', JSON.stringify(j.limitsMeta));
+-    setScenario({ mode: 'nonstream', models: ['llama-3-8b-instruct', 'qwen3-32b', 'totally-unknown-model', 'glm-5.1:free'] });
++    setScenario({ mode: 'nonstream', models: ['llama-3-8b-instruct', 'qwen3.6-27b', 'totally-unknown-model', 'deepseek-v4.1-flash-cheap:free'] });
+     r = await fetch(BASE + '/admin/api/sync/literouter', { headers: admin2 }); j = await r.json();
+     const tierOf = id => j.modelInfo?.[id]?.tier;
+-    check('literouter sync: nothing dropped, tiers correct', j.newlyAvailable?.length === 4 && tierOf('llama-3-8b-instruct') === 'inaccessible' && tierOf('qwen3-32b') === 'premium' && tierOf('totally-unknown-model') === 'unknown' && tierOf('glm-5.1:free') === 'free', JSON.stringify(j.modelInfo));
++    check('literouter sync: nothing dropped, tiers correct', j.newlyAvailable?.length === 4 && tierOf('llama-3-8b-instruct') === 'unknown' && tierOf('qwen3.6-27b') === 'premium' && tierOf('totally-unknown-model') === 'unknown' && tierOf('deepseek-v4.1-flash-cheap:free') === 'free', JSON.stringify(j.modelInfo));
+     check('literouter sync: no more "hiddenInaccessible" count', !('hiddenInaccessible' in j));
+ 
+     // ── rpm: hit the per-minute request limit -> "try again in ~Ns" ──
+@@ -589,11 +589,11 @@ async function main() {
+ 
+     // ══ "model is gone" is recognised however the provider says it ══
+     const okReply = { mode: 'nonstream', json: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} } };
+-    await addHop('zz-gone', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 100 });
+-    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model `glm-5.1:free` does not exist or you do not have access to it.","type":"invalid_request_error"}}' });
++    await addHop('zz-gone', { provider: 'literouter', model: 'deepseek-v4.1-flash-cheap:free', dailyCap: 100 });
++    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model `deepseek-v4.1-flash-cheap:free` does not exist or you do not have access to it.","type":"invalid_request_error"}}' });
+     w = await timedChat('zz-gone', 4000);
+     check('gone: a 400 "model does not exist" is NOT_FOUND (it used to be a hard BAD_REQUEST that never falls back)', w.status === 400 && w.tag === 'NOT_FOUND' && w.ms < 3000, JSON.stringify({ s: w.status, t: w.tag, ms: w.ms }));
+-    setScenario({ mode: 'upstream-error', status: 422, body: '{"detail":"unknown model glm-5.1:free"}' });
++    setScenario({ mode: 'upstream-error', status: 422, body: '{"detail":"unknown model deepseek-v4.1-flash-cheap:free"}' });
+     w = await timedChat('zz-gone', 4000);
+     check('gone: a 422 "unknown model" is NOT_FOUND too', w.tag === 'NOT_FOUND', JSON.stringify({ s: w.status, t: w.tag }));
+     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid value for temperature: must be between 0 and 2"}}' });
+@@ -608,10 +608,10 @@ async function main() {
+     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model parameter: top_k is not supported"}}' });
+     w = await timedChat('zz-gone', 4000);
+     check('gone: "Invalid model parameter ..." (a bad field, not a missing model) stays BAD_REQUEST', w.tag === 'BAD_REQUEST', JSON.stringify({ s: w.status, t: w.tag }));
+-    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model: glm-5.1:free"}}' });
++    setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"Invalid model: deepseek-v4.1-flash-cheap:free"}}' });
+     w = await timedChat('zz-gone', 4000);
+     check('gone: "Invalid model: <id>" is still NOT_FOUND', w.tag === 'NOT_FOUND', JSON.stringify({ s: w.status, t: w.tag }));
+-    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-gone-chain', entry: { provider: 'literouter', model: 'glm-5.1:free', status: 'active', limitType: 'rate-limited', dailyCap: 100,
++    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: admin2, body: JSON.stringify({ id: 'zz-gone-chain', entry: { provider: 'literouter', model: 'deepseek-v4.1-flash-cheap:free', status: 'active', limitType: 'rate-limited', dailyCap: 100,
+       fallback: { provider: 'nvidia', model: 'org/alive', status: 'active', limitType: 'unlimited' } } }) }); await r.text();
+     setScenario({ mode: 'upstream-error', status: 400, body: '{"error":{"message":"The model does not exist"}}' });
+     w = await timedChat('zz-gone-chain', 4000);
+@@ -623,11 +623,11 @@ async function main() {
+     const warnFor = (ww, provider, model) => ww.hops.find(x => x.provider === provider && x.model === model);
+     let ww = await getWarn();
+     check('warnings: the endpoint answers with hops, counts and the last-check times', Array.isArray(ww.hops) && typeof ww.counts === 'object' && typeof ww.catalogCheckedAt === 'object', JSON.stringify(Object.keys(ww)));
+-    const gone1 = warnFor(ww, 'literouter', 'glm-5.1:free');
++    const gone1 = warnFor(ww, 'literouter', 'deepseek-v4.1-flash-cheap:free');
+     check('warnings (request): a real request that got "does not exist" flags the hop as gone, and says it was seen in a request', gone1 && gone1.kind === 'gone' && gone1.source === 'request' && gone1.entries.includes('zz-gone') && /does not exist/.test(gone1.detail), JSON.stringify(gone1));
+     setScenario(okReply);
+     await (await chat({ model: 'zz-gone', messages: [{ role: 'user', content: 'hi' }] })).text();
+-    check('warnings (request): a later success clears it (the provider answered, so it is not gone)', !warnFor(await getWarn(), 'literouter', 'glm-5.1:free'));
++    check('warnings (request): a later success clears it (the provider answered, so it is not gone)', !warnFor(await getWarn(), 'literouter', 'deepseek-v4.1-flash-cheap:free'));
+     r = await fetch(BASE + '/admin/api/models/zz-gone', { method: 'DELETE', headers: admin2 }); await r.text();
+ 
+     // ══ Literouter free tier: prompts over its fixed context get summarized by Literouter — the log says so ══
+@@ -643,7 +643,27 @@ async function main() {
+     check('context (literouter free): a prompt over 5,000 tokens logs that Literouter will summarize it', /\[context\] literouter\/zz-ctx-model:free .*over Literouter's free 5,000-token context.*summarize/.test(serverLog.slice(mark2)), serverLog.slice(mark2).slice(0, 400));
+     mark2 = serverLog.length;
+     await (await chat({ model: 'zz-ctx-paid', messages: longMsg })).text();
+-    check('context (literouter non-free): no 5,000 notice for a model that is not a :free variant', !/\[context\]/.test(serverLog.slice(mark2)));
++    check('context (literouter base): a plain (non-:free) model also gets the 5,000-token notice, worded as the default the dashboard sliders can raise', /\[context\] literouter\/zz-ctx-paid-model .*over Literouter's 5,000-token context for base models.*Chat memory.*summarize/.test(serverLog.slice(mark2)), serverLog.slice(mark2).slice(0, 400));
++    for (const sfx of [':full-context', ':payg', ':32k-context', ':metered:full-context']) {
++      await addHop('zz-ctx-x', { provider: 'literouter', model: 'zz-ctx-x-model' + sfx });
++      mark2 = serverLog.length;
++      await (await chat({ model: 'zz-ctx-x', messages: longMsg })).text();
++      check('context (literouter ' + sfx + '): no notice, Literouter sends the full chat / a window sized in the name', !/\[context\]/.test(serverLog.slice(mark2)));
++    }
++    r = await fetch(BASE + '/admin/api/models/zz-ctx-x', { method: 'DELETE', headers: admin2 }); await r.text();
++    // ══ per-model info (OpenCode-style: context / modalities / tools) — in /v1/models and /opencode.json ══
++    r = await fetch(BASE + '/v1/models'); j = await r.json();
++    let mi = (j.data || []).find(m => m.id === 'zz-ctx');
++    check('info: a Literouter :free model advertises its real 5,000-token context in /v1/models, and tools', !!mi && mi.context_length === 5000 && mi.supported_parameters.includes('tools'), JSON.stringify(mi));
++    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: { ...admin2, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'zz-info', entry: { model: 'zz-info-model', provider: 'nvidia', info: { context: 200000, maxOutput: 32000, input: ['text', 'image'], tools: true } } }) }); await r.text();
++    r = await fetch(BASE + '/v1/models'); j = await r.json(); mi = (j.data || []).find(m => m.id === 'zz-info');
++    check('info: a saved info block shows up (context_length, max_output_tokens, input modalities)', !!mi && mi.context_length === 200000 && mi.max_output_tokens === 32000 && mi.architecture.input_modalities.join() === 'text,image', JSON.stringify(mi));
++    r = await fetch(BASE + '/admin/api/models', { method: 'POST', headers: { ...admin2, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'zz-info-bad', entry: { model: 'm', provider: 'nvidia', info: { context: 'big' } } }) });
++    check('info: a malformed info block is rejected with 400', r.status === 400); await r.text();
++    r = await fetch(BASE + '/opencode.json'); j = await r.json(); const oc = j.provider && j.provider['q-proxy'];
++    check('opencode.json: an OpenCode provider block with baseURL, env-var key (never the real key), and per-model limit/modalities/tool_call', !!oc && /\/v1$/.test(oc.options.baseURL) && oc.options.apiKey === '{env:QPROXY_KEY}' && oc.models['zz-info'].limit.context === 200000 && oc.models['zz-info'].modalities.input.join() === 'text,image' && oc.models['zz-info'].tool_call === true && oc.models['zz-ctx'].limit.context === 5000);
++    r = await fetch(BASE + '/admin/api/models/zz-info', { method: 'DELETE', headers: admin2 }); await r.text();
++
+     for (const id of ['zz-ctx', 'zz-ctx-paid']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+ 
+     // Earlier sync tests used tiny mock lists, which (correctly) flagged every real hop as gone. Start the saved-table
+@@ -663,44 +683,44 @@ async function main() {
+     check('warnings (saved table): putting the numbers back in line with the table clears it — and the real config has no saved-table warnings', ww.hops.filter(x => x.source === 'snapshot').length === 0, JSON.stringify(ww.hops.filter(x => x.source === 'snapshot')));
+     await addHop('zz-w-gpaid', { provider: 'google', model: 'gemini-2.5-pro' });
+     await addHop('zz-w-glim', { provider: 'google', model: 'gemma-4-26b-a4b-it', rpd: 99999 });
+-    await addHop('zz-w-lnofree', { provider: 'literouter', model: 'deepseek-v3.1:free' });
+-    await addHop('zz-w-lcap', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 30 });
++    await addHop('zz-w-lnofree', { provider: 'literouter', model: 'qwen3.6-27b:free' });
++    await addHop('zz-w-lcap', { provider: 'literouter', model: 'deepseek-v4.1-flash-cheap:free', dailyCap: 30 });
+     await addHop('zz-w-lnone', { provider: 'literouter', model: 'brand-new-thing:free' });
+     ww = await getWarn();
+     check('warnings (saved table): a Google model the table lists 0/0/0 is "turned paid"', warnFor(ww, 'google', 'gemini-2.5-pro')?.kind === 'turned-paid', JSON.stringify(warnFor(ww, 'google', 'gemini-2.5-pro')));
+     const gl = warnFor(ww, 'google', 'gemma-4-26b-a4b-it');
+     check('warnings (saved table): "limits changed" marks ONLY the hop that differs, not the other hops on the same model', gl?.kind === 'limits-changed' && JSON.stringify(gl.entries) === JSON.stringify(['zz-w-glim']) && gl.table?.rpd === 14400, JSON.stringify(gl));
+-    check('warnings (saved table): a Literouter free model with no free version in the catalog is "turned paid"', warnFor(ww, 'literouter', 'deepseek-v3.1:free')?.kind === 'turned-paid');
+-    check('warnings (saved table): a Literouter cap that differs from the catalog is "limits changed" (30/day vs 100/day)', /30\/day here vs 100\/day/.test(warnFor(ww, 'literouter', 'glm-5.1:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'glm-5.1:free')));
++    check('warnings (saved table): a Literouter free model with no free version in the catalog is "turned paid"', warnFor(ww, 'literouter', 'qwen3.6-27b:free')?.kind === 'turned-paid');
++    check('warnings (saved table): a Literouter cap that differs from the catalog is "limits changed" (30/day vs 100/day)', /30\/day here vs 100\/day/.test(warnFor(ww, 'literouter', 'deepseek-v4.1-flash-cheap:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'deepseek-v4.1-flash-cheap:free')));
+     check('warnings (saved table): a Literouter model that is not in the catalog at all is "gone"', warnFor(ww, 'literouter', 'brand-new-thing:free')?.kind === 'gone');
+     for (const id of ['zz-w-gpaid', 'zz-w-glim', 'zz-w-lnofree', 'zz-w-lcap', 'zz-w-lnone']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+ 
+     // live-catalog warnings, from the provider's /models list
+-    await addHop('zz-c-ok', { provider: 'literouter', model: 'glm-5.1:free', dailyCap: 100 });
+-    await addHop('zz-c-gone', { provider: 'literouter', model: 'gpt-oss-20b:free' });
+-    await addHop('zz-c-paid', { provider: 'literouter', model: 'glm-5:free', dailyCap: 100 });
+-    await addHop('zz-c-ign', { provider: 'literouter', model: 'qwen3-32b', ignoreCatalog: true });
++    await addHop('zz-c-ok', { provider: 'literouter', model: 'deepseek-v4.1-flash-cheap:free', dailyCap: 100 });
++    await addHop('zz-c-gone', { provider: 'literouter', model: 'deepseek-v4.1-flash-1017:free' });
++    await addHop('zz-c-paid', { provider: 'literouter', model: 'qwen3.6-27b:free', dailyCap: 100 });
++    await addHop('zz-c-ign', { provider: 'literouter', model: 'qwen3.6-27b', ignoreCatalog: true });
+     await addHop('zz-c-g', { provider: 'google', model: 'gemini-9-flash' });
+-    setScenario({ mode: 'nonstream', models: ['glm-5.1:free', 'glm-5', 'something-else'] });
++    setScenario({ mode: 'nonstream', models: ['deepseek-v4.1-flash-cheap:free', 'qwen3.6-27b', 'something-else'] });
+     r = await fetch(BASE + '/admin/api/sync/literouter', { headers: admin2 }); j = await r.json();
+     ww = await getWarn();
+-    check('catalog: a configured model the provider no longer lists is "gone"', warnFor(ww, 'literouter', 'gpt-oss-20b:free')?.kind === 'gone' && warnFor(ww, 'literouter', 'gpt-oss-20b:free')?.source === 'catalog', JSON.stringify(warnFor(ww, 'literouter', 'gpt-oss-20b:free')));
+-    check('catalog: a ":free" model whose paid twin is still listed is "turned paid" (and the warning says so)', warnFor(ww, 'literouter', 'glm-5:free')?.kind === 'turned-paid' && /"glm-5" is/.test(warnFor(ww, 'literouter', 'glm-5:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'glm-5:free')));
+-    check('catalog: a model that is still listed has no warning; ignoreCatalog suppresses it', !warnFor(ww, 'literouter', 'glm-5.1:free') && !warnFor(ww, 'literouter', 'qwen3-32b'));
+-    check('catalog: the sync panel tells "gone" and "turned paid" apart in its no-longer-listed rows', j.noLongerListedKinds?.['gpt-oss-20b:free']?.kind === 'gone' && j.noLongerListedKinds?.['glm-5:free']?.kind === 'turned-paid', JSON.stringify(j.noLongerListedKinds).slice(0, 300));
++    check('catalog: a configured model the provider no longer lists is "gone"', warnFor(ww, 'literouter', 'deepseek-v4.1-flash-1017:free')?.kind === 'gone' && warnFor(ww, 'literouter', 'deepseek-v4.1-flash-1017:free')?.source === 'catalog', JSON.stringify(warnFor(ww, 'literouter', 'deepseek-v4.1-flash-1017:free')));
++    check('catalog: a ":free" model whose paid twin is still listed is "turned paid" (and the warning says so)', warnFor(ww, 'literouter', 'qwen3.6-27b:free')?.kind === 'turned-paid' && /"qwen3.6-27b" is/.test(warnFor(ww, 'literouter', 'qwen3.6-27b:free')?.detail || ''), JSON.stringify(warnFor(ww, 'literouter', 'qwen3.6-27b:free')));
++    check('catalog: a model that is still listed has no warning; ignoreCatalog suppresses it', !warnFor(ww, 'literouter', 'deepseek-v4.1-flash-cheap:free') && !warnFor(ww, 'literouter', 'qwen3.6-27b'));
++    check('catalog: the sync panel tells "gone" and "turned paid" apart in its no-longer-listed rows', j.noLongerListedKinds?.['deepseek-v4.1-flash-1017:free']?.kind === 'gone' && j.noLongerListedKinds?.['qwen3.6-27b:free']?.kind === 'turned-paid', JSON.stringify(j.noLongerListedKinds).slice(0, 300));
+     const litBefore2 = ww.hops.filter(x => x.provider === 'literouter' && x.source === 'catalog').length;
+     setScenario({ mode: 'nonstream', modelObjects: [] });
+     r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
+     check('catalog: an EMPTY list from the provider is ignored — it never flags everything as gone', /empty list/.test(j.results?.literouter || '') && j.hops.filter(x => x.provider === 'literouter' && x.source === 'catalog').length === litBefore2, JSON.stringify(j.results));
+-    setScenario({ mode: 'nonstream', models: ['glm-5.1:free', 'gpt-oss-20b:free', 'glm-5:free'] });
++    setScenario({ mode: 'nonstream', models: ['deepseek-v4.1-flash-cheap:free', 'deepseek-v4.1-flash-1017:free', 'qwen3.6-27b:free'] });
+     r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
+-    check('catalog: when a model comes back it is cleared (the "Check now" button works)', j.results?.literouter === 'ok' && !warnFor(j, 'literouter', 'gpt-oss-20b:free') && !warnFor(j, 'literouter', 'glm-5:free') && typeof j.catalogCheckedAt?.literouter === 'string', JSON.stringify(j.results));
++    check('catalog: when a model comes back it is cleared (the "Check now" button works)', j.results?.literouter === 'ok' && !warnFor(j, 'literouter', 'deepseek-v4.1-flash-1017:free') && warnFor(j, 'literouter', 'qwen3.6-27b:free')?.source !== 'catalog' && typeof j.catalogCheckedAt?.literouter === 'string', JSON.stringify({ r: j.results, a: warnFor(j, 'literouter', 'deepseek-v4.1-flash-1017:free'), b: warnFor(j, 'literouter', 'qwen3.6-27b:free'), c: j.catalogCheckedAt }));
+     setScenario({ mode: 'nonstream', modelObjects: [{ id: 'models/gemini-9-flash-preview' }, { id: 'models/gemini-2.5-flash' }] });
+     r = await fetch(BASE + '/admin/api/sync/google', { headers: admin2 }); j = await r.json();
+     ww = await getWarn(); const gren = warnFor(ww, 'google', 'gemini-9-flash');
+     check('catalog (Google): a renamed model is "gone" and the warning says what is listed instead', gren?.kind === 'gone' && JSON.stringify(gren.instead) === JSON.stringify(['gemini-9-flash-preview']) && j.noLongerListedKinds?.['gemini-9-flash']?.instead?.[0] === 'gemini-9-flash-preview', JSON.stringify({ gren, k: j.noLongerListedKinds?.['gemini-9-flash'] }));
+     for (const id of ['zz-c-ok', 'zz-c-gone', 'zz-c-paid', 'zz-c-ign', 'zz-c-g']) { r = await fetch(BASE + '/admin/api/models/' + id, { method: 'DELETE', headers: admin2 }); await r.text(); }
+-    check('warnings: removing the hop removes its warning', !warnFor(await getWarn(), 'google', 'gemini-9-flash') && !warnFor(await getWarn(), 'literouter', 'gpt-oss-20b:free'));
++    check('warnings: removing the hop removes its warning', !warnFor(await getWarn(), 'google', 'gemini-9-flash') && !warnFor(await getWarn(), 'literouter', 'deepseek-v4.1-flash-1017:free'));
+ 
+     // ══ Z.ai: "insufficient balance" is a billing answer; its /models list leaves out the free flash models ══
+     await addHop('zz-zpay', { provider: 'zai', model: 'zz-zai-paywalled', limitType: 'rate-limited' });
+@@ -725,7 +745,7 @@ async function main() {
+ 
+     // ══ a hop that is already switched off (status not "active") needs no warning ══
+     await addHop('zz-dep', { provider: 'literouter', model: 'brand-new-thing2:free', status: 'deprecated' });
+-    setScenario({ mode: 'nonstream', models: ['glm-5.1:free'] });
++    setScenario({ mode: 'nonstream', models: ['deepseek-v4.1-flash-cheap:free'] });
+     r = await fetch(BASE + '/admin/api/warnings/check', { method: 'POST', headers: admin2, body: JSON.stringify({ provider: 'literouter' }) }); j = await r.json();
+     check('warnings: a deprecated hop gets no warning, neither from the saved table nor from the live list', !warnFor(await getWarn(), 'literouter', 'brand-new-thing2:free') && !warnFor(j, 'literouter', 'brand-new-thing2:free'), JSON.stringify(warnFor(j, 'literouter', 'brand-new-thing2:free')));
+     await addHop('zz-dep', { provider: 'literouter', model: 'brand-new-thing2:free', status: 'active' });
+@@ -790,6 +810,15 @@ async function main() {
+     setScenario({ mode: 'nonstream', models: ['llama-3.3-70b-versatile'] });
+     r = await fetch(BASE + '/admin/api/sync/groq', { headers: admin2 }); j = await r.json();
+     check('groq sync: a configured model that Groq no longer lists is reported as "no longer listed"', (j.noLongerListed || []).includes('openai/gpt-oss-120b'), JSON.stringify(j.noLongerListed));
++    // ══ CrowLLM: https://crowllm.com/v1, key CROWLLM_API_KEY, ":free" ids listed as free in the sync ══
++    await addHop('zz-crow', { provider: 'crowllm', model: 'hy4-flash:free' });
++    setScenario(okReply);
++    await (await chat({ model: 'zz-crow', messages: [{ role: 'user', content: 'hi' }] })).text();
++    check('crowllm: the request goes to crowllm.com/v1/chat/completions with the CrowLLM key', lastCall().url === 'https://crowllm.com/v1/chat/completions' && lastCall().auth === 'Bearer cw1', JSON.stringify(lastCall()));
++    setScenario({ mode: 'nonstream', models: ['hy4-flash:free', 'deepseek-v4.1-flash', 'solar-mini4:free'] });
++    r = await fetch(BASE + '/admin/api/sync/crowllm', { headers: admin2 }); j = await r.json();
++    check('crowllm sync: asks crowllm.com/v1/models; offers the ids not configured, ":free" ones tagged free', r.ok && lastCall().url === 'https://crowllm.com/v1/models' && (j.newlyAvailable || []).join() === 'deepseek-v4.1-flash,solar-mini4:free' && j.modelInfo['solar-mini4:free'].tier === 'free' && j.modelInfo['deepseek-v4.1-flash'].tier === 'paid', JSON.stringify({ c: lastCall(), j }).slice(0, 400));
++    r = await fetch(BASE + '/admin/api/models/zz-crow', { method: 'DELETE', headers: admin2 }); await r.text();
+     setScenario({ mode: 'nonstream', models: ['ZZ-Amd-One', 'ZZ-Amd-Two'] });
+     r = await fetch(BASE + '/admin/api/sync/amd', { headers: admin2 }); j = await r.json();
+     check('amd sync: asks developer.amd.com.cn/radeon/api/v1/models with the AMD key and offers both models (ids exactly as listed, no prefix)', r.ok && lastCall().url === 'https://developer.amd.com.cn/radeon/api/v1/models' && lastCall().auth === 'Bearer amd1' && j.liveCount === 2 && (j.newlyAvailable || []).join() === 'ZZ-Amd-One,ZZ-Amd-Two', JSON.stringify({ c: lastCall(), j }).slice(0, 400));

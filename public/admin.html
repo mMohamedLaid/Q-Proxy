@@ -825,8 +825,8 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', deepseek: 'DeepSeek' };
-  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd']);
+  const PROVIDER_LABELS = { nvidia: 'NVIDIA NIM', zai: 'Z.AI', google: 'Google AI Studio', openrouter: 'OpenRouter', literouter: 'Literouter', meganova: 'MegaNova', groq: 'Groq', amd: 'AMD', crowllm: 'CrowLLM', deepseek: 'DeepSeek' };
+  const SYNCABLE = new Set(['nvidia', 'zai', 'google', 'openrouter', 'literouter', 'groq', 'amd', 'crowllm']);
 
   // ---------- provider badges ----------
   // A small letter badge per provider on a muted tint picked from the provider's position in PROVIDER_LABELS (never a brand colour).
