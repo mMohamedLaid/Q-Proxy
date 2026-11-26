@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-26T15:58:54.733Z",
+  "savedAt": "2026-11-26T20:41:31.829Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -75,36 +75,6 @@
   "googleLastResetDay": "2026-11-23",
   "googleLimitMismatches": [],
   "hopWarnings": {
-    "literouter|gpt-oss-20b:free": {
-      "kind": "gone",
-      "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-10T05:38:46.360Z"
-    },
-    "literouter|l3-8b-lunaris:free": {
-      "kind": "gone",
-      "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-10T17:59:05.854Z"
-    },
-    "literouter|glm-5.2:free": {
-      "kind": "turned-paid",
-      "detail": "\"glm-5.2:free\" is no longer listed, but \"glm-5.2\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-10-14T17:48:29.779Z"
-    },
-    "literouter|gemini-2.5-flash-lite:free": {
-      "kind": "gone",
-      "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-15T11:11:55.381Z"
-    },
-    "literouter|llama-3-8b-instruct:free": {
-      "kind": "gone",
-      "detail": "no longer in literouter's live model list",
-      "source": "catalog",
-      "since": "2026-10-18T13:20:09.601Z"
-    },
     "nvidia|deepseek-ai/deepseek-v4.1-flash": {
       "kind": "gone",
       "detail": "no longer in nvidia's live model list",
@@ -125,12 +95,12 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-26T12:30:36.841Z",
-    "zai": "2026-11-26T12:30:37.198Z",
-    "google": "2026-11-26T12:30:37.421Z",
-    "openrouter": "2026-11-26T12:30:37.958Z",
-    "literouter": "2026-11-26T12:30:38.959Z",
-    "amd": "2026-11-26T12:30:39.908Z"
+    "nvidia": "2026-11-26T20:41:18.950Z",
+    "zai": "2026-11-26T20:41:19.926Z",
+    "google": "2026-11-26T20:41:20.097Z",
+    "openrouter": "2026-11-26T20:41:20.831Z",
+    "literouter": "2026-11-26T20:41:21.526Z",
+    "amd": "2026-11-26T20:41:22.497Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
