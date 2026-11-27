@@ -554,5 +554,14 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "minimax-m3.1-flash-free-lr": {
+    "model": "minimax-m3.1-flash:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "notes": "Free tier: no daily cap listed; 5,000-token context (longer requests are summarized by Literouter).",
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
