@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T16:26:51.196Z",
+  "savedAt": "2026-11-27T18:48:22.436Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -92,17 +92,59 @@
       "detail": "no longer in nvidia's live model list",
       "source": "catalog",
       "since": "2026-11-25T00:30:36.826Z"
+    },
+    "literouter|qwen3.8-flash-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"qwen3.8-flash-cheap:free\" is no longer listed, but \"qwen3.8-flash-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|qwen3.8-flash:free": {
+      "kind": "turned-paid",
+      "detail": "\"qwen3.8-flash:free\" is no longer listed, but \"qwen3.8-flash\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|kimi-2.7:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|llama-3.3-70b-instruct-turbo:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|minimax-3.1-flash:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|qwen-3.8-27b:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
+    },
+    "literouter|deepseek-v4.1-flash-req:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-27T18:47:53.529Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-27T16:08:08.801Z",
-    "zai": "2026-11-27T16:14:57.080Z",
-    "google": "2026-11-27T16:08:09.258Z",
-    "openrouter": "2026-11-27T16:10:24.439Z",
-    "literouter": "2026-11-27T16:08:10.724Z",
-    "amd": "2026-11-27T16:08:11.879Z",
-    "groq": "2026-11-27T16:08:11.033Z",
-    "crowllm": "2026-11-27T16:09:51.844Z"
+    "nvidia": "2026-11-27T18:38:29.451Z",
+    "zai": "2026-11-27T18:47:41.028Z",
+    "google": "2026-11-27T17:56:48.452Z",
+    "openrouter": "2026-11-27T18:39:51.824Z",
+    "literouter": "2026-11-27T18:48:12.026Z",
+    "amd": "2026-11-27T18:39:05.121Z",
+    "groq": "2026-11-27T18:40:51.757Z",
+    "crowllm": "2026-11-27T18:47:44.054Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
