@@ -434,5 +434,13 @@
     "status": "active",
     "limitType": "rate-limited",
     "dailyCap": 100
+  },
+  "minimax-m2.5-free-lr": {
+    "model": "minimax-m2.5:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
