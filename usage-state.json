@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:23:52.463Z",
+  "savedAt": "2026-11-27T19:24:22.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 315,
+  "literouterRotationIndex": 317,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -141,11 +141,11 @@
     },
     "gemini-3.5-flash|0": {
       "rpmWindowMinute": 29930123,
-      "rpmCount": 1,
+      "rpmCount": 2,
       "tpmWindowMinute": 29930123,
-      "tpmTokens": 46,
+      "tpmTokens": 116,
       "rpdDay": "2026-11-27",
-      "rpdCount": 1
+      "rpdCount": 2
     }
   },
   "googleLastResetDay": "2026-11-27",
@@ -1117,9 +1117,9 @@
     "literouter|deepseek-v4.1-flash-1017:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash-1017:free",
-      "count": 3,
+      "count": 4,
       "errors": 5,
-      "lastUsed": "2026-11-27T19:23:51.811Z",
+      "lastUsed": "2026-11-27T19:24:02.331Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1128,9 +1128,9 @@
     "literouter|deepseek-v4-flash-0731-uncensored:free": {
       "provider": "literouter",
       "model": "deepseek-v4-flash-0731-uncensored:free",
-      "count": 2,
+      "count": 3,
       "errors": 6,
-      "lastUsed": "2026-11-27T19:12:00.204Z",
+      "lastUsed": "2026-11-27T19:24:17.974Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1272,8 +1272,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 139,
-      "lastUsed": "2026-11-27T19:23:49.382Z",
+      "errors": 147,
+      "lastUsed": "2026-11-27T19:24:21.722Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -1421,6 +1421,17 @@
       "skips": 4,
       "lastSkipReason": "NOT_FOUND",
       "lastSkipAt": "2026-11-27T19:23:38.612Z"
+    },
+    "google|gemini-3.5-flash": {
+      "provider": "google",
+      "model": "gemini-3.5-flash",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:23:53.422Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
