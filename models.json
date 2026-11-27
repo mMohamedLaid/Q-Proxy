@@ -1082,5 +1082,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "canopylabs-orpheus-arabic-saudi-gq": {
+    "model": "canopylabs/orpheus-arabic-saudi",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
