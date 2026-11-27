@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:26:52.463Z",
+  "savedAt": "2026-11-27T19:29:52.466Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 329,
+  "literouterRotationIndex": 345,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -294,6 +294,12 @@
       "detail": "the provider answered: This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features and improvements. We recommend you to use the Interactions API (https://aistudio.google.com/docs/get-started).",
       "source": "request",
       "since": "2026-11-27T19:23:30.813Z"
+    },
+    "nvidia|google/gemma-3-4b-it": {
+      "kind": "gone",
+      "detail": "the provider answered: Function 'c322f327-55a3-4af3-a91f-c757e2b8b135': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
+      "source": "request",
+      "since": "2026-11-27T19:29:26.480Z"
     }
   },
   "catalogCheckedAt": {
@@ -421,9 +427,9 @@
       "provider": "nvidia",
       "model": "moonshotai/kimi-k3.1-pro",
       "count": 10,
-      "errors": 2,
-      "lastUsed": "2026-11-27T19:24:29.720Z",
-      "lastStatus": "ok",
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:29:31.981Z",
+      "lastStatus": 504,
       "skips": 2,
       "lastSkipReason": "tpm-budget (~273876>262144)",
       "lastSkipAt": "2026-11-19T09:22:58.622Z"
@@ -1202,8 +1208,8 @@
       "provider": "literouter",
       "model": "qwen3.8-flash:free",
       "count": 0,
-      "errors": 23,
-      "lastUsed": "2026-11-27T19:26:47.913Z",
+      "errors": 26,
+      "lastUsed": "2026-11-27T19:27:13.128Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
@@ -1212,9 +1218,9 @@
     "literouter|qwen3.6-27b:free": {
       "provider": "literouter",
       "model": "qwen3.6-27b:free",
-      "count": 2,
+      "count": 4,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:14:20.717Z",
+      "lastUsed": "2026-11-27T19:27:32.926Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1223,9 +1229,9 @@
     "literouter|qwen3-next-80b-a3b-instruct:free": {
       "provider": "literouter",
       "model": "qwen3-next-80b-a3b-instruct:free",
-      "count": 2,
+      "count": 4,
       "errors": 6,
-      "lastUsed": "2026-11-27T19:14:37.396Z",
+      "lastUsed": "2026-11-27T19:27:51.058Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1234,9 +1240,9 @@
     "literouter|qwen3-coder-next:free": {
       "provider": "literouter",
       "model": "qwen3-coder-next:free",
-      "count": 2,
+      "count": 4,
       "errors": 6,
-      "lastUsed": "2026-11-27T19:14:53.555Z",
+      "lastUsed": "2026-11-27T19:28:09.845Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1256,9 +1262,9 @@
     "literouter|qwen3-30b-a3b:free": {
       "provider": "literouter",
       "model": "qwen3-30b-a3b:free",
-      "count": 2,
+      "count": 4,
       "errors": 3,
-      "lastUsed": "2026-11-27T19:15:10.376Z",
+      "lastUsed": "2026-11-27T19:28:55.649Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1290,19 +1296,19 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 184,
-      "lastUsed": "2026-11-27T19:26:51.450Z",
+      "errors": 200,
+      "lastUsed": "2026-11-27T19:27:56.087Z",
       "lastStatus": 429,
-      "skips": 1,
+      "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:21:27.751Z"
+      "lastSkipAt": "2026-11-27T19:27:56.087Z"
     },
     "literouter|qwen3-coder-30b-a3b-instruct:free": {
       "provider": "literouter",
       "model": "qwen3-coder-30b-a3b-instruct:free",
-      "count": 2,
+      "count": 4,
       "errors": 3,
-      "lastUsed": "2026-11-27T19:15:22.007Z",
+      "lastUsed": "2026-11-27T19:29:13.497Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1311,9 +1317,9 @@
     "literouter|glm-5.2-cheap:free": {
       "provider": "literouter",
       "model": "glm-5.2-cheap:free",
-      "count": 2,
+      "count": 4,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:15:37.874Z",
+      "lastUsed": "2026-11-27T19:29:41.147Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1323,8 +1329,8 @@
       "provider": "literouter",
       "model": "kimi-2.7:free",
       "count": 0,
-      "errors": 20,
-      "lastUsed": "2026-11-27T19:16:19.850Z",
+      "errors": 21,
+      "lastUsed": "2026-11-27T19:29:49.608Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
@@ -1472,6 +1478,39 @@
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
+    },
+    "nvidia|mistralai/mistral-large-4-1t-a52b": {
+      "provider": "nvidia",
+      "model": "mistralai/mistral-large-4-1t-a52b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:28:21.499Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|minimaxai/minimax-m3.1-flash": {
+      "provider": "nvidia",
+      "model": "minimaxai/minimax-m3.1-flash",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:29:26.194Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|google/gemma-3-4b-it": {
+      "provider": "nvidia",
+      "model": "google/gemma-3-4b-it",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:29:26.760Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:29:26.760Z"
     }
   }
 }
