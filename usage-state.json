@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T16:21:51.186Z",
+  "savedAt": "2026-11-27T16:26:51.196Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -291,6 +291,17 @@
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
+    },
+    "zai|glm-4.7-flash": {
+      "provider": "zai",
+      "model": "glm-4.7-flash",
+      "count": 1,
+      "errors": 1,
+      "lastUsed": "2026-11-27T16:24:37.409Z",
+      "lastStatus": "ok",
+      "skips": 1,
+      "lastSkipReason": "RATE_LIMIT · HTTP 429",
+      "lastSkipAt": "2026-11-27T16:23:31.886Z"
     }
   }
 }
