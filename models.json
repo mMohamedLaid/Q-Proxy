@@ -730,5 +730,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-riva-translate-4b-instruct-v2-nv": {
+    "model": "nvidia/riva-translate-4b-instruct-v2",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
