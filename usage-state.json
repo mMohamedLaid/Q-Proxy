@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:44:52.536Z",
+  "savedAt": "2026-11-27T20:45:22.536Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 35,
+      "count": 40,
       "day": "2026-11-27"
     },
     {
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 11,
-      "lastUsed": "2026-11-27T20:44:31.098Z",
+      "errors": 13,
+      "lastUsed": "2026-11-27T20:45:18.781Z",
       "lastStatus": 429,
-      "skips": 11,
+      "skips": 13,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:44:31.099Z"
+      "lastSkipAt": "2026-11-27T20:45:18.781Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -1737,12 +1737,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-26b-a4b-it:free",
       "count": 0,
-      "errors": 4,
-      "lastUsed": "2026-11-27T20:44:36.333Z",
+      "errors": 5,
+      "lastUsed": "2026-11-27T20:45:03.032Z",
       "lastStatus": 429,
-      "skips": 4,
+      "skips": 5,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:44:36.333Z"
+      "lastSkipAt": "2026-11-27T20:45:03.033Z"
     },
     "openrouter|baidu/ernie-5.5-flash-preview:free": {
       "provider": "openrouter",
@@ -1759,23 +1759,23 @@
       "provider": "openrouter",
       "model": "google/lyria-3-clip-preview",
       "count": 0,
-      "errors": 4,
-      "lastUsed": "2026-11-27T20:44:41.496Z",
+      "errors": 5,
+      "lastUsed": "2026-11-27T20:45:08.241Z",
       "lastStatus": 402,
-      "skips": 4,
+      "skips": 5,
       "lastSkipReason": "QUOTA",
-      "lastSkipAt": "2026-11-27T20:44:41.496Z"
+      "lastSkipAt": "2026-11-27T20:45:08.241Z"
     },
     "openrouter|google/lyria-3-pro-preview": {
       "provider": "openrouter",
       "model": "google/lyria-3-pro-preview",
       "count": 0,
-      "errors": 4,
-      "lastUsed": "2026-11-27T20:44:46.714Z",
+      "errors": 5,
+      "lastUsed": "2026-11-27T20:45:13.499Z",
       "lastStatus": 402,
-      "skips": 4,
+      "skips": 5,
       "lastSkipReason": "QUOTA",
-      "lastSkipAt": "2026-11-27T20:44:46.714Z"
+      "lastSkipAt": "2026-11-27T20:45:13.499Z"
     },
     "openrouter|liquid/lfm-3-1.7b:free": {
       "provider": "openrouter",
