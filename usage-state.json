@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:25:22.515Z",
+  "savedAt": "2026-11-27T20:30:22.518Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -648,9 +648,9 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 101,
-      "lastUsed": "2026-11-27T19:14:42.574Z",
-      "lastStatus": 400,
+      "errors": 168,
+      "lastUsed": "2026-11-27T20:30:20.892Z",
+      "lastStatus": 500,
       "skips": 1,
       "lastSkipReason": "UPSTREAM_5XX · HTTP 500",
       "lastSkipAt": "2026-11-27T19:14:42.443Z"
@@ -1308,12 +1308,12 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 442,
-      "lastUsed": "2026-11-27T20:25:19.463Z",
+      "errors": 453,
+      "lastUsed": "2026-11-27T20:26:03.997Z",
       "lastStatus": 429,
-      "skips": 3,
+      "skips": 4,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:19:35.557Z"
+      "lastSkipAt": "2026-11-27T20:26:03.997Z"
     },
     "literouter|qwen3-coder-30b-a3b-instruct:free": {
       "provider": "literouter",
