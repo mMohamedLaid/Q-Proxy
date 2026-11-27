@@ -572,14 +572,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "glm-5.3-cheap-free-lr-2": {
-    "model": "glm-5.3-cheap:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "gpt-oss-120b-free-lr": {
     "model": "gpt-oss-120b:free",
     "provider": "literouter",
