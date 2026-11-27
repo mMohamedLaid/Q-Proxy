@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:07:52.453Z",
+  "savedAt": "2026-11-27T19:08:22.454Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -9,7 +9,7 @@
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 27,
+  "literouterRotationIndex": 34,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -47,10 +47,10 @@
       "rpdCount": 11
     },
     "gemma-4-31b-it|0": {
-      "rpmWindowMinute": 29930107,
-      "rpmCount": 2,
-      "tpmWindowMinute": 29930107,
-      "tpmTokens": 92,
+      "rpmWindowMinute": 29930108,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29930108,
+      "tpmTokens": 70,
       "rpdDay": "2026-11-27",
       "rpdCount": 2
     },
@@ -351,10 +351,10 @@
     "literouter|glm-5.3-flash-cheap:free": {
       "provider": "literouter",
       "model": "glm-5.3-flash-cheap:free",
-      "count": 5,
-      "errors": 3,
-      "lastUsed": "2026-11-27T19:07:52.268Z",
-      "lastStatus": 403,
+      "count": 9,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:08:21.555Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
@@ -396,8 +396,8 @@
       "provider": "amd",
       "model": "d3",
       "count": 0,
-      "errors": 4,
-      "lastUsed": "2026-11-27T19:07:52.273Z",
+      "errors": 7,
+      "lastUsed": "2026-11-27T19:07:53.258Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -473,12 +473,12 @@
       "provider": "google",
       "model": "gemma-4-31b-it",
       "count": 0,
-      "errors": 1,
-      "lastUsed": "2026-11-27T19:07:24.159Z",
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:08:01.773Z",
       "lastStatus": 503,
-      "skips": 1,
+      "skips": 2,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-27T19:07:24.161Z"
+      "lastSkipAt": "2026-11-27T19:08:01.773Z"
     },
     "groq|qwen/qwen3.8-27b": {
       "provider": "groq",
@@ -773,6 +773,17 @@
       "errors": 4,
       "lastUsed": "2026-11-27T19:07:51.939Z",
       "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "amd|Gemma-4-31B-IT": {
+      "provider": "amd",
+      "model": "Gemma-4-31B-IT",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:08:22.150Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
