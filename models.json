@@ -826,5 +826,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-llama-3.2-nv-embedqa-1b-v1-nv": {
+    "model": "nvidia/llama-3.2-nv-embedqa-1b-v1",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
