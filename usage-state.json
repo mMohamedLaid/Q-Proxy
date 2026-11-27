@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:40:22.531Z",
+  "savedAt": "2026-11-27T20:42:22.535Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 7,
+      "count": 10,
       "day": "2026-11-27"
     },
     {
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 7,
-      "lastUsed": "2026-11-27T19:45:05.536Z",
+      "errors": 8,
+      "lastUsed": "2026-11-27T20:42:09.853Z",
       "lastStatus": 429,
-      "skips": 7,
+      "skips": 8,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:45:05.537Z"
+      "lastSkipAt": "2026-11-27T20:42:09.853Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -1728,6 +1728,28 @@
       "count": 2,
       "errors": 0,
       "lastUsed": "2026-11-27T19:43:31.943Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|google/gemma-4-26b-a4b-it:free": {
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-27T20:42:15.204Z",
+      "lastStatus": 429,
+      "skips": 1,
+      "lastSkipReason": "RATE_LIMIT · HTTP 429",
+      "lastSkipAt": "2026-11-27T20:42:15.205Z"
+    },
+    "openrouter|baidu/ernie-5.5-flash-preview:free": {
+      "provider": "openrouter",
+      "model": "baidu/ernie-5.5-flash-preview:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:42:21.820Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
