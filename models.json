@@ -778,5 +778,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3.5-content-safety-nv": {
+    "model": "nvidia/nemotron-3.5-content-safety",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
