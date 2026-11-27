@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:12:52.459Z",
+  "savedAt": "2026-11-27T19:13:22.459Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 131,
+  "literouterRotationIndex": 145,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -55,9 +55,9 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29930111,
+      "rpmWindowMinute": 29930113,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930111,
+      "tpmWindowMinute": 29930113,
       "tpmTokens": 70,
       "rpdDay": "2026-11-27",
       "rpdCount": 2
@@ -290,12 +290,12 @@
       "provider": "google",
       "model": "models/gemini-3.8-flash",
       "count": 8,
-      "errors": 27,
-      "lastUsed": "2026-11-27T19:11:10.379Z",
-      "lastStatus": "ok",
-      "skips": 46,
-      "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-23T13:37:46.548Z"
+      "errors": 28,
+      "lastUsed": "2026-11-27T19:13:15.514Z",
+      "lastStatus": 524,
+      "skips": 47,
+      "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 524",
+      "lastSkipAt": "2026-11-27T19:13:15.515Z"
     },
     "literouter|glm-5.2:free": {
       "provider": "literouter",
@@ -565,8 +565,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 73,
-      "lastUsed": "2026-11-27T19:12:52.448Z",
+      "errors": 80,
+      "lastUsed": "2026-11-27T19:13:20.957Z",
       "lastStatus": 500,
       "skips": 0,
       "lastSkipReason": null,
@@ -1126,8 +1126,8 @@
       "provider": "literouter",
       "model": "qwen3.8-flash-cheap:free",
       "count": 0,
-      "errors": 3,
-      "lastUsed": "2026-11-27T19:12:51.251Z",
+      "errors": 17,
+      "lastUsed": "2026-11-27T19:13:21.071Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
