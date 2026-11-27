@@ -890,5 +890,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "mistralai-mistral-large-4-1t-a52b-nv": {
+    "model": "mistralai/mistral-large-4-1t-a52b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
