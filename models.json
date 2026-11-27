@@ -1050,5 +1050,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "openrouter-free-or": {
+    "model": "openrouter/free",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
