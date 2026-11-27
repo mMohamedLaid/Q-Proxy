@@ -802,5 +802,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3.5-bolt-e4b-nv": {
+    "model": "nvidia/nemotron-3.5-bolt-e4b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
