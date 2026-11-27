@@ -994,5 +994,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "baidu-ernie-5.5-flash-preview-free-or": {
+    "model": "baidu/ernie-5.5-flash-preview:free",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
