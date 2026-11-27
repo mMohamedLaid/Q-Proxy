@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:22:52.462Z",
+  "savedAt": "2026-11-27T19:23:22.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 309,
+  "literouterRotationIndex": 312,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -53,7 +53,8 @@
     "gemini-2.5-flash": 0,
     "models/gemini-3.8-flash": 0,
     "models/gemini-3.7-flash": 0,
-    "models/gemini-3.6-flash": 0
+    "models/gemini-3.6-flash": 0,
+    "gemini-3.1-flash-lite": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -119,6 +120,14 @@
       "tpmTokens": 116,
       "rpdDay": "2026-11-27",
       "rpdCount": 2
+    },
+    "gemini-3.1-flash-lite|0": {
+      "rpmWindowMinute": 29930123,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29930123,
+      "tpmTokens": 46,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 1
     }
   },
   "googleLastResetDay": "2026-11-27",
@@ -358,9 +367,9 @@
     "literouter|deepseek-v4-pro-cheap:free": {
       "provider": "literouter",
       "model": "deepseek-v4-pro-cheap:free",
-      "count": 5,
+      "count": 6,
       "errors": 5,
-      "lastUsed": "2026-11-27T19:22:46.347Z",
+      "lastUsed": "2026-11-27T19:22:57.192Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -380,9 +389,9 @@
     "google|models/gemini-3.6-flash": {
       "provider": "google",
       "model": "models/gemini-3.6-flash",
-      "count": 21,
+      "count": 22,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:22:44.912Z",
+      "lastUsed": "2026-11-27T19:23:00.434Z",
       "lastStatus": "ok",
       "skips": 11,
       "lastSkipReason": "google-limit:rpd:20/20",
@@ -1062,9 +1071,9 @@
     "literouter|deepseek-v4-flash:free": {
       "provider": "literouter",
       "model": "deepseek-v4-flash:free",
-      "count": 2,
+      "count": 4,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:11:10.588Z",
+      "lastUsed": "2026-11-27T19:23:17.735Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1239,8 +1248,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 124,
-      "lastUsed": "2026-11-27T19:22:48.714Z",
+      "errors": 132,
+      "lastUsed": "2026-11-27T19:23:21.126Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
