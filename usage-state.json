@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:39:52.471Z",
+  "savedAt": "2026-11-27T19:44:52.473Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,11 +20,11 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 395,
+  "literouterRotationIndex": 418,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 3,
+      "count": 5,
       "day": "2026-11-27"
     },
     {
@@ -70,12 +70,12 @@
       "rpdCount": 2
     },
     "gemma-4-31b-it|0": {
-      "rpmWindowMinute": 29930108,
+      "rpmWindowMinute": 29930144,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930108,
+      "tpmWindowMinute": 29930144,
       "tpmTokens": 70,
       "rpdDay": "2026-11-27",
-      "rpdCount": 2
+      "rpdCount": 3
     },
     "models/gemini-3.6-flash|0": {
       "rpmWindowMinute": 29930122,
@@ -150,12 +150,12 @@
       "rpdCount": 2
     },
     "gemini-4-hydrogen|0": {
-      "rpmWindowMinute": 29930126,
-      "rpmCount": 1,
-      "tpmWindowMinute": 29930126,
-      "tpmTokens": 70,
+      "rpmWindowMinute": 29930144,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930144,
+      "tpmTokens": 116,
       "rpdDay": "2026-11-27",
-      "rpdCount": 1
+      "rpdCount": 3
     },
     "gemini-3.5-flash-lite|0": {
       "rpmWindowMinute": 29930126,
@@ -394,9 +394,9 @@
     "literouter|glm-5.1-cheap:free": {
       "provider": "literouter",
       "model": "glm-5.1-cheap:free",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-02T18:16:16.782Z",
+      "lastUsed": "2026-11-27T19:42:51.590Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -472,12 +472,12 @@
       "provider": "nvidia",
       "model": "google/gemma-4-31b-it",
       "count": 0,
-      "errors": 46,
-      "lastUsed": "2026-11-27T19:09:03.405Z",
+      "errors": 48,
+      "lastUsed": "2026-11-27T19:44:39.626Z",
       "lastStatus": 410,
-      "skips": 5,
+      "skips": 7,
       "lastSkipReason": "NOT_FOUND",
-      "lastSkipAt": "2026-11-27T19:09:03.406Z"
+      "lastSkipAt": "2026-11-27T19:44:39.626Z"
     },
     "literouter|glm-5.3-flash-cheap:free": {
       "provider": "literouter",
@@ -604,12 +604,12 @@
       "provider": "google",
       "model": "gemma-4-31b-it",
       "count": 2,
-      "errors": 6,
-      "lastUsed": "2026-11-27T19:09:03.380Z",
+      "errors": 8,
+      "lastUsed": "2026-11-27T19:44:39.602Z",
       "lastStatus": 503,
-      "skips": 6,
+      "skips": 8,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-27T19:09:03.381Z"
+      "lastSkipAt": "2026-11-27T19:44:39.602Z"
     },
     "groq|qwen/qwen3.8-27b": {
       "provider": "groq",
@@ -658,13 +658,13 @@
     "crowllm|caw/glm-5.3-flash-thinking:free": {
       "provider": "crowllm",
       "model": "caw/glm-5.3-flash-thinking:free",
-      "count": 7,
-      "errors": 3,
-      "lastUsed": "2026-11-27T19:08:33.928Z",
+      "count": 8,
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:44:20.633Z",
       "lastStatus": "ok",
-      "skips": 3,
+      "skips": 5,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:08:33.073Z"
+      "lastSkipAt": "2026-11-27T19:43:59.114Z"
     },
     "amd|GLM-5.3-Flash": {
       "provider": "amd",
@@ -867,9 +867,9 @@
     "amd|DeepSeek-V4.1-Flash": {
       "provider": "amd",
       "model": "DeepSeek-V4.1-Flash",
-      "count": 4,
+      "count": 6,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:40.275Z",
+      "lastUsed": "2026-11-27T19:44:23.803Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 3,
-      "lastUsed": "2026-11-27T19:09:03.522Z",
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:44:39.786Z",
       "lastStatus": 429,
-      "skips": 3,
+      "skips": 5,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:09:03.522Z"
+      "lastSkipAt": "2026-11-27T19:44:39.786Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -977,9 +977,9 @@
     "amd|DeepSeek-V4-Flash": {
       "provider": "amd",
       "model": "DeepSeek-V4-Flash",
-      "count": 1,
+      "count": 3,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:08:31.138Z",
+      "lastUsed": "2026-11-27T19:44:26.623Z",
       "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -1472,9 +1472,9 @@
     "google|gemini-4-hydrogen": {
       "provider": "google",
       "model": "gemini-4-hydrogen",
-      "count": 1,
+      "count": 3,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:26:34.315Z",
+      "lastUsed": "2026-11-27T19:44:34.913Z",
       "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
@@ -1637,9 +1637,97 @@
     "literouter|openai-gpt-oss-20b:free": {
       "provider": "literouter",
       "model": "openai-gpt-oss-20b:free",
-      "count": 1,
+      "count": 2,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:39:52.207Z",
+      "lastUsed": "2026-11-27T19:40:02.985Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|ministral-3-14b-instruct:free": {
+      "provider": "literouter",
+      "model": "ministral-3-14b-instruct:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:40:21.104Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3-32b:free": {
+      "provider": "literouter",
+      "model": "qwen3-32b:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:40:39.506Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|ministral-3b-2512:free": {
+      "provider": "literouter",
+      "model": "ministral-3b-2512:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:40:57.008Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|minimax-m2.7:free": {
+      "provider": "literouter",
+      "model": "minimax-m2.7:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:41:17.669Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4.1-flash-req:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4.1-flash-req:free",
+      "count": 0,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:42:07.454Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|openai-gpt-oss-safeguard-20b:free": {
+      "provider": "literouter",
+      "model": "openai-gpt-oss-safeguard-20b:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:42:26.368Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|glm-5.4-cheap:free": {
+      "provider": "literouter",
+      "model": "glm-5.4-cheap:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:43:13.014Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3.8-27b:free": {
+      "provider": "literouter",
+      "model": "qwen3.8-27b:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:43:31.943Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
