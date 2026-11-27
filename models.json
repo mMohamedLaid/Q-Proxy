@@ -1162,5 +1162,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "openai-gpt-oss-20b-gq": {
+    "model": "openai/gpt-oss-20b",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
