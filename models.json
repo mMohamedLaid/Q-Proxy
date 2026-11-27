@@ -874,5 +874,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-cosmos-reason2-8b-nv": {
+    "model": "nvidia/cosmos-reason2-8b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "nvidia-ai-synthetic-video-detector-nv": {
+    "model": "nvidia/ai-synthetic-video-detector",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
