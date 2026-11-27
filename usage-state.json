@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-26T20:41:31.829Z",
+  "savedAt": "2026-11-27T09:41:18.726Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -8,8 +8,8 @@
   },
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
-  "literouterLastResetDay": "2026-11-16",
-  "literouterRotationIndex": 17,
+  "literouterLastResetDay": "2026-11-26",
+  "literouterRotationIndex": 20,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -95,12 +95,12 @@
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-26T20:41:18.950Z",
-    "zai": "2026-11-26T20:41:19.926Z",
-    "google": "2026-11-26T20:41:20.097Z",
-    "openrouter": "2026-11-26T20:41:20.831Z",
-    "literouter": "2026-11-26T20:41:21.526Z",
-    "amd": "2026-11-26T20:41:22.497Z"
+    "nvidia": "2026-11-27T04:59:34.470Z",
+    "zai": "2026-11-27T04:59:34.644Z",
+    "google": "2026-11-27T04:59:34.780Z",
+    "openrouter": "2026-11-27T04:59:35.356Z",
+    "literouter": "2026-11-27T04:59:36.120Z",
+    "amd": "2026-11-27T04:59:37.224Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
@@ -183,9 +183,9 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 440,
-      "errors": 395,
-      "lastUsed": "2026-11-26T15:58:29.067Z",
+      "count": 453,
+      "errors": 396,
+      "lastUsed": "2026-11-27T09:40:50.705Z",
       "lastStatus": "ok",
       "skips": 61,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 504",
@@ -253,6 +253,28 @@
       "errors": 41,
       "lastUsed": "2026-11-23T14:18:55.654Z",
       "lastStatus": "error",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|glm-5.3-flash-cheap:free": {
+      "provider": "literouter",
+      "model": "glm-5.3-flash-cheap:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-26T21:49:42.013Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|kimi-k2.6-cheap:free": {
+      "provider": "literouter",
+      "model": "kimi-k2.6-cheap:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-26T23:32:38.165Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
