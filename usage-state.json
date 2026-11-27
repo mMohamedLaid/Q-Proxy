@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:08:52.455Z",
+  "savedAt": "2026-11-27T19:09:22.455Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -9,11 +9,11 @@
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 42,
+  "literouterRotationIndex": 55,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 2,
+      "count": 3,
       "day": "2026-11-27"
     },
     {
@@ -36,24 +36,28 @@
   "openrouterKeyIndex": 0,
   "googleModelCursor": {
     "gemma-4-31b-it": 0,
-    "gemma-4-26b-a4b-it": 0
+    "gemma-4-26b-a4b-it": 0,
+    "gemini-3.1-flash-lite-preview": 0,
+    "gemini-3-flash-preview": 0,
+    "gemini-2.5-flash": 0,
+    "models/gemini-3.8-flash": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29924017,
-      "rpmCount": 4,
-      "tpmWindowMinute": 29924017,
-      "tpmTokens": 66508,
-      "rpdDay": "2026-11-23",
-      "rpdCount": 11
+      "rpmWindowMinute": 29930109,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29930109,
+      "tpmTokens": 46,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 1
     },
     "gemma-4-31b-it|0": {
       "rpmWindowMinute": 29930108,
-      "rpmCount": 2,
+      "rpmCount": 1,
       "tpmWindowMinute": 29930108,
-      "tpmTokens": 140,
+      "tpmTokens": 70,
       "rpdDay": "2026-11-27",
-      "rpdCount": 3
+      "rpdCount": 2
     },
     "models/gemini-3.6-flash|0": {
       "rpmWindowMinute": 29922912,
@@ -72,12 +76,36 @@
       "rpdCount": 5
     },
     "gemma-4-26b-a4b-it|0": {
-      "rpmWindowMinute": 29930108,
-      "rpmCount": 0,
-      "tpmWindowMinute": 29930108,
-      "tpmTokens": 0,
+      "rpmWindowMinute": 29930109,
+      "rpmCount": 3,
+      "tpmWindowMinute": 29930109,
+      "tpmTokens": 186,
       "rpdDay": "2026-11-27",
-      "rpdCount": 0
+      "rpdCount": 4
+    },
+    "gemini-3.1-flash-lite-preview|0": {
+      "rpmWindowMinute": 29930109,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930109,
+      "tpmTokens": 116,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
+    },
+    "gemini-3-flash-preview|0": {
+      "rpmWindowMinute": 29930109,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930109,
+      "tpmTokens": 116,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
+    },
+    "gemini-2.5-flash|0": {
+      "rpmWindowMinute": 29930109,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930109,
+      "tpmTokens": 116,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
     }
   },
   "googleLastResetDay": "2026-11-27",
@@ -350,12 +378,12 @@
       "provider": "nvidia",
       "model": "google/gemma-4-31b-it",
       "count": 0,
-      "errors": 45,
-      "lastUsed": "2026-11-27T19:08:26.728Z",
+      "errors": 46,
+      "lastUsed": "2026-11-27T19:09:03.405Z",
       "lastStatus": 410,
-      "skips": 4,
+      "skips": 5,
       "lastSkipReason": "NOT_FOUND",
-      "lastSkipAt": "2026-11-27T19:08:26.728Z"
+      "lastSkipAt": "2026-11-27T19:09:03.406Z"
     },
     "literouter|glm-5.3-flash-cheap:free": {
       "provider": "literouter",
@@ -382,9 +410,9 @@
     "zai|glm-4.5-flash": {
       "provider": "zai",
       "model": "glm-4.5-flash",
-      "count": 3,
+      "count": 5,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:37.183Z",
+      "lastUsed": "2026-11-27T19:09:18.736Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -393,9 +421,9 @@
     "zai|glm-4.7-flash": {
       "provider": "zai",
       "model": "glm-4.7-flash",
-      "count": 5,
+      "count": 6,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:08:45.592Z",
+      "lastUsed": "2026-11-27T19:09:02.320Z",
       "lastStatus": "ok",
       "skips": 4,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -482,12 +510,12 @@
       "provider": "google",
       "model": "gemma-4-31b-it",
       "count": 2,
-      "errors": 5,
-      "lastUsed": "2026-11-27T19:08:48.958Z",
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:09:03.380Z",
       "lastStatus": 503,
-      "skips": 5,
+      "skips": 6,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-27T19:08:48.958Z"
+      "lastSkipAt": "2026-11-27T19:09:03.381Z"
     },
     "groq|qwen/qwen3.8-27b": {
       "provider": "groq",
@@ -526,8 +554,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 14,
-      "lastUsed": "2026-11-27T19:08:51.981Z",
+      "errors": 21,
+      "lastUsed": "2026-11-27T19:09:20.458Z",
       "lastStatus": 500,
       "skips": 0,
       "lastSkipReason": null,
@@ -702,8 +730,8 @@
       "provider": "groq",
       "model": "meta-llama/llama-prompt-guard-2-86m",
       "count": 0,
-      "errors": 8,
-      "lastUsed": "2026-11-27T19:08:32.805Z",
+      "errors": 12,
+      "lastUsed": "2026-11-27T19:09:19.845Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -713,8 +741,8 @@
       "provider": "groq",
       "model": "meta-llama/llama-prompt-guard-2-22m",
       "count": 0,
-      "errors": 8,
-      "lastUsed": "2026-11-27T19:08:33.314Z",
+      "errors": 12,
+      "lastUsed": "2026-11-27T19:09:20.255Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -756,9 +784,9 @@
     "crowllm|hy4-flash:free": {
       "provider": "crowllm",
       "model": "hy4-flash:free",
-      "count": 5,
+      "count": 6,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:08:44.344Z",
+      "lastUsed": "2026-11-27T19:08:54.239Z",
       "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -768,12 +796,12 @@
       "provider": "zai",
       "model": "glm-4.6v-flash",
       "count": 0,
-      "errors": 2,
-      "lastUsed": "2026-11-27T19:07:37.713Z",
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:09:19.079Z",
       "lastStatus": 429,
-      "skips": 2,
+      "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:07:37.713Z"
+      "lastSkipAt": "2026-11-27T19:09:19.079Z"
     },
     "amd|Clef": {
       "provider": "amd",
@@ -823,12 +851,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 2,
-      "lastUsed": "2026-11-27T19:08:26.793Z",
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:09:03.522Z",
       "lastStatus": 429,
-      "skips": 2,
+      "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:08:26.793Z"
+      "lastSkipAt": "2026-11-27T19:09:03.522Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -888,10 +916,10 @@
     "literouter|glm-5.3-flash:free": {
       "provider": "literouter",
       "model": "glm-5.3-flash:free",
-      "count": 0,
-      "errors": 2,
-      "lastUsed": "2026-11-27T19:08:51.626Z",
-      "lastStatus": 403,
+      "count": 2,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:09:04.249Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
@@ -899,13 +927,68 @@
     "google|gemma-4-26b-a4b-it": {
       "provider": "google",
       "model": "gemma-4-26b-a4b-it",
-      "count": 0,
-      "errors": 1,
-      "lastUsed": "2026-11-27T19:08:49.671Z",
-      "lastStatus": 503,
-      "skips": 1,
+      "count": 4,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:09:12.686Z",
+      "lastStatus": "ok",
+      "skips": 2,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-27T19:08:49.671Z"
+      "lastSkipAt": "2026-11-27T19:08:59.821Z"
+    },
+    "literouter|deepseek-flash:free": {
+      "provider": "literouter",
+      "model": "deepseek-flash:free",
+      "count": 2,
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:09:19.077Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|gemini-3.1-flash-lite-preview": {
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite-preview",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:09:06.757Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|gemini-3-flash-preview": {
+      "provider": "google",
+      "model": "gemini-3-flash-preview",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:09:09.972Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|gemini-2.5-flash": {
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:09:13.615Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v3.1-stable:free": {
+      "provider": "literouter",
+      "model": "deepseek-v3.1-stable:free",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:09:21.602Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
