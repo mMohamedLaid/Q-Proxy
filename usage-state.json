@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:45:22.473Z",
+  "savedAt": "2026-11-27T19:50:22.478Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -669,9 +669,9 @@
     "amd|GLM-5.3-Flash": {
       "provider": "amd",
       "model": "GLM-5.3-Flash",
-      "count": 4,
+      "count": 6,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:34.470Z",
+      "lastUsed": "2026-11-27T19:46:01.609Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -911,9 +911,9 @@
     "amd|Gemma-4-31B-IT": {
       "provider": "amd",
       "model": "Gemma-4-31B-IT",
-      "count": 4,
+      "count": 6,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:08:22.150Z",
+      "lastUsed": "2026-11-27T19:45:41.650Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
