@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:05:22.492Z",
+  "savedAt": "2026-11-27T20:10:22.496Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -350,9 +350,9 @@
     "amd|MiMo-V2.6-Flash": {
       "provider": "amd",
       "model": "MiMo-V2.6-Flash",
-      "count": 7,
+      "count": 9,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:07:50.648Z",
+      "lastUsed": "2026-11-27T20:09:27.701Z",
       "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -405,10 +405,10 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 463,
+      "count": 464,
       "errors": 409,
-      "lastUsed": "2026-11-27T20:05:17.456Z",
-      "lastStatus": 504,
+      "lastUsed": "2026-11-27T20:09:21.945Z",
+      "lastStatus": "ok",
       "skips": 62,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 504",
       "lastSkipAt": "2026-11-27T13:11:24.739Z"
@@ -1308,8 +1308,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 200,
-      "lastUsed": "2026-11-27T19:27:56.087Z",
+      "errors": 217,
+      "lastUsed": "2026-11-27T20:10:20.829Z",
       "lastStatus": 429,
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
