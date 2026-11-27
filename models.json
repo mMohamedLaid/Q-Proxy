@@ -706,5 +706,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "fastino-gliner2-pii-nv": {
+    "model": "fastino/gliner2-pii",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "google-gemma-3-12b-it-nv": {
+    "model": "google/gemma-3-12b-it",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
