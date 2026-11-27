@@ -424,5 +424,15 @@
     "status": "active",
     "limitType": "rate-limited",
     "dailyCap": 100
+  },
+  "deepseek-v4.1-flash-free-lr": {
+    "model": "deepseek-v4.1-flash:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "notes": "Free tier: 100/day per key; 5,000-token context (longer requests are summarized by Literouter).",
+    "status": "active",
+    "limitType": "rate-limited",
+    "dailyCap": 100
   }
 }
