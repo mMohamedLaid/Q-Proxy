@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:12:22.460Z",
+  "savedAt": "2026-11-27T19:12:52.459Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -10,7 +10,7 @@
       "day": "2026-11-27"
     },
     "0|deepseek-v4.1-flash:free": {
-      "count": 4,
+      "count": 8,
       "day": "2026-11-27"
     }
   },
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 122,
+  "literouterRotationIndex": 131,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -565,8 +565,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 65,
-      "lastUsed": "2026-11-27T19:12:19.853Z",
+      "errors": 73,
+      "lastUsed": "2026-11-27T19:12:52.448Z",
       "lastStatus": 500,
       "skips": 0,
       "lastSkipReason": null,
@@ -1103,9 +1103,31 @@
     "literouter|deepseek-v4.1-flash:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:12:31.286Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|minimax-m2.5:free": {
+      "provider": "literouter",
+      "model": "minimax-m2.5:free",
+      "count": 2,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:12:46.442Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3.8-flash-cheap:free": {
+      "provider": "literouter",
+      "model": "qwen3.8-flash-cheap:free",
       "count": 0,
       "errors": 3,
-      "lastUsed": "2026-11-27T19:12:19.555Z",
+      "lastUsed": "2026-11-27T19:12:51.251Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
