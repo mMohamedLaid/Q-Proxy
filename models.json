@@ -643,5 +643,16 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "gemini-3.1-flash-lite-g": {
+    "model": "gemini-3.1-flash-lite",
+    "provider": "google",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited",
+    "rpm": 15,
+    "tpm": 250000,
+    "rpd": 500
   }
 }
