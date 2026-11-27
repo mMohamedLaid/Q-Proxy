@@ -1178,5 +1178,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "hy4-flash-free-cr": {
+    "model": "hy4-flash:free",
+    "provider": "crowllm",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
