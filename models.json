@@ -707,5 +707,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "qwen3-32b-free-lr": {
+    "model": "qwen3-32b:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
