@@ -850,5 +850,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-llama-3.1-nemoguard-8b-topic-control-nv": {
+    "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
