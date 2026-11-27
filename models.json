@@ -474,5 +474,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "qwen3-next-80b-a3b-instruct-free-lr": {
+    "model": "qwen3-next-80b-a3b-instruct:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "qwen3-coder-next-free-lr": {
+    "model": "qwen3-coder-next:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
