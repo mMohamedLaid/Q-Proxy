@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T22:47:22.685Z",
+  "savedAt": "2026-11-27T22:47:52.685Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -318,6 +318,18 @@
       "detail": "\"qwen3-30b-a3b:free\" is no longer listed, but \"qwen3-30b-a3b\" is — it now costs credits",
       "source": "catalog",
       "since": "2026-11-27T22:07:25.824Z"
+    },
+    "literouter|deepseek-v4-flash-uncensored:free": {
+      "kind": "turned-paid",
+      "detail": "\"deepseek-v4-flash-uncensored:free\" is no longer listed, but \"deepseek-v4-flash-uncensored\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-27T22:47:31.724Z"
+    },
+    "literouter|deepseek-v4-flash-0731-uncensored:free": {
+      "kind": "turned-paid",
+      "detail": "\"deepseek-v4-flash-0731-uncensored:free\" is no longer listed, but \"deepseek-v4-flash-0731-uncensored\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-27T22:47:31.725Z"
     }
   },
   "catalogCheckedAt": {
@@ -325,7 +337,7 @@
     "zai": "2026-11-27T22:07:24.100Z",
     "google": "2026-11-27T22:07:24.286Z",
     "openrouter": "2026-11-27T22:07:25.120Z",
-    "literouter": "2026-11-27T22:07:25.824Z",
+    "literouter": "2026-11-27T22:47:31.725Z",
     "amd": "2026-11-27T22:07:26.759Z",
     "groq": "2026-11-27T22:07:26.107Z",
     "crowllm": "2026-11-27T22:07:26.834Z"
