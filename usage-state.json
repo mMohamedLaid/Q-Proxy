@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:15:22.504Z",
+  "savedAt": "2026-11-27T20:20:22.511Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -1308,12 +1308,12 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 290,
-      "lastUsed": "2026-11-27T20:15:20.706Z",
+      "errors": 368,
+      "lastUsed": "2026-11-27T20:20:19.983Z",
       "lastStatus": 429,
-      "skips": 2,
+      "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:27:56.087Z"
+      "lastSkipAt": "2026-11-27T20:19:35.557Z"
     },
     "literouter|qwen3-coder-30b-a3b-instruct:free": {
       "provider": "literouter",
