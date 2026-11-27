@@ -906,5 +906,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "google-gemma-3-4b-it-nv": {
+    "model": "google/gemma-3-4b-it",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
