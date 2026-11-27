@@ -1122,5 +1122,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "whisper-large-v3-gq": {
+    "model": "whisper-large-v3",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
