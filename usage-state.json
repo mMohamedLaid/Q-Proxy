@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:25:22.463Z",
+  "savedAt": "2026-11-27T19:26:52.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 319,
+  "literouterRotationIndex": 329,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -57,7 +57,8 @@
     "gemini-3.1-flash-lite": 0,
     "gemini-2.5-flash-lite": 0,
     "gemini-3.5-flash": 0,
-    "gemini-4-hydrogen": 0
+    "gemini-4-hydrogen": 0,
+    "gemini-3.5-flash-lite": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -149,12 +150,20 @@
       "rpdCount": 2
     },
     "gemini-4-hydrogen|0": {
-      "rpmWindowMinute": 29930124,
+      "rpmWindowMinute": 29930126,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930124,
-      "tpmTokens": 46,
+      "tpmWindowMinute": 29930126,
+      "tpmTokens": 70,
       "rpdDay": "2026-11-27",
       "rpdCount": 1
+    },
+    "gemini-3.5-flash-lite|0": {
+      "rpmWindowMinute": 29930126,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930126,
+      "tpmTokens": 116,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
     }
   },
   "googleLastResetDay": "2026-11-27",
@@ -1170,9 +1179,9 @@
     "literouter|minimax-m2.5:free": {
       "provider": "literouter",
       "model": "minimax-m2.5:free",
-      "count": 2,
+      "count": 4,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:12:46.442Z",
+      "lastUsed": "2026-11-27T19:25:32.900Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1182,8 +1191,8 @@
       "provider": "literouter",
       "model": "qwen3.8-flash-cheap:free",
       "count": 0,
-      "errors": 20,
-      "lastUsed": "2026-11-27T19:13:27.956Z",
+      "errors": 26,
+      "lastUsed": "2026-11-27T19:26:22.766Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
@@ -1193,8 +1202,8 @@
       "provider": "literouter",
       "model": "qwen3.8-flash:free",
       "count": 0,
-      "errors": 20,
-      "lastUsed": "2026-11-27T19:14:11.742Z",
+      "errors": 23,
+      "lastUsed": "2026-11-27T19:26:47.913Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
@@ -1281,8 +1290,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 162,
-      "lastUsed": "2026-11-27T19:25:22.441Z",
+      "errors": 184,
+      "lastUsed": "2026-11-27T19:26:51.450Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -1437,6 +1446,28 @@
       "count": 2,
       "errors": 0,
       "lastUsed": "2026-11-27T19:24:32.637Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|gemini-4-hydrogen": {
+      "provider": "google",
+      "model": "gemini-4-hydrogen",
+      "count": 1,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:26:34.315Z",
+      "lastStatus": "ok",
+      "skips": 2,
+      "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
+      "lastSkipAt": "2026-11-27T19:26:31.921Z"
+    },
+    "google|gemini-3.5-flash-lite": {
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:26:36.496Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
