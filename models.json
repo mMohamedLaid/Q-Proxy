@@ -572,14 +572,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "minimax-3.1-flash-free-lr-2": {
-    "model": "minimax-3.1-flash:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "kimi-k2.7-code-cheap-free-lr": {
     "model": "kimi-k2.7-code-cheap:free",
     "provider": "literouter",
