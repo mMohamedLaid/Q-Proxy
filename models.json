@@ -654,5 +654,16 @@
     "rpm": 15,
     "tpm": 250000,
     "rpd": 500
+  },
+  "gemini-2.5-flash-lite-g": {
+    "model": "gemini-2.5-flash-lite",
+    "provider": "google",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited",
+    "rpm": 10,
+    "tpm": 250000,
+    "rpd": 20
   }
 }
