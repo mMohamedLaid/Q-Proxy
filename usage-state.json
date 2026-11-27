@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:42:22.535Z",
+  "savedAt": "2026-11-27T20:42:52.535Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 10,
+      "count": 15,
       "day": "2026-11-27"
     },
     {
@@ -1754,6 +1754,50 @@
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
+    },
+    "openrouter|google/lyria-3-clip-preview": {
+      "provider": "openrouter",
+      "model": "google/lyria-3-clip-preview",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-27T20:42:27.141Z",
+      "lastStatus": 402,
+      "skips": 1,
+      "lastSkipReason": "QUOTA",
+      "lastSkipAt": "2026-11-27T20:42:27.142Z"
+    },
+    "openrouter|google/lyria-3-pro-preview": {
+      "provider": "openrouter",
+      "model": "google/lyria-3-pro-preview",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-27T20:42:32.352Z",
+      "lastStatus": 402,
+      "skips": 1,
+      "lastSkipReason": "QUOTA",
+      "lastSkipAt": "2026-11-27T20:42:32.352Z"
+    },
+    "openrouter|liquid/lfm-3-1.7b:free": {
+      "provider": "openrouter",
+      "model": "liquid/lfm-3-1.7b:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:42:38.553Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|particle-ai/particle-1:free": {
+      "provider": "openrouter",
+      "model": "particle-ai/particle-1:free",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-27T20:42:44.204Z",
+      "lastStatus": 429,
+      "skips": 1,
+      "lastSkipReason": "RATE_LIMIT · HTTP 429",
+      "lastSkipAt": "2026-11-27T20:42:44.204Z"
     }
   }
 }
