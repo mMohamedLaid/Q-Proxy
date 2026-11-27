@@ -676,5 +676,16 @@
     "rpm": 5,
     "tpm": 250000,
     "rpd": 20
+  },
+  "gemini-4-hydrogen-g": {
+    "model": "gemini-4-hydrogen",
+    "provider": "google",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited",
+    "rpm": 5,
+    "tpm": 250000,
+    "rpd": 20
   }
 }
