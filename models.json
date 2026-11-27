@@ -1090,5 +1090,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "allam-2-7b-gq": {
+    "model": "allam-2-7b",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
