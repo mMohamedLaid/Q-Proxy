@@ -683,5 +683,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "mythomax-l2-13b-free-lr": {
+    "model": "mythomax-l2-13b:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
