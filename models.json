@@ -898,5 +898,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "minimaxai-minimax-m3.1-flash-nv": {
+    "model": "minimaxai/minimax-m3.1-flash",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
