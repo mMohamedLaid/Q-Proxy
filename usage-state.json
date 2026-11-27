@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:46:22.539Z",
+  "savedAt": "2026-11-27T20:46:52.540Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -28,7 +28,7 @@
       "day": "2026-11-27"
     },
     {
-      "count": 1,
+      "count": 7,
       "day": "2026-11-27"
     },
     {
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 15,
-      "lastUsed": "2026-11-27T20:46:00.779Z",
+      "errors": 17,
+      "lastUsed": "2026-11-27T20:46:39.451Z",
       "lastStatus": 429,
-      "skips": 15,
+      "skips": 17,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:46:00.779Z"
+      "lastSkipAt": "2026-11-27T20:46:39.451Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -1737,12 +1737,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-26b-a4b-it:free",
       "count": 0,
-      "errors": 8,
-      "lastUsed": "2026-11-27T20:46:06.047Z",
+      "errors": 10,
+      "lastUsed": "2026-11-27T20:46:44.765Z",
       "lastStatus": 429,
-      "skips": 8,
+      "skips": 10,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:46:06.047Z"
+      "lastSkipAt": "2026-11-27T20:46:44.765Z"
     },
     "openrouter|baidu/ernie-5.5-flash-preview:free": {
       "provider": "openrouter",
@@ -1759,9 +1759,9 @@
       "provider": "openrouter",
       "model": "google/lyria-3-clip-preview",
       "count": 0,
-      "errors": 8,
-      "lastUsed": "2026-11-27T20:46:11.273Z",
-      "lastStatus": 402,
+      "errors": 10,
+      "lastUsed": "2026-11-27T20:46:50.433Z",
+      "lastStatus": 400,
       "skips": 8,
       "lastSkipReason": "QUOTA",
       "lastSkipAt": "2026-11-27T20:46:11.274Z"
