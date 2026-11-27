@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:05:52.453Z",
+  "savedAt": "2026-11-27T19:07:52.453Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -8,8 +8,8 @@
   },
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
-  "literouterLastResetDay": "2026-11-26",
-  "literouterRotationIndex": 20,
+  "literouterLastResetDay": "2026-11-27",
+  "literouterRotationIndex": 27,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -35,8 +35,7 @@
   ],
   "openrouterKeyIndex": 0,
   "googleModelCursor": {
-    "models/gemini-3.8-flash": 0,
-    "models/gemini-3.7-flash": 0
+    "gemma-4-31b-it": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -48,12 +47,12 @@
       "rpdCount": 11
     },
     "gemma-4-31b-it|0": {
-      "rpmWindowMinute": 29846686,
-      "rpmCount": 1,
-      "tpmWindowMinute": 29846686,
-      "tpmTokens": 3266,
-      "rpdDay": "2026-09-30",
-      "rpdCount": 1
+      "rpmWindowMinute": 29930107,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930107,
+      "tpmTokens": 92,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
     },
     "models/gemini-3.6-flash|0": {
       "rpmWindowMinute": 29922912,
@@ -72,7 +71,7 @@
       "rpdCount": 5
     }
   },
-  "googleLastResetDay": "2026-11-23",
+  "googleLastResetDay": "2026-11-27",
   "googleLimitMismatches": [],
   "hopWarnings": {
     "nvidia|deepseek-ai/deepseek-v4.1-flash": {
@@ -134,6 +133,54 @@
       "detail": "no longer in literouter's live model list",
       "source": "catalog",
       "since": "2026-11-27T18:47:53.529Z"
+    },
+    "nvidia|nvidia/llama-3.2-nv-embedqa-1b-v1": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:23.446Z"
+    },
+    "nvidia|nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:23.844Z"
+    },
+    "nvidia|snowflake/arctic-embed-l": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:24.924Z"
+    },
+    "nvidia|nvidia/nv-embedqa-mistral-7b-v2": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:28.884Z"
+    },
+    "nvidia|nvidia/nvclip": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:29.090Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-content-safety": {
+      "kind": "gone",
+      "detail": "the provider answered: Function '3e84ff75-527b-4491-8647-530406876074': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
+      "source": "request",
+      "since": "2026-11-27T19:07:29.472Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-embed-8b": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:29.781Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-embed-1b": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:07:33.826Z"
     }
   },
   "catalogCheckedAt": {
@@ -162,20 +209,20 @@
       "provider": "nvidia",
       "model": "deepseek-ai/deepseek-v4.1-flash",
       "count": 6,
-      "errors": 25,
-      "lastUsed": "2026-11-03T07:08:41.289Z",
-      "lastStatus": 403,
-      "skips": 5,
-      "lastSkipReason": "TIMEOUT · ECONNABORTED",
-      "lastSkipAt": "2026-11-02T15:34:46.565Z"
+      "errors": 27,
+      "lastUsed": "2026-11-27T19:07:24.553Z",
+      "lastStatus": 410,
+      "skips": 7,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:24.553Z"
     },
     "amd|MiMo-V2.6-Flash": {
       "provider": "amd",
       "model": "MiMo-V2.6-Flash",
-      "count": 3,
+      "count": 7,
       "errors": 2,
-      "lastUsed": "2026-11-02T06:09:34.124Z",
-      "lastStatus": 429,
+      "lastUsed": "2026-11-27T19:07:50.648Z",
+      "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
       "lastSkipAt": "2026-11-02T06:09:34.125Z"
@@ -294,20 +341,20 @@
       "provider": "nvidia",
       "model": "google/gemma-4-31b-it",
       "count": 0,
-      "errors": 41,
-      "lastUsed": "2026-11-23T14:18:55.654Z",
-      "lastStatus": "error",
-      "skips": 0,
-      "lastSkipReason": null,
-      "lastSkipAt": null
+      "errors": 43,
+      "lastUsed": "2026-11-27T19:07:23.722Z",
+      "lastStatus": 410,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:23.722Z"
     },
     "literouter|glm-5.3-flash-cheap:free": {
       "provider": "literouter",
       "model": "glm-5.3-flash-cheap:free",
-      "count": 1,
-      "errors": 0,
-      "lastUsed": "2026-11-26T21:49:42.013Z",
-      "lastStatus": "ok",
+      "count": 5,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:07:52.268Z",
+      "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
@@ -326,9 +373,9 @@
     "zai|glm-4.5-flash": {
       "provider": "zai",
       "model": "glm-4.5-flash",
-      "count": 1,
+      "count": 3,
       "errors": 0,
-      "lastUsed": "2026-11-27T16:21:35.630Z",
+      "lastUsed": "2026-11-27T19:07:37.183Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -337,13 +384,398 @@
     "zai|glm-4.7-flash": {
       "provider": "zai",
       "model": "glm-4.7-flash",
-      "count": 2,
-      "errors": 1,
-      "lastUsed": "2026-11-27T19:05:43.703Z",
-      "lastStatus": "ok",
-      "skips": 1,
+      "count": 4,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:07:23.919Z",
+      "lastStatus": 429,
+      "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T16:23:31.886Z"
+      "lastSkipAt": "2026-11-27T19:07:23.919Z"
+    },
+    "amd|d3": {
+      "provider": "amd",
+      "model": "d3",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:52.273Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|allam-2-7b": {
+      "provider": "groq",
+      "model": "allam-2-7b",
+      "count": 3,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:07:24.490Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|canopylabs/orpheus-arabic-saudi": {
+      "provider": "groq",
+      "model": "canopylabs/orpheus-arabic-saudi",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:23.842Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/llama-3.2-nv-embedqa-1b-v1": {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.2-nv-embedqa-1b-v1",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:23.598Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:23.619Z"
+    },
+    "nvidia|poolside/laguna-xs-2.1": {
+      "provider": "nvidia",
+      "model": "poolside/laguna-xs-2.1",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:24.775Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:23.960Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:23.960Z"
+    },
+    "nvidia|openai/gpt-oss-20b": {
+      "provider": "nvidia",
+      "model": "openai/gpt-oss-20b",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:24.173Z",
+      "lastStatus": 410,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:24.174Z"
+    },
+    "google|gemma-4-31b-it": {
+      "provider": "google",
+      "model": "gemma-4-31b-it",
+      "count": 0,
+      "errors": 1,
+      "lastUsed": "2026-11-27T19:07:24.159Z",
+      "lastStatus": 503,
+      "skips": 1,
+      "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
+      "lastSkipAt": "2026-11-27T19:07:24.161Z"
+    },
+    "groq|qwen/qwen3.8-27b": {
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:29.473Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|snowflake/arctic-embed-l": {
+      "provider": "nvidia",
+      "model": "snowflake/arctic-embed-l",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:25.036Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:25.036Z"
+    },
+    "nvidia|nvidia/llama-3.1-nemotron-safety-guard-8b-v3": {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+      "count": 1,
+      "errors": 1,
+      "lastUsed": "2026-11-27T19:07:25.265Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/llama-3.1-nemoguard-8b-topic-control": {
+      "provider": "nvidia",
+      "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
+      "count": 0,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:07:33.607Z",
+      "lastStatus": 500,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "crowllm|caw/glm-5.3-flash-thinking:free": {
+      "provider": "crowllm",
+      "model": "caw/glm-5.3-flash-thinking:free",
+      "count": 6,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:32.847Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "amd|GLM-5.3-Flash": {
+      "provider": "amd",
+      "model": "GLM-5.3-Flash",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:34.470Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nemotron-3.5-lightning-30b-a3b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:28.779Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nv-embedqa-mistral-7b-v2": {
+      "provider": "nvidia",
+      "model": "nvidia/nv-embedqa-mistral-7b-v2",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:28.983Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:28.983Z"
+    },
+    "nvidia|nvidia/nvclip": {
+      "provider": "nvidia",
+      "model": "nvidia/nvclip",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:29.189Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:29.189Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-content-safety": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-content-safety",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:29.679Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:29.679Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-embed-8b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-embed-8b",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:29.874Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:29.874Z"
+    },
+    "groq|openai/gpt-oss-120b": {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:31.658Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nemotron-3-ultra-550b-a55b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:32.718Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|canopylabs/orpheus-v1-english": {
+      "provider": "groq",
+      "model": "canopylabs/orpheus-v1-english",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:32.065Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|whisper-large-v3": {
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:32.455Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|openai/gpt-oss-safeguard-20b": {
+      "provider": "groq",
+      "model": "openai/gpt-oss-safeguard-20b",
+      "count": 3,
+      "errors": 1,
+      "lastUsed": "2026-11-27T19:07:33.498Z",
+      "lastStatus": 429,
+      "skips": 1,
+      "lastSkipReason": "QUOTA",
+      "lastSkipAt": "2026-11-27T19:07:33.498Z"
+    },
+    "nvidia|nvidia/nemotron-3.5-bolt-e4b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:33.715Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|whisper-large-v3-turbo": {
+      "provider": "groq",
+      "model": "whisper-large-v3-turbo",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:33.943Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nemotron-3.5-embed-1b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-embed-1b",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:33.926Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:07:33.926Z"
+    },
+    "groq|meta-llama/llama-prompt-guard-2-86m": {
+      "provider": "groq",
+      "model": "meta-llama/llama-prompt-guard-2-86m",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:34.338Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|meta-llama/llama-prompt-guard-2-22m": {
+      "provider": "groq",
+      "model": "meta-llama/llama-prompt-guard-2-22m",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:34.775Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "groq|openai/gpt-oss-20b": {
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:35.917Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:35.374Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "amd|DeepSeek-V4.1-Flash": {
+      "provider": "amd",
+      "model": "DeepSeek-V4.1-Flash",
+      "count": 4,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:07:40.275Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "crowllm|hy4-flash:free": {
+      "provider": "crowllm",
+      "model": "hy4-flash:free",
+      "count": 4,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:48.937Z",
+      "lastStatus": 429,
+      "skips": 2,
+      "lastSkipReason": "RATE_LIMIT · HTTP 429",
+      "lastSkipAt": "2026-11-27T19:07:48.937Z"
+    },
+    "zai|glm-4.6v-flash": {
+      "provider": "zai",
+      "model": "glm-4.6v-flash",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:07:37.713Z",
+      "lastStatus": 429,
+      "skips": 2,
+      "lastSkipReason": "RATE_LIMIT · HTTP 429",
+      "lastSkipAt": "2026-11-27T19:07:37.713Z"
+    },
+    "amd|Clef": {
+      "provider": "amd",
+      "model": "Clef",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:07:51.939Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
