@@ -978,5 +978,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "d3-flash-amd": {
+    "model": "d3-flash",
+    "provider": "amd",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
