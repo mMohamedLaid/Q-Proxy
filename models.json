@@ -786,5 +786,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3.5-embed-8b-nv": {
+    "model": "nvidia/nemotron-3.5-embed-8b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3-ultra-550b-a55b-nv": {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
