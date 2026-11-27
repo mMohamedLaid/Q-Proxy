@@ -818,5 +818,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-nv": {
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
