@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:34:52.468Z",
+  "savedAt": "2026-11-27T19:39:52.471Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 378,
+  "literouterRotationIndex": 395,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -300,6 +300,18 @@
       "detail": "the provider answered: Function 'c322f327-55a3-4af3-a91f-c757e2b8b135': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
       "source": "request",
       "since": "2026-11-27T19:29:26.480Z"
+    },
+    "nvidia|bigcode/starcoder2-15b": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:39:33.026Z"
+    },
+    "nvidia|google/gemma-3-12b-it": {
+      "kind": "gone",
+      "detail": "the provider answered: Function 'ee47df99-c92b-4dc9-b3a7-f3fb0f087b73': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
+      "source": "request",
+      "since": "2026-11-27T19:39:33.672Z"
     }
   },
   "catalogCheckedAt": {
@@ -427,8 +439,8 @@
       "provider": "nvidia",
       "model": "moonshotai/kimi-k3.1-pro",
       "count": 10,
-      "errors": 4,
-      "lastUsed": "2026-11-27T19:34:34.291Z",
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:39:36.852Z",
       "lastStatus": 504,
       "skips": 2,
       "lastSkipReason": "tpm-budget (~273876>262144)",
@@ -481,9 +493,9 @@
     "literouter|kimi-k2.6-cheap:free": {
       "provider": "literouter",
       "model": "kimi-k2.6-cheap:free",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-26T23:32:38.165Z",
+      "lastUsed": "2026-11-27T19:35:52.988Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1416,10 +1428,10 @@
     "literouter|gpt-oss-120b:free": {
       "provider": "literouter",
       "model": "gpt-oss-120b:free",
-      "count": 1,
+      "count": 3,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:34:46.595Z",
-      "lastStatus": 403,
+      "lastUsed": "2026-11-27T19:35:21.313Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
@@ -1511,6 +1523,127 @@
       "skips": 2,
       "lastSkipReason": "NOT_FOUND",
       "lastSkipAt": "2026-11-27T19:29:26.760Z"
+    },
+    "literouter|kimi-k3-uncensored:free": {
+      "provider": "literouter",
+      "model": "kimi-k3-uncensored:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:36:13.597Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|llama-3.3-70b-instruct:free": {
+      "provider": "literouter",
+      "model": "llama-3.3-70b-instruct:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:36:32.906Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen-3.8-27b:free": {
+      "provider": "literouter",
+      "model": "qwen-3.8-27b:free",
+      "count": 0,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:37:23.286Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|mythomax-l2-13b:free": {
+      "provider": "literouter",
+      "model": "mythomax-l2-13b:free",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:37:42.307Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/nemotron-3.5-super-vl-120b-a12b": {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:39:32.829Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|bigcode/starcoder2-15b": {
+      "provider": "nvidia",
+      "model": "bigcode/starcoder2-15b",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:39:33.155Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:39:33.156Z"
+    },
+    "nvidia|fastino/gliner2-pii": {
+      "provider": "nvidia",
+      "model": "fastino/gliner2-pii",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:39:33.460Z",
+      "lastStatus": 422,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|google/gemma-3-12b-it": {
+      "provider": "nvidia",
+      "model": "google/gemma-3-12b-it",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:39:33.905Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:39:33.905Z"
+    },
+    "nvidia|stepfun-ai/step-5-preview": {
+      "provider": "nvidia",
+      "model": "stepfun-ai/step-5-preview",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:39:39.164Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/riva-translate-4b-instruct-v2": {
+      "provider": "nvidia",
+      "model": "nvidia/riva-translate-4b-instruct-v2",
+      "count": 1,
+      "errors": 1,
+      "lastUsed": "2026-11-27T19:39:41.206Z",
+      "lastStatus": 400,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|openai-gpt-oss-20b:free": {
+      "provider": "literouter",
+      "model": "openai-gpt-oss-20b:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:39:52.207Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
