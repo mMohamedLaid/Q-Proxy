@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:13:22.459Z",
+  "savedAt": "2026-11-27T19:15:22.460Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 145,
+  "literouterRotationIndex": 199,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -51,7 +51,8 @@
     "gemini-3.1-flash-lite-preview": 0,
     "gemini-3-flash-preview": 0,
     "gemini-2.5-flash": 0,
-    "models/gemini-3.8-flash": 0
+    "models/gemini-3.8-flash": 0,
+    "models/gemini-3.7-flash": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -79,12 +80,12 @@
       "rpdCount": 20
     },
     "models/gemini-3.7-flash|0": {
-      "rpmWindowMinute": 29924022,
-      "rpmCount": 2,
-      "tpmWindowMinute": 29924022,
-      "tpmTokens": 33254,
-      "rpdDay": "2026-11-23",
-      "rpdCount": 5
+      "rpmWindowMinute": 29930115,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29930115,
+      "tpmTokens": 46,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 1
     },
     "gemma-4-26b-a4b-it|0": {
       "rpmWindowMinute": 29930109,
@@ -229,6 +230,18 @@
       "detail": "the provider answered: 404 page not found",
       "source": "request",
       "since": "2026-11-27T19:07:33.826Z"
+    },
+    "nvidia|nvidia/embed-qa-4": {
+      "kind": "gone",
+      "detail": "the provider answered: 404 page not found",
+      "source": "request",
+      "since": "2026-11-27T19:14:58.273Z"
+    },
+    "nvidia|nvidia/cosmos-reason2-8b": {
+      "kind": "gone",
+      "detail": "the provider answered: Function 'e199b43b-6c62-4a63-9379-f60e1a953236': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
+      "source": "request",
+      "since": "2026-11-27T19:14:58.574Z"
     }
   },
   "catalogCheckedAt": {
@@ -289,10 +302,10 @@
     "google|models/gemini-3.8-flash": {
       "provider": "google",
       "model": "models/gemini-3.8-flash",
-      "count": 8,
+      "count": 9,
       "errors": 28,
-      "lastUsed": "2026-11-27T19:13:15.514Z",
-      "lastStatus": 524,
+      "lastUsed": "2026-11-27T19:15:02.033Z",
+      "lastStatus": "ok",
       "skips": 47,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 524",
       "lastSkipAt": "2026-11-27T19:13:15.515Z"
@@ -322,9 +335,9 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 461,
+      "count": 462,
       "errors": 406,
-      "lastUsed": "2026-11-27T19:10:48.786Z",
+      "lastUsed": "2026-11-27T19:14:48.027Z",
       "lastStatus": "ok",
       "skips": 62,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 504",
@@ -565,12 +578,12 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 80,
-      "lastUsed": "2026-11-27T19:13:20.957Z",
-      "lastStatus": 500,
-      "skips": 0,
-      "lastSkipReason": null,
-      "lastSkipAt": null
+      "errors": 101,
+      "lastUsed": "2026-11-27T19:14:42.574Z",
+      "lastStatus": 400,
+      "skips": 1,
+      "lastSkipReason": "UPSTREAM_5XX · HTTP 500",
+      "lastSkipAt": "2026-11-27T19:14:42.443Z"
     },
     "crowllm|caw/glm-5.3-flash-thinking:free": {
       "provider": "crowllm",
@@ -1126,9 +1139,119 @@
       "provider": "literouter",
       "model": "qwen3.8-flash-cheap:free",
       "count": 0,
-      "errors": 17,
-      "lastUsed": "2026-11-27T19:13:21.071Z",
+      "errors": 20,
+      "lastUsed": "2026-11-27T19:13:27.956Z",
       "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3.8-flash:free": {
+      "provider": "literouter",
+      "model": "qwen3.8-flash:free",
+      "count": 0,
+      "errors": 20,
+      "lastUsed": "2026-11-27T19:14:11.742Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3.6-27b:free": {
+      "provider": "literouter",
+      "model": "qwen3.6-27b:free",
+      "count": 2,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:14:20.717Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3-next-80b-a3b-instruct:free": {
+      "provider": "literouter",
+      "model": "qwen3-next-80b-a3b-instruct:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:14:37.396Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3-coder-next:free": {
+      "provider": "literouter",
+      "model": "qwen3-coder-next:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:14:53.555Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/ising-calibration-1.5-31b": {
+      "provider": "nvidia",
+      "model": "nvidia/ising-calibration-1.5-31b",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:14:58.142Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3-30b-a3b:free": {
+      "provider": "literouter",
+      "model": "qwen3-30b-a3b:free",
+      "count": 2,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:15:10.376Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "nvidia|nvidia/embed-qa-4": {
+      "provider": "nvidia",
+      "model": "nvidia/embed-qa-4",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:14:58.367Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:14:58.367Z"
+    },
+    "nvidia|nvidia/cosmos-reason2-8b": {
+      "provider": "nvidia",
+      "model": "nvidia/cosmos-reason2-8b",
+      "count": 0,
+      "errors": 2,
+      "lastUsed": "2026-11-27T19:14:58.765Z",
+      "lastStatus": 404,
+      "skips": 2,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:14:58.765Z"
+    },
+    "nvidia|nvidia/ai-synthetic-video-detector": {
+      "provider": "nvidia",
+      "model": "nvidia/ai-synthetic-video-detector",
+      "count": 0,
+      "errors": 9,
+      "lastUsed": "2026-11-27T19:15:19.558Z",
+      "lastStatus": 429,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|qwen3-coder-30b-a3b-instruct:free": {
+      "provider": "literouter",
+      "model": "qwen3-coder-30b-a3b-instruct:free",
+      "count": 2,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:15:22.007Z",
+      "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
