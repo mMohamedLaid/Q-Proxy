@@ -762,5 +762,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nv-embedqa-mistral-7b-v2-nv": {
+    "model": "nvidia/nv-embedqa-mistral-7b-v2",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
