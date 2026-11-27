@@ -1114,5 +1114,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "canopylabs-orpheus-v1-english-gq": {
+    "model": "canopylabs/orpheus-v1-english",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
