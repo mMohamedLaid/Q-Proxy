@@ -858,5 +858,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-ising-calibration-1.5-31b-nv": {
+    "model": "nvidia/ising-calibration-1.5-31b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "nvidia-embed-qa-4-nv": {
+    "model": "nvidia/embed-qa-4",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
