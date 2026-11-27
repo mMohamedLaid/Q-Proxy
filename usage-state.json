@@ -1,12 +1,12 @@
 {
-  "savedAt": "2026-11-27T19:24:22.463Z",
+  "savedAt": "2026-11-27T19:24:52.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
       "day": "2026-11-02"
     },
     "0|deepseek-v4.1-flash-cheap:free": {
-      "count": 7,
+      "count": 9,
       "day": "2026-11-27"
     },
     "0|deepseek-v4.1-flash:free": {
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 317,
+  "literouterRotationIndex": 318,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -56,7 +56,8 @@
     "models/gemini-3.6-flash": 0,
     "gemini-3.1-flash-lite": 0,
     "gemini-2.5-flash-lite": 0,
-    "gemini-3.5-flash": 0
+    "gemini-3.5-flash": 0,
+    "gemini-4-hydrogen": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -146,6 +147,14 @@
       "tpmTokens": 116,
       "rpdDay": "2026-11-27",
       "rpdCount": 2
+    },
+    "gemini-4-hydrogen|0": {
+      "rpmWindowMinute": 29930124,
+      "rpmCount": 1,
+      "tpmWindowMinute": 29930124,
+      "tpmTokens": 46,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 1
     }
   },
   "googleLastResetDay": "2026-11-27",
@@ -402,10 +411,10 @@
     "nvidia|moonshotai/kimi-k3.1-pro": {
       "provider": "nvidia",
       "model": "moonshotai/kimi-k3.1-pro",
-      "count": 9,
+      "count": 10,
       "errors": 2,
-      "lastUsed": "2026-11-27T19:19:50.201Z",
-      "lastStatus": 504,
+      "lastUsed": "2026-11-27T19:24:29.720Z",
+      "lastStatus": "ok",
       "skips": 2,
       "lastSkipReason": "tpm-budget (~273876>262144)",
       "lastSkipAt": "2026-11-19T09:22:58.622Z"
@@ -1128,9 +1137,9 @@
     "literouter|deepseek-v4-flash-0731-uncensored:free": {
       "provider": "literouter",
       "model": "deepseek-v4-flash-0731-uncensored:free",
-      "count": 3,
+      "count": 4,
       "errors": 6,
-      "lastUsed": "2026-11-27T19:24:17.974Z",
+      "lastUsed": "2026-11-27T19:24:32.776Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1139,9 +1148,9 @@
     "literouter|deepseek-v4.1-flash-cheap:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash-cheap:free",
-      "count": 2,
+      "count": 3,
       "errors": 5,
-      "lastUsed": "2026-11-27T19:12:15.030Z",
+      "lastUsed": "2026-11-27T19:24:42.900Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1272,8 +1281,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 147,
-      "lastUsed": "2026-11-27T19:24:21.722Z",
+      "errors": 154,
+      "lastUsed": "2026-11-27T19:24:50.077Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -1425,9 +1434,9 @@
     "google|gemini-3.5-flash": {
       "provider": "google",
       "model": "gemini-3.5-flash",
-      "count": 1,
+      "count": 2,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:23:53.422Z",
+      "lastUsed": "2026-11-27T19:24:32.637Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
