@@ -660,14 +660,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "llama-3.3-70b-instruct-free-lr-3": {
-    "model": "llama-3.3-70b-instruct:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "qwen-3.8-27b-free-lr": {
     "model": "qwen-3.8-27b:free",
     "provider": "literouter",
