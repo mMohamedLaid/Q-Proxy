@@ -442,5 +442,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "qwen3.8-flash-cheap-free-lr": {
+    "model": "qwen3.8-flash-cheap:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
