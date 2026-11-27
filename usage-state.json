@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T22:01:22.638Z",
+  "savedAt": "2026-11-27T22:07:52.642Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -312,17 +312,23 @@
       "detail": "the provider answered: Function 'ee47df99-c92b-4dc9-b3a7-f3fb0f087b73': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
       "source": "request",
       "since": "2026-11-27T19:39:33.672Z"
+    },
+    "literouter|qwen3-30b-a3b:free": {
+      "kind": "turned-paid",
+      "detail": "\"qwen3-30b-a3b:free\" is no longer listed, but \"qwen3-30b-a3b\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-27T22:07:25.824Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-27T18:38:29.451Z",
-    "zai": "2026-11-27T18:47:41.028Z",
-    "google": "2026-11-27T17:56:48.452Z",
-    "openrouter": "2026-11-27T18:39:51.824Z",
-    "literouter": "2026-11-27T18:48:12.026Z",
-    "amd": "2026-11-27T18:39:05.121Z",
-    "groq": "2026-11-27T18:40:51.757Z",
-    "crowllm": "2026-11-27T18:47:44.054Z"
+    "nvidia": "2026-11-27T22:07:23.788Z",
+    "zai": "2026-11-27T22:07:24.100Z",
+    "google": "2026-11-27T22:07:24.286Z",
+    "openrouter": "2026-11-27T22:07:25.120Z",
+    "literouter": "2026-11-27T22:07:25.824Z",
+    "amd": "2026-11-27T22:07:26.759Z",
+    "groq": "2026-11-27T22:07:26.107Z",
+    "crowllm": "2026-11-27T22:07:26.834Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
