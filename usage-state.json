@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:24:52.463Z",
+  "savedAt": "2026-11-27T19:25:22.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -10,7 +10,7 @@
       "day": "2026-11-27"
     },
     "0|deepseek-v4.1-flash:free": {
-      "count": 8,
+      "count": 10,
       "day": "2026-11-27"
     }
   },
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 318,
+  "literouterRotationIndex": 319,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -1148,9 +1148,9 @@
     "literouter|deepseek-v4.1-flash-cheap:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash-cheap:free",
-      "count": 3,
+      "count": 4,
       "errors": 5,
-      "lastUsed": "2026-11-27T19:24:42.900Z",
+      "lastUsed": "2026-11-27T19:24:52.732Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1159,9 +1159,9 @@
     "literouter|deepseek-v4.1-flash:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash:free",
-      "count": 2,
+      "count": 4,
       "errors": 6,
-      "lastUsed": "2026-11-27T19:12:31.286Z",
+      "lastUsed": "2026-11-27T19:25:13.388Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1281,8 +1281,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 154,
-      "lastUsed": "2026-11-27T19:24:50.077Z",
+      "errors": 162,
+      "lastUsed": "2026-11-27T19:25:22.441Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
