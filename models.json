@@ -406,5 +406,13 @@
     "notes": "Free tier: no daily cap listed; 5,000-token context (longer requests are summarized by Literouter).",
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-0731-uncensored-free-lr": {
+    "model": "deepseek-v4-flash-0731-uncensored:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
