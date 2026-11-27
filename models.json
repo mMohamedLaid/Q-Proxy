@@ -389,5 +389,22 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "deepseek-v4-pro-stable-free-lr": {
+    "model": "deepseek-v4-pro-stable:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "deepseek-v4.1-flash-1017-free-lr": {
+    "model": "deepseek-v4.1-flash-1017:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "notes": "Free tier: no daily cap listed; 5,000-token context (longer requests are summarized by Literouter).",
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
