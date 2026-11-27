@@ -834,5 +834,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-llama-3.2-nemoretriever-1b-vlm-embed-v1-nv": {
+    "model": "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
