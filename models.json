@@ -1154,5 +1154,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "meta-llama-llama-prompt-guard-2-22m-gq": {
+    "model": "meta-llama/llama-prompt-guard-2-22m",
+    "provider": "groq",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
