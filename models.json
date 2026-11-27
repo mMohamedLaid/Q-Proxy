@@ -986,5 +986,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "hy4-flash-amd": {
+    "model": "Hy4-flash",
+    "provider": "amd",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
