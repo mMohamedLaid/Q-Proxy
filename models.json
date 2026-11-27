@@ -1026,5 +1026,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "particle-ai-particle-1-free-or": {
+    "model": "particle-ai/particle-1:free",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
