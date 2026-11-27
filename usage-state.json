@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:43:22.536Z",
+  "savedAt": "2026-11-27T20:43:52.536Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 18,
+      "count": 23,
       "day": "2026-11-27"
     },
     {
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 8,
-      "lastUsed": "2026-11-27T20:42:09.853Z",
+      "errors": 9,
+      "lastUsed": "2026-11-27T20:43:38.117Z",
       "lastStatus": 429,
-      "skips": 8,
+      "skips": 9,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:42:09.853Z"
+      "lastSkipAt": "2026-11-27T20:43:38.117Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -1737,12 +1737,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-26b-a4b-it:free",
       "count": 0,
-      "errors": 1,
-      "lastUsed": "2026-11-27T20:42:15.204Z",
+      "errors": 2,
+      "lastUsed": "2026-11-27T20:43:43.647Z",
       "lastStatus": 429,
-      "skips": 1,
+      "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:42:15.205Z"
+      "lastSkipAt": "2026-11-27T20:43:43.647Z"
     },
     "openrouter|baidu/ernie-5.5-flash-preview:free": {
       "provider": "openrouter",
@@ -1759,12 +1759,12 @@
       "provider": "openrouter",
       "model": "google/lyria-3-clip-preview",
       "count": 0,
-      "errors": 1,
-      "lastUsed": "2026-11-27T20:42:27.141Z",
+      "errors": 2,
+      "lastUsed": "2026-11-27T20:43:48.901Z",
       "lastStatus": 402,
-      "skips": 1,
+      "skips": 2,
       "lastSkipReason": "QUOTA",
-      "lastSkipAt": "2026-11-27T20:42:27.142Z"
+      "lastSkipAt": "2026-11-27T20:43:48.901Z"
     },
     "openrouter|google/lyria-3-pro-preview": {
       "provider": "openrouter",
@@ -1838,6 +1838,28 @@
       "count": 1,
       "errors": 0,
       "lastUsed": "2026-11-27T20:43:17.935Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|nvidia/nemotron-3.5-lightning:free": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:43:25.932Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:43:32.826Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
