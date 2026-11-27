@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:30:22.518Z",
+  "savedAt": "2026-11-27T20:35:22.526Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -636,9 +636,9 @@
     "nvidia|nvidia/llama-3.1-nemotron-safety-guard-8b-v3": {
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
-      "count": 1,
-      "errors": 1,
-      "lastUsed": "2026-11-27T19:07:25.265Z",
+      "count": 2,
+      "errors": 2,
+      "lastUsed": "2026-11-27T20:31:58.991Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -648,8 +648,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 168,
-      "lastUsed": "2026-11-27T20:30:20.892Z",
+      "errors": 241,
+      "lastUsed": "2026-11-27T20:35:22.079Z",
       "lastStatus": 500,
       "skips": 1,
       "lastSkipReason": "UPSTREAM_5XX · HTTP 500",
