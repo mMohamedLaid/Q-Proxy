@@ -530,5 +530,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "llama-3.3-70b-instruct-turbo-free-lr": {
+    "model": "llama-3.3-70b-instruct-turbo:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
