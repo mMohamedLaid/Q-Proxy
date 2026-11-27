@@ -1,15 +1,26 @@
 {
-  "savedAt": "2026-11-27T19:11:22.457Z",
+  "savedAt": "2026-11-27T19:12:22.460Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
       "day": "2026-11-02"
+    },
+    "0|deepseek-v4.1-flash-cheap:free": {
+      "count": 7,
+      "day": "2026-11-27"
+    },
+    "0|deepseek-v4.1-flash:free": {
+      "count": 4,
+      "day": "2026-11-27"
     }
   },
   "literouterPremiumKeyState": [],
-  "literouterFreeModelCursor": {},
+  "literouterFreeModelCursor": {
+    "deepseek-v4.1-flash-cheap:free": 0,
+    "deepseek-v4.1-flash:free": 0
+  },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 106,
+  "literouterRotationIndex": 122,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -554,8 +565,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 50,
-      "lastUsed": "2026-11-27T19:11:18.772Z",
+      "errors": 65,
+      "lastUsed": "2026-11-27T19:12:19.853Z",
       "lastStatus": 500,
       "skips": 0,
       "lastSkipReason": null,
@@ -1048,9 +1059,53 @@
     "literouter|deepseek-v4-pro-stable:free": {
       "provider": "literouter",
       "model": "deepseek-v4-pro-stable:free",
-      "count": 1,
+      "count": 2,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:11:21.679Z",
+      "lastUsed": "2026-11-27T19:11:26.717Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4.1-flash-1017:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4.1-flash-1017:free",
+      "count": 2,
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:11:42.273Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4-flash-0731-uncensored:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-flash-0731-uncensored:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:12:00.204Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4.1-flash-cheap:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4.1-flash-cheap:free",
+      "count": 2,
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:12:15.030Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4.1-flash:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4.1-flash:free",
+      "count": 0,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:12:19.555Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
