@@ -938,5 +938,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "minicpm5-2b-amd": {
+    "model": "MiniCPM5-2B",
+    "provider": "amd",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "minicpm-v-4.7-1b-amd": {
+    "model": "MiniCPM-V-4.7-1B",
+    "provider": "amd",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
