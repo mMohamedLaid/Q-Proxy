@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:44:52.473Z",
+  "savedAt": "2026-11-27T19:45:22.473Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 5,
+      "count": 7,
       "day": "2026-11-27"
     },
     {
@@ -70,9 +70,9 @@
       "rpdCount": 2
     },
     "gemma-4-31b-it|0": {
-      "rpmWindowMinute": 29930144,
+      "rpmWindowMinute": 29930145,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930144,
+      "tpmWindowMinute": 29930145,
       "tpmTokens": 70,
       "rpdDay": "2026-11-27",
       "rpdCount": 3
@@ -472,12 +472,12 @@
       "provider": "nvidia",
       "model": "google/gemma-4-31b-it",
       "count": 0,
-      "errors": 48,
-      "lastUsed": "2026-11-27T19:44:39.626Z",
+      "errors": 50,
+      "lastUsed": "2026-11-27T19:45:05.366Z",
       "lastStatus": 410,
-      "skips": 7,
+      "skips": 9,
       "lastSkipReason": "NOT_FOUND",
-      "lastSkipAt": "2026-11-27T19:44:39.626Z"
+      "lastSkipAt": "2026-11-27T19:45:05.366Z"
     },
     "literouter|glm-5.3-flash-cheap:free": {
       "provider": "literouter",
@@ -603,13 +603,13 @@
     "google|gemma-4-31b-it": {
       "provider": "google",
       "model": "gemma-4-31b-it",
-      "count": 2,
-      "errors": 8,
-      "lastUsed": "2026-11-27T19:44:39.602Z",
-      "lastStatus": 503,
-      "skips": 8,
+      "count": 3,
+      "errors": 12,
+      "lastUsed": "2026-11-27T19:45:20.478Z",
+      "lastStatus": "ok",
+      "skips": 12,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
-      "lastSkipAt": "2026-11-27T19:44:39.602Z"
+      "lastSkipAt": "2026-11-27T19:45:10.224Z"
     },
     "groq|qwen/qwen3.8-27b": {
       "provider": "groq",
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 5,
-      "lastUsed": "2026-11-27T19:44:39.786Z",
+      "errors": 7,
+      "lastUsed": "2026-11-27T19:45:05.536Z",
       "lastStatus": 429,
-      "skips": 5,
+      "skips": 7,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T19:44:39.786Z"
+      "lastSkipAt": "2026-11-27T19:45:05.537Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
