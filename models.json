@@ -588,14 +588,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "gpt-oss-120b-free-lr-2": {
-    "model": "gpt-oss-120b:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "kimi-k2.6-cheap-free-lr": {
     "model": "kimi-k2.6-cheap:free",
     "provider": "literouter",
