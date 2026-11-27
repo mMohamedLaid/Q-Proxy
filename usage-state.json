@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:15:22.460Z",
+  "savedAt": "2026-11-27T19:17:22.462Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 199,
+  "literouterRotationIndex": 254,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -80,9 +80,9 @@
       "rpdCount": 20
     },
     "models/gemini-3.7-flash|0": {
-      "rpmWindowMinute": 29930115,
+      "rpmWindowMinute": 29930117,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930115,
+      "tpmWindowMinute": 29930117,
       "tpmTokens": 46,
       "rpdDay": "2026-11-27",
       "rpdCount": 1
@@ -391,12 +391,12 @@
       "provider": "google",
       "model": "models/gemini-3.7-flash",
       "count": 0,
-      "errors": 5,
-      "lastUsed": "2026-11-23T13:44:13.841Z",
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:17:07.240Z",
       "lastStatus": 524,
-      "skips": 5,
+      "skips": 6,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 524",
-      "lastSkipAt": "2026-11-23T13:44:13.841Z"
+      "lastSkipAt": "2026-11-27T19:17:07.241Z"
     },
     "nvidia|google/gemma-4-31b-it": {
       "provider": "nvidia",
@@ -1238,8 +1238,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 9,
-      "lastUsed": "2026-11-27T19:15:19.558Z",
+      "errors": 39,
+      "lastUsed": "2026-11-27T19:17:20.861Z",
       "lastStatus": 429,
       "skips": 0,
       "lastSkipReason": null,
@@ -1252,6 +1252,61 @@
       "errors": 3,
       "lastUsed": "2026-11-27T19:15:22.007Z",
       "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|glm-5.2-cheap:free": {
+      "provider": "literouter",
+      "model": "glm-5.2-cheap:free",
+      "count": 2,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:15:37.874Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|kimi-2.7:free": {
+      "provider": "literouter",
+      "model": "kimi-2.7:free",
+      "count": 0,
+      "errors": 20,
+      "lastUsed": "2026-11-27T19:16:19.850Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|llama-3.3-70b-instruct-turbo:free": {
+      "provider": "literouter",
+      "model": "llama-3.3-70b-instruct-turbo:free",
+      "count": 0,
+      "errors": 20,
+      "lastUsed": "2026-11-27T19:17:00.922Z",
+      "lastStatus": 403,
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|minimax-m2:free": {
+      "provider": "literouter",
+      "model": "minimax-m2:free",
+      "count": 2,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:17:14.166Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|magistral-small:free": {
+      "provider": "literouter",
+      "model": "magistral-small:free",
+      "count": 1,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:17:21.952Z",
+      "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
