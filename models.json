@@ -738,5 +738,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "poolside-laguna-xs-2.1-nv": {
+    "model": "poolside/laguna-xs-2.1",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
