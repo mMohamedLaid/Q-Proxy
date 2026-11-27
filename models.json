@@ -754,5 +754,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3.5-lightning-30b-a3b-nv": {
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
