@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:20:22.511Z",
+  "savedAt": "2026-11-27T20:25:22.515Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -1308,8 +1308,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 368,
-      "lastUsed": "2026-11-27T20:20:19.983Z",
+      "errors": 442,
+      "lastUsed": "2026-11-27T20:25:19.463Z",
       "lastStatus": 429,
       "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
