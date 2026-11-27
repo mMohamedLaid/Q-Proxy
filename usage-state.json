@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:09:22.455Z",
+  "savedAt": "2026-11-27T19:11:22.457Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -9,7 +9,7 @@
   "literouterPremiumKeyState": [],
   "literouterFreeModelCursor": {},
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 55,
+  "literouterRotationIndex": 106,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -44,12 +44,12 @@
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
-      "rpmWindowMinute": 29930109,
+      "rpmWindowMinute": 29930111,
       "rpmCount": 1,
-      "tpmWindowMinute": 29930109,
-      "tpmTokens": 46,
+      "tpmWindowMinute": 29930111,
+      "tpmTokens": 70,
       "rpdDay": "2026-11-27",
-      "rpdCount": 1
+      "rpdCount": 2
     },
     "gemma-4-31b-it|0": {
       "rpmWindowMinute": 29930108,
@@ -278,10 +278,10 @@
     "google|models/gemini-3.8-flash": {
       "provider": "google",
       "model": "models/gemini-3.8-flash",
-      "count": 7,
+      "count": 8,
       "errors": 27,
-      "lastUsed": "2026-11-23T13:37:46.548Z",
-      "lastStatus": 503,
+      "lastUsed": "2026-11-27T19:11:10.379Z",
+      "lastStatus": "ok",
       "skips": 46,
       "lastSkipReason": "UPSTREAM_DEGRADED · HTTP 503",
       "lastSkipAt": "2026-11-23T13:37:46.548Z"
@@ -311,9 +311,9 @@
     "nvidia|z-ai/glm-5.3-flash": {
       "provider": "nvidia",
       "model": "z-ai/glm-5.3-flash",
-      "count": 460,
+      "count": 461,
       "errors": 406,
-      "lastUsed": "2026-11-27T14:15:44.527Z",
+      "lastUsed": "2026-11-27T19:10:48.786Z",
       "lastStatus": "ok",
       "skips": 62,
       "lastSkipReason": "GATEWAY_TIMEOUT · HTTP 504",
@@ -333,9 +333,9 @@
     "literouter|deepseek-v4-pro-cheap:free": {
       "provider": "literouter",
       "model": "deepseek-v4-pro-cheap:free",
-      "count": 2,
-      "errors": 0,
-      "lastUsed": "2026-11-16T19:28:18.023Z",
+      "count": 4,
+      "errors": 5,
+      "lastUsed": "2026-11-27T19:10:57.174Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -554,8 +554,8 @@
       "provider": "nvidia",
       "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
       "count": 0,
-      "errors": 21,
-      "lastUsed": "2026-11-27T19:09:20.458Z",
+      "errors": 50,
+      "lastUsed": "2026-11-27T19:11:18.772Z",
       "lastStatus": 500,
       "skips": 0,
       "lastSkipReason": null,
@@ -729,9 +729,9 @@
     "groq|meta-llama/llama-prompt-guard-2-86m": {
       "provider": "groq",
       "model": "meta-llama/llama-prompt-guard-2-86m",
-      "count": 0,
-      "errors": 12,
-      "lastUsed": "2026-11-27T19:09:19.845Z",
+      "count": 1,
+      "errors": 14,
+      "lastUsed": "2026-11-27T19:09:51.737Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -740,9 +740,9 @@
     "groq|meta-llama/llama-prompt-guard-2-22m": {
       "provider": "groq",
       "model": "meta-llama/llama-prompt-guard-2-22m",
-      "count": 0,
-      "errors": 12,
-      "lastUsed": "2026-11-27T19:09:20.255Z",
+      "count": 1,
+      "errors": 14,
+      "lastUsed": "2026-11-27T19:09:52.215Z",
       "lastStatus": 400,
       "skips": 0,
       "lastSkipReason": null,
@@ -795,10 +795,10 @@
     "zai|glm-4.6v-flash": {
       "provider": "zai",
       "model": "glm-4.6v-flash",
-      "count": 0,
+      "count": 2,
       "errors": 3,
-      "lastUsed": "2026-11-27T19:09:19.079Z",
-      "lastStatus": 429,
+      "lastUsed": "2026-11-27T19:09:35.161Z",
+      "lastStatus": "ok",
       "skips": 3,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
       "lastSkipAt": "2026-11-27T19:09:19.079Z"
@@ -982,9 +982,75 @@
     "literouter|deepseek-v3.1-stable:free": {
       "provider": "literouter",
       "model": "deepseek-v3.1-stable:free",
-      "count": 0,
-      "errors": 2,
-      "lastUsed": "2026-11-27T19:09:21.602Z",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:09:35.110Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v3.1:free": {
+      "provider": "literouter",
+      "model": "deepseek-v3.1:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:09:50.540Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v3.2:free": {
+      "provider": "literouter",
+      "model": "deepseek-v3.2:free",
+      "count": 2,
+      "errors": 3,
+      "lastUsed": "2026-11-27T19:10:08.996Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4-flash-cheap:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-flash-cheap:free",
+      "count": 2,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:10:23.132Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4-flash-uncensored:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-flash-uncensored:free",
+      "count": 2,
+      "errors": 6,
+      "lastUsed": "2026-11-27T19:10:41.676Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4-flash:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-flash:free",
+      "count": 2,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:11:10.588Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "literouter|deepseek-v4-pro-stable:free": {
+      "provider": "literouter",
+      "model": "deepseek-v4-pro-stable:free",
+      "count": 1,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:11:21.679Z",
       "lastStatus": 403,
       "skips": 0,
       "lastSkipReason": null,
