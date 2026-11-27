@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:42:52.535Z",
+  "savedAt": "2026-11-27T20:43:22.536Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,7 +24,7 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 15,
+      "count": 18,
       "day": "2026-11-27"
     },
     {
@@ -1798,6 +1798,50 @@
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
       "lastSkipAt": "2026-11-27T20:42:44.204Z"
+    },
+    "openrouter|recursive/flint-v1.0:free": {
+      "provider": "openrouter",
+      "model": "recursive/flint-v1.0:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:42:53.270Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|nvidia/nemotron-3.5-super-vl:free": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-super-vl:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:43:01.330Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|openrouter/free": {
+      "provider": "openrouter",
+      "model": "openrouter/free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:43:07.827Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "openrouter|nvidia/nemotron-3-ultra-550b-a55b:free": {
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "count": 1,
+      "errors": 0,
+      "lastUsed": "2026-11-27T20:43:17.935Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
     }
   }
 }
