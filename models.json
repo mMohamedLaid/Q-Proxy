@@ -1170,5 +1170,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "caw-glm-5.3-flash-thinking-free-cr": {
+    "model": "caw/glm-5.3-flash-thinking:free",
+    "provider": "crowllm",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
