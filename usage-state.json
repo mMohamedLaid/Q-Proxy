@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:45:52.537Z",
+  "savedAt": "2026-11-27T20:46:22.539Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -24,11 +24,11 @@
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
-      "count": 46,
+      "count": 50,
       "day": "2026-11-27"
     },
     {
-      "count": 0,
+      "count": 1,
       "day": "2026-11-27"
     },
     {
@@ -44,7 +44,7 @@
       "day": "2026-11-27"
     }
   ],
-  "openrouterKeyIndex": 0,
+  "openrouterKeyIndex": 1,
   "googleModelCursor": {
     "gemma-4-31b-it": 0,
     "gemma-4-26b-a4b-it": 0,
@@ -945,12 +945,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-31b-it:free",
       "count": 0,
-      "errors": 14,
-      "lastUsed": "2026-11-27T20:45:39.733Z",
+      "errors": 15,
+      "lastUsed": "2026-11-27T20:46:00.779Z",
       "lastStatus": 429,
-      "skips": 14,
+      "skips": 15,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:45:39.733Z"
+      "lastSkipAt": "2026-11-27T20:46:00.779Z"
     },
     "amd|MiniCPM-V-4.7-35B-A3B": {
       "provider": "amd",
@@ -1737,12 +1737,12 @@
       "provider": "openrouter",
       "model": "google/gemma-4-26b-a4b-it:free",
       "count": 0,
-      "errors": 7,
-      "lastUsed": "2026-11-27T20:45:45.037Z",
+      "errors": 8,
+      "lastUsed": "2026-11-27T20:46:06.047Z",
       "lastStatus": 429,
-      "skips": 7,
+      "skips": 8,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
-      "lastSkipAt": "2026-11-27T20:45:45.037Z"
+      "lastSkipAt": "2026-11-27T20:46:06.047Z"
     },
     "openrouter|baidu/ernie-5.5-flash-preview:free": {
       "provider": "openrouter",
@@ -1759,23 +1759,23 @@
       "provider": "openrouter",
       "model": "google/lyria-3-clip-preview",
       "count": 0,
-      "errors": 7,
-      "lastUsed": "2026-11-27T20:45:50.253Z",
+      "errors": 8,
+      "lastUsed": "2026-11-27T20:46:11.273Z",
       "lastStatus": 402,
-      "skips": 7,
+      "skips": 8,
       "lastSkipReason": "QUOTA",
-      "lastSkipAt": "2026-11-27T20:45:50.253Z"
+      "lastSkipAt": "2026-11-27T20:46:11.274Z"
     },
     "openrouter|google/lyria-3-pro-preview": {
       "provider": "openrouter",
       "model": "google/lyria-3-pro-preview",
-      "count": 0,
-      "errors": 6,
-      "lastUsed": "2026-11-27T20:45:34.434Z",
-      "lastStatus": 402,
-      "skips": 6,
+      "count": 1,
+      "errors": 7,
+      "lastUsed": "2026-11-27T20:46:17.819Z",
+      "lastStatus": "ok",
+      "skips": 7,
       "lastSkipReason": "QUOTA",
-      "lastSkipAt": "2026-11-27T20:45:34.435Z"
+      "lastSkipAt": "2026-11-27T20:45:55.522Z"
     },
     "openrouter|liquid/lfm-3-1.7b:free": {
       "provider": "openrouter",
