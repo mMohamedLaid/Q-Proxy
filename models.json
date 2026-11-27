@@ -341,5 +341,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "deepseek-v4-flash-cheap-free-lr": {
+    "model": "deepseek-v4-flash-cheap:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
