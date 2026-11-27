@@ -746,5 +746,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "snowflake-arctic-embed-l-nv": {
+    "model": "snowflake/arctic-embed-l",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
