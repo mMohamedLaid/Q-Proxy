@@ -506,5 +506,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "qwen3-coder-30b-a3b-instruct-free-lr-2": {
+    "model": "qwen3-coder-30b-a3b-instruct:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
