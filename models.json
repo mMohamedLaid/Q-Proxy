@@ -722,5 +722,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "stepfun-ai-step-5-preview-nv": {
+    "model": "stepfun-ai/step-5-preview",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
