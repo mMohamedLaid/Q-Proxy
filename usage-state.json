@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T19:23:22.463Z",
+  "savedAt": "2026-11-27T19:23:52.463Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -20,7 +20,7 @@
     "deepseek-v4.1-flash:free": 0
   },
   "literouterLastResetDay": "2026-11-27",
-  "literouterRotationIndex": 312,
+  "literouterRotationIndex": 315,
   "literouterPremiumRotationIndex": 0,
   "openrouterKeyState": [
     {
@@ -54,7 +54,9 @@
     "models/gemini-3.8-flash": 0,
     "models/gemini-3.7-flash": 0,
     "models/gemini-3.6-flash": 0,
-    "gemini-3.1-flash-lite": 0
+    "gemini-3.1-flash-lite": 0,
+    "gemini-2.5-flash-lite": 0,
+    "gemini-3.5-flash": 0
   },
   "googleUsageWindows": {
     "models/gemini-3.8-flash|0": {
@@ -122,6 +124,22 @@
       "rpdCount": 2
     },
     "gemini-3.1-flash-lite|0": {
+      "rpmWindowMinute": 29930123,
+      "rpmCount": 2,
+      "tpmWindowMinute": 29930123,
+      "tpmTokens": 116,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 2
+    },
+    "gemini-2.5-flash-lite|0": {
+      "rpmWindowMinute": 29930123,
+      "rpmCount": 4,
+      "tpmWindowMinute": 29930123,
+      "tpmTokens": 232,
+      "rpdDay": "2026-11-27",
+      "rpdCount": 4
+    },
+    "gemini-3.5-flash|0": {
       "rpmWindowMinute": 29930123,
       "rpmCount": 1,
       "tpmWindowMinute": 29930123,
@@ -252,6 +270,12 @@
       "detail": "the provider answered: Function 'e199b43b-6c62-4a63-9379-f60e1a953236': Not found for account 'Oq57Tqk9ILIwSJf9qJMqG0BQ2PpEu6JrUzdoCszH3Xc'",
       "source": "request",
       "since": "2026-11-27T19:14:58.574Z"
+    },
+    "google|gemini-2.5-flash-lite": {
+      "kind": "gone",
+      "detail": "the provider answered: This model models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite for the latest features and improvements. We recommend you to use the Interactions API (https://aistudio.google.com/docs/get-started).",
+      "source": "request",
+      "since": "2026-11-27T19:23:30.813Z"
     }
   },
   "catalogCheckedAt": {
@@ -1082,9 +1106,9 @@
     "literouter|deepseek-v4-pro-stable:free": {
       "provider": "literouter",
       "model": "deepseek-v4-pro-stable:free",
-      "count": 2,
+      "count": 4,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:11:26.717Z",
+      "lastUsed": "2026-11-27T19:23:41.503Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1093,9 +1117,9 @@
     "literouter|deepseek-v4.1-flash-1017:free": {
       "provider": "literouter",
       "model": "deepseek-v4.1-flash-1017:free",
-      "count": 2,
+      "count": 3,
       "errors": 5,
-      "lastUsed": "2026-11-27T19:11:42.273Z",
+      "lastUsed": "2026-11-27T19:23:51.811Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -1248,8 +1272,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 132,
-      "lastUsed": "2026-11-27T19:23:21.126Z",
+      "errors": 139,
+      "lastUsed": "2026-11-27T19:23:49.382Z",
       "lastStatus": 429,
       "skips": 1,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
@@ -1375,6 +1399,28 @@
       "skips": 0,
       "lastSkipReason": null,
       "lastSkipAt": null
+    },
+    "google|gemini-3.1-flash-lite": {
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite",
+      "count": 2,
+      "errors": 0,
+      "lastUsed": "2026-11-27T19:23:30.334Z",
+      "lastStatus": "ok",
+      "skips": 0,
+      "lastSkipReason": null,
+      "lastSkipAt": null
+    },
+    "google|gemini-2.5-flash-lite": {
+      "provider": "google",
+      "model": "gemini-2.5-flash-lite",
+      "count": 0,
+      "errors": 4,
+      "lastUsed": "2026-11-27T19:23:38.612Z",
+      "lastStatus": 404,
+      "skips": 4,
+      "lastSkipReason": "NOT_FOUND",
+      "lastSkipAt": "2026-11-27T19:23:38.612Z"
     }
   }
 }
