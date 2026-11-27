@@ -691,5 +691,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "openai-gpt-oss-20b-free-lr": {
+    "model": "openai-gpt-oss-20b:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "ministral-3-14b-instruct-free-lr": {
+    "model": "ministral-3-14b-instruct:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
