@@ -1002,5 +1002,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "google-lyria-3-clip-preview-or": {
+    "model": "google/lyria-3-clip-preview",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
