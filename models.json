@@ -698,5 +698,13 @@
     "rpm": 15,
     "tpm": 250000,
     "rpd": 500
+  },
+  "bigcode-starcoder2-15b-nv": {
+    "model": "bigcode/starcoder2-15b",
+    "provider": "nvidia",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
