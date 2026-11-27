@@ -651,5 +651,21 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "llama-3.3-70b-instruct-free-lr": {
+    "model": "llama-3.3-70b-instruct:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
+  },
+  "llama-3.3-70b-instruct-free-lr-2": {
+    "model": "llama-3.3-70b-instruct:free",
+    "provider": "literouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
