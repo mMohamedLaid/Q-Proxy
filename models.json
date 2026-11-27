@@ -644,14 +644,6 @@
     "status": "active",
     "limitType": "rate-limited"
   },
-  "kimi-k3-uncensored-free-lr-2": {
-    "model": "kimi-k3-uncensored:free",
-    "provider": "literouter",
-    "reasoningSchema": null,
-    "reasoning": {},
-    "status": "active",
-    "limitType": "rate-limited"
-  },
   "llama-3.3-70b-instruct-free-lr": {
     "model": "llama-3.3-70b-instruct:free",
     "provider": "literouter",
