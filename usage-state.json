@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-27T20:10:22.496Z",
+  "savedAt": "2026-11-27T20:15:22.504Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -570,9 +570,9 @@
     "nvidia|poolside/laguna-xs-2.1": {
       "provider": "nvidia",
       "model": "poolside/laguna-xs-2.1",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:24.775Z",
+      "lastUsed": "2026-11-27T20:13:09.176Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -680,9 +680,9 @@
     "nvidia|nvidia/nemotron-3.5-lightning-30b-a3b": {
       "provider": "nvidia",
       "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:28.779Z",
+      "lastUsed": "2026-11-27T20:13:11.040Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -746,9 +746,9 @@
     "nvidia|nvidia/nemotron-3-ultra-550b-a55b": {
       "provider": "nvidia",
       "model": "nvidia/nemotron-3-ultra-550b-a55b",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:32.718Z",
+      "lastUsed": "2026-11-27T20:13:13.417Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -790,9 +790,9 @@
     "nvidia|nvidia/nemotron-3.5-bolt-e4b": {
       "provider": "nvidia",
       "model": "nvidia/nemotron-3.5-bolt-e4b",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:07:33.715Z",
+      "lastUsed": "2026-11-27T20:13:07.763Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -856,9 +856,9 @@
     "nvidia|nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
       "provider": "nvidia",
       "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-      "count": 2,
+      "count": 4,
       "errors": 0,
-      "lastUsed": "2026-11-27T19:08:24.264Z",
+      "lastUsed": "2026-11-27T20:13:10.055Z",
       "lastStatus": "ok",
       "skips": 0,
       "lastSkipReason": null,
@@ -966,10 +966,10 @@
     "amd|Qwen3.8-27B": {
       "provider": "amd",
       "model": "Qwen3.8-27B",
-      "count": 0,
+      "count": 2,
       "errors": 4,
-      "lastUsed": "2026-11-27T19:08:29.423Z",
-      "lastStatus": 429,
+      "lastUsed": "2026-11-27T20:14:12.939Z",
+      "lastStatus": "ok",
       "skips": 4,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
       "lastSkipAt": "2026-11-27T19:08:29.423Z"
@@ -1308,8 +1308,8 @@
       "provider": "nvidia",
       "model": "nvidia/ai-synthetic-video-detector",
       "count": 0,
-      "errors": 217,
-      "lastUsed": "2026-11-27T20:10:20.829Z",
+      "errors": 290,
+      "lastUsed": "2026-11-27T20:15:20.706Z",
       "lastStatus": 429,
       "skips": 2,
       "lastSkipReason": "RATE_LIMIT · HTTP 429",
