@@ -1074,5 +1074,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning-free-or": {
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
