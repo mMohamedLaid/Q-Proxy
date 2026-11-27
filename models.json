@@ -1018,5 +1018,13 @@
     "reasoning": {},
     "status": "active",
     "limitType": "rate-limited"
+  },
+  "liquid-lfm-3-1.7b-free-or": {
+    "model": "liquid/lfm-3-1.7b:free",
+    "provider": "openrouter",
+    "reasoningSchema": null,
+    "reasoning": {},
+    "status": "active",
+    "limitType": "rate-limited"
   }
 }
