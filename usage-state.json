@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-28T09:55:54.240Z",
+  "savedAt": "2026-11-28T10:01:54.249Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -331,12 +331,6 @@
       "source": "catalog",
       "since": "2026-11-27T22:47:31.725Z"
     },
-    "literouter|kimi-k2.7-code-cheap:free": {
-      "kind": "turned-paid",
-      "detail": "\"kimi-k2.7-code-cheap:free\" is no longer listed, but \"kimi-k2.7-code-cheap\" is — it now costs credits",
-      "source": "catalog",
-      "since": "2026-11-28T04:07:25.620Z"
-    },
     "literouter|gpt-oss-120b:free": {
       "kind": "gone",
       "detail": "no longer in literouter's live model list",
@@ -355,7 +349,7 @@
     "zai": "2026-11-28T04:07:24.028Z",
     "google": "2026-11-28T04:07:24.205Z",
     "openrouter": "2026-11-28T04:07:24.621Z",
-    "literouter": "2026-11-28T04:07:25.620Z",
+    "literouter": "2026-11-28T10:01:50.327Z",
     "amd": "2026-11-28T04:07:26.481Z",
     "groq": "2026-11-28T04:07:25.818Z",
     "crowllm": "2026-11-28T04:07:26.571Z"
