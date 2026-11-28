@@ -1,5 +1,5 @@
 {
-  "savedAt": "2026-11-28T15:52:24.987Z",
+  "savedAt": "2026-11-28T16:07:55.025Z",
   "literouterKeyState": {
     "0|glm-5.2:free": {
       "count": 1,
@@ -342,17 +342,53 @@
       "detail": "no longer in literouter's live model list",
       "source": "catalog",
       "since": "2026-11-28T04:07:25.620Z"
+    },
+    "literouter|glm-5.2-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.2-cheap:free\" is no longer listed, but \"glm-5.2-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
+    },
+    "literouter|magistral-small:free": {
+      "kind": "gone",
+      "detail": "no longer in literouter's live model list",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
+    },
+    "literouter|kimi-k2.7-code-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"kimi-k2.7-code-cheap:free\" is no longer listed, but \"kimi-k2.7-code-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
+    },
+    "literouter|glm-5.3-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.3-cheap:free\" is no longer listed, but \"glm-5.3-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
+    },
+    "literouter|glm-5.1-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.1-cheap:free\" is no longer listed, but \"glm-5.1-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
+    },
+    "literouter|glm-5.4-cheap:free": {
+      "kind": "turned-paid",
+      "detail": "\"glm-5.4-cheap:free\" is no longer listed, but \"glm-5.4-cheap\" is — it now costs credits",
+      "source": "catalog",
+      "since": "2026-11-28T16:07:26.529Z"
     }
   },
   "catalogCheckedAt": {
-    "nvidia": "2026-11-28T10:07:23.789Z",
-    "zai": "2026-11-28T10:07:24.225Z",
-    "google": "2026-11-28T10:07:24.377Z",
-    "openrouter": "2026-11-28T10:07:25.226Z",
-    "literouter": "2026-11-28T10:10:33.824Z",
-    "amd": "2026-11-28T10:07:27.281Z",
-    "groq": "2026-11-28T10:07:26.406Z",
-    "crowllm": "2026-11-28T10:07:27.358Z"
+    "nvidia": "2026-11-28T16:07:23.802Z",
+    "zai": "2026-11-28T16:07:24.281Z",
+    "google": "2026-11-28T16:07:24.628Z",
+    "openrouter": "2026-11-28T16:07:25.624Z",
+    "literouter": "2026-11-28T16:07:26.529Z",
+    "amd": "2026-11-28T16:07:27.517Z",
+    "groq": "2026-11-28T16:07:26.804Z",
+    "crowllm": "2026-11-28T16:07:27.613Z"
   },
   "providerUsage": {
     "nvidia|z-ai/glm-5.3": {
